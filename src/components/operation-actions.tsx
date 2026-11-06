@@ -20,7 +20,7 @@ function recordOperations(endpoint: string, record: RecordData, region: Region):
       if (pickStatuses.includes(status)) actions.push('order-pick');
       if (region === 'BD' && record.transfer_to_courier !== true && ['PLACED','PROCESSING','ACCEPTED'].includes(status)) actions.push('courier-dispatch');
       if (returnStatuses.includes(status)) actions.push('order-return');
-      if (['IN_TRANSIT', 'DELIVERED', 'HANDED_OVER_TO_COURIER'].includes(status)) actions.push('return-pending');
+      if (['IN_TRANSIT', 'DELIVERED', 'HANDED_OVER_TO_COURIER', 'RETURN_REQUESTED'].includes(status)) actions.push('return-pending');
       if (record.transfer_to_courier === true && str(record.tracking_code)
         && ['IN_TRANSIT','HANDED_OVER_TO_COURIER'].includes(status)) actions.push('tracking-refresh');
       return actions;

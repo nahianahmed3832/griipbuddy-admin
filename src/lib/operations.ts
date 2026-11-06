@@ -296,7 +296,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
         const location = await locationInRegion(str(input.location), region, auth);
         await mutate('/order/' + orderId + '/status', auth, 'PATCH', { status:'IN_REVIEW', business_location:refId(location) });
       } else if (id === 'return-pending') {
-        if (!['IN_TRANSIT','DELIVERED','HANDED_OVER_TO_COURIER'].includes(str(order.status))) {
+        if (!['IN_TRANSIT','DELIVERED','HANDED_OVER_TO_COURIER','RETURN_REQUESTED'].includes(str(order.status))) {
           invalid('Only an order in transit or delivered can be marked pending return.');
         }
         await mutate('/order/' + orderId + '/mark-pending-return', auth, 'PATCH', {});
