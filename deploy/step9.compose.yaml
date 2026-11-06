@@ -27,13 +27,10 @@ services:
     mem_limit: 96m
     restart: unless-stopped
   api:
-    image: griipbuddy-frontend-preview-api-base:retained
-    entrypoint: ["node", "/usr/src/app/recovery/hostinger/api.cjs"]
-    command: []
-    working_dir: /usr/src/app
+    build:
+      context: ../../backend
+      dockerfile: ../admin/deploy/backend.Dockerfile
     volumes:
-      - ../../backend/src:/usr/src/app/src:ro
-      - ../../backend/recovery:/usr/src/app/recovery:ro
       - receipt-objects:/var/lib/griipbuddy/receipts
     env_file: /opt/griipbuddy-step9-integration/private/api.env
     environment:

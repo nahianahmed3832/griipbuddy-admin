@@ -136,7 +136,7 @@ export function operationId(value: string): value is OperationId {
 
 export function canOperate(staff: Staff, id: OperationId) {
   const fixture = process.env.GRIIP_ADMIN_TARGET === 'fixture';
-  const preview = process.env.GRIIP_ADMIN_TARGET === 'preview';
+  const preview = ['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
   return (fixture || preview) && canWrite(staff)
     && (!['pos-cash-sale', 'pos-cash-return', 'coupon-status'].includes(id) || preview || process.env.GRIIP_ADMIN_FIXTURE_PARITY_WRITES === '1')
     && operations[id].permissions.every(permission => has(staff, permission));
