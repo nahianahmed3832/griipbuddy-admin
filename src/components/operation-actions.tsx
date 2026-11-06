@@ -18,6 +18,7 @@ function recordOperations(endpoint: string, record: RecordData, region: Region):
       const status = str(record.status);
       const actions: OperationId[] = [];
       if (pickStatuses.includes(status)) actions.push('order-pick');
+      if (region === 'BD' && record.transfer_to_courier !== true && ['PLACED','PROCESSING','ACCEPTED'].includes(status)) actions.push('courier-dispatch');
       if (returnStatuses.includes(status)) actions.push('order-return');
       if (['IN_TRANSIT', 'DELIVERED', 'HANDED_OVER_TO_COURIER'].includes(status)) actions.push('return-pending');
       if (record.transfer_to_courier === true && str(record.tracking_code)
@@ -54,7 +55,7 @@ export async function OperationActions({ endpoint, auth, region, record, id }: {
 
   const sourceLocations = locationChoices(arr(record?.stocks_by_location).map(row => obj(row).location), region);
   let allLocations: Choice[] = [];
-  if (actions.includes('stock-transfer') || actions.includes('barcode-receive') || actions.includes('pos-cash-sale')) {
+  if (actions.includes('stock-transfer') || actions.includes('barcode-receive') || actions.includes('pos-cash-sale') || actions.includes('courier-dispatch')) {
     const data = obj(await api(url('/business-location', { region, page: '1', limit: '250' }), auth.token));
     allLocations = locationChoices(arr(data.businessLocations), region);
   }
@@ -94,7 +95,7 @@ export async function OperationActions({ endpoint, auth, region, record, id }: {
   return actions.map(action => {
     const { label, description, fields } = operations[action];
     const readyFields = (fields as Field[]).map(field => {
-      if (field.name === 'location') return { ...field, choices: ['barcode-receive', 'pos-cash-sale'].includes(action) ? allLocations : sourceLocations };
+      if (field.name === 'location') return { ...field, choices: ['barcode-receive', 'pos-cash-sale', 'courier-dispatch'].includes(action) ? allLocations : sourceLocations };
       if (field.name === 'destination') return { ...field, choices: allLocations };
       if (field.name === 'supplier') return { ...field, choices: suppliers };
       if (field.name === 'currency') return { ...field, choices: [...currencyCodes].sort().map(code => ({ value: code, label: code })) };

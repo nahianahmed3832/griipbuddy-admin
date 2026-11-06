@@ -51,6 +51,10 @@ export const operations = {
     label: 'Assign order barcodes', description: 'Scan the units reserved for this order. The inventory API records the pick.',
     permissions: ['order.view', 'order.update'], fields: [codes],
   },
+  'courier-dispatch': {
+    label: 'Dispatch to simulated courier', description: 'Create a test consignment from the selected warehouse.',
+    permissions: ['order.view', 'order.update', 'business_locations.view'], fields: [location('location', 'Dispatch location')],
+  },
   'order-return': {
     label: 'Process scanned return', description: 'Scan only the returned units. The recovery API records the return and restocks eligible units.',
     permissions: ['order.view', 'order.update', 'order.return'], fields: [codes],
@@ -135,6 +139,7 @@ export function operationId(value: string): value is OperationId {
 }
 
 export function canOperate(staff: Staff, id: OperationId) {
+  if (id === 'courier-dispatch' && process.env.GRIIP_ADMIN_TARGET !== 'integration') return false;
   const fixture = process.env.GRIIP_ADMIN_TARGET === 'fixture';
   const preview = ['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
   return (fixture || preview) && canWrite(staff)
@@ -276,6 +281,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       });
       break;
     }
+    case 'courier-dispatch':
     case 'order-pick':
     case 'order-return':
     case 'return-pending':
@@ -283,7 +289,13 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const orderId = checkedId(recordId, 'Order');
       const order = obj(await api('/order/' + orderId, auth.token));
       if ((str(order.region) || 'BD') !== region) invalid('Order is outside the selected region.', 404);
-      if (id === 'return-pending') {
+      if (id === 'courier-dispatch') {
+        if (region !== 'BD' || order.transfer_to_courier === true || !['PLACED','PROCESSING','ACCEPTED'].includes(str(order.status))) {
+          invalid('Only a confirmed Bangladesh order can be sent to the courier.', 409);
+        }
+        const location = await locationInRegion(str(input.location), region, auth);
+        await mutate('/order/' + orderId + '/status', auth, 'PATCH', { status:'IN_REVIEW', business_location:refId(location) });
+      } else if (id === 'return-pending') {
         if (!['IN_TRANSIT','DELIVERED','HANDED_OVER_TO_COURIER'].includes(str(order.status))) {
           invalid('Only an order in transit or delivered can be marked pending return.');
         }
