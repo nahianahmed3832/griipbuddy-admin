@@ -1,5 +1,6 @@
 FROM node:22.22.3-bookworm-slim
 WORKDIR /usr/src/app
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund

@@ -36,6 +36,8 @@ services:
     environment:
       GRIIP_PREVIEW_MODE: "1"
       GRIIP_COMMERCE_STAGING: "1"
+      GRIIP_STOREFRONT_FIXTURE: "1"
+      GRIIP_STOREFRONT_IMAGE_ORIGINS: ${GRIIPBUDDY_CATALOG_MEDIA_ORIGINS:-}
       GRIIP_RECEIPT_FIXTURE_DIR: /var/lib/griipbuddy/receipts
     networks: [isolated]
     mem_limit: 512m
@@ -61,6 +63,8 @@ services:
     environment:
       GRIIPBUDDY_CANONICAL_ORIGIN: https://dev.griipbuddy.com
       GRIIPBUDDY_CHECKOUT: integrated
+      GRIIPBUDDY_DEV_CATALOG: "1"
+      GRIIPBUDDY_CATALOG_MEDIA_ORIGINS: ${GRIIPBUDDY_CATALOG_MEDIA_ORIGINS:-}
       GRIIPBUDDY_INTERNATIONAL_COUNTRY: US
       GRIIPBUDDY_COUNTRY_HEADER: cf-ipcountry
       GRIIPBUDDY_CONTENT_API: http://127.0.0.1:14819/api/v1

@@ -6,6 +6,7 @@ import { adminPath } from '@/lib/paths';
 import { has, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
+import { ReviewModeration, StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
 import { advancedEnabled, loadLocations } from '@/lib/advanced';
@@ -22,7 +23,7 @@ const createPermissions: Record<string,string> = {
 const detailPath: Record<string,string> = {
   '/order': '/order/', '/product/admin/all': '/product/admin/products/',
   '/country/admin/all': '/country/', '/stocks': '/stocks/variant/', '/product/admin/variants': '/product/variant/single/',
-  '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
+  '/review': '/review/', '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
 };
 const hasDetail = (endpoint: string) => Boolean(detailPath[endpoint]) || endpoint === '/cms/admin/top-bar-messages';
 
@@ -97,7 +98,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const locationScoped = ['/purchase', '/pos/sale'].includes(resource.endpoint);
   const recordRegion = locationScoped ? str(obj(raw.business_location).region)
     : str(raw.region) || str(obj(raw.product).region) || 'BD';
-  const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all'].includes(resource.endpoint);
+  const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all', '/review'].includes(resource.endpoint);
   if (!isShared && resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
   const columns = resource.columns;
   const slug = str(raw.slug);
@@ -106,6 +107,9 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const heading = resource.endpoint === '/stocks' ? str(obj(raw.variant).sku) : printable(valueAt(raw,columns[0].fields), columns[0].kind);
   const currency = str(raw.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
   const back = url('/desk/'+section.id+'/'+view,{region});
+  const storefrontWrites = process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff);
+  const storefrontSettings = storefrontWrites && resource.endpoint === '/product/admin/all' && has(auth.staff, 'product.update')
+    ? await api('/storefront/admin/product/' + id, auth.token) as StorefrontSettings : undefined;
   return <>
     <PageHeading eyebrow={section.label.toUpperCase()+' / RECORD'} title={heading || resource.title} description="Record details from the recovery API.">
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
@@ -120,6 +124,9 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
         const value = printable(valueAt(raw,col.fields),col.kind,currency);
         return <div key={col.label}><dt>{col.label}</dt><dd>{value && col.kind === 'badge' ? <Badge value={value}/> : value || '—'}</dd></div>;
       })}</dl></section>}
+    {storefrontSettings && <StorefrontEditor id={id} settings={storefrontSettings} />}
+    {storefrontWrites && resource.endpoint === '/review' && <ReviewModeration id={id} title={str(raw.title)}
+      content={str(raw.content)} status={str(raw.status)} media={arr(raw.storefrontMediaTypes).map(str)} />}
     {resource.endpoint === '/order' && <>
       <ReadRows title="Order items" input={raw.products} columns={[
         {label:'Product',fields:'product.name|selected_variant.product_name|selected_variant.sku'},

@@ -67,7 +67,7 @@ export const resources: Record<string, Record<string, Resource>> = {
     brands: { title: 'Brands', endpoint: '/brand/admin/all', permission: 'product.view', rows: 'brands', columns: [title, col('Slug', 'slug'), state],
       legacy: 'all-brands', legacyCreate: 'create-brand', legacyDetail: 'update-brand/:id' },
     reviews: { title: 'Reviews', endpoint: '/review', permission: 'review.view',
-      columns: [col('Product', 'product.name'), col('Rating', 'rating'), col('Review', 'title|comment|review'), state, date],
+      columns: [col('Product', 'product.name'), col('Rating', 'rating'), col('Review', 'title|content|comment|review'), col('Status', 'status', 'badge'), date],
       legacy: 'product-reviews', legacyDetail: 'product-reviews/:id' },
     faqs: { title: 'FAQs', endpoint: '/faq/admin/all', permission: 'faq.view', rows: 'faqs',
       columns: [col('Question', 'question|title'), col('Product', 'product.name'), state, date], legacy: 'product-faqs', legacyCreate: 'product-faqs/add-new-faq' },
