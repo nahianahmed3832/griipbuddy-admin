@@ -17,7 +17,7 @@ export async function loadLocations(auth: Session, region: Region) {
 }
 
 export async function paymentAccounts(auth: Session) {
-  const result = await api('/payment-source?limit=100', auth.token);
+  const result = await api('/payment-source/published?limit=100', auth.token);
   return arr(Array.isArray(result) ? result : obj(result).data).map(obj)
     .filter(row => mongoId(reference(row)) && row.is_active !== false && row.isActive !== false && row.is_deleted !== true)
     .map(row => ({ value: reference(row), label: str(row.name) || str(row.title) || 'Payment account' }));
