@@ -31,7 +31,13 @@ export function PosEditor({ draft, locations, accounts }: {
   const [quote, setQuote] = useState<{ subtotal: number; discount: number; total: number } | null>(null);
   const submitting = useRef(false);
   const requestId = useRef('');
+  const formVersion = useRef(0);
   const router = useRouter();
+
+  function invalidateQuote() {
+    formVersion.current += 1;
+    setQuote(null);
+  }
 
   function changeLine(index: number, input: Partial<Line>) {
     setLines(current => current.map((line, row) => row === index ? { ...line, ...input } : line));
@@ -47,15 +53,19 @@ export function PosEditor({ draft, locations, accounts }: {
     setError('');
     if (!requestId.current) requestId.current = crypto.randomUUID().replaceAll('-', '').slice(0, 24);
     const values = Object.fromEntries(new FormData(event.currentTarget));
+    const submittedVersion = formVersion.current;
     try {
       const response = await fetch(adminPath('/api/workspace'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: review ? 'pos-quote' : 'pos', values: { ...values, id: draft.id, revision: draft.revision,
-          requestId: requestId.current, discount: overall, lines } }),
+          requestId: requestId.current, quotedTotal: quote?.total, discount: overall, lines } }),
       });
       if (!response.ok) { setError((await response.text()).slice(0, 300)); return; }
       const result = await response.json();
-      if (review) { setQuote(result); return; }
+      if (review) {
+        if (formVersion.current === submittedVersion) setQuote(result);
+        return;
+      }
       const { id } = result;
       router.push('/desk/pos/sales/' + encodeURIComponent(id));
       router.refresh();
@@ -64,7 +74,7 @@ export function PosEditor({ draft, locations, accounts }: {
     } finally { submitting.current = false; setBusy(false); }
   }
 
-  return <form className="stack-form panel padded" onSubmit={submit} onChange={() => setQuote(null)}>
+  return <form className="stack-form panel padded" onSubmit={submit} onChange={invalidateQuote}>
     <div className="editor-grid">
       <label>Sale location<select name="location" required defaultValue={draft.location}>
         <option value="" disabled>Choose a location</option>{locations.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}
@@ -80,12 +90,12 @@ export function PosEditor({ draft, locations, accounts }: {
       </div>
       <DiscountFields label="Item discount" value={line.discount} onChange={discount => changeLine(index, { discount })}/>
       {lines.length > 1 && <button type="button" className="button subtle" onClick={() => {
-        setQuote(null);
+        invalidateQuote();
         setLines(current => current.filter((_, row) => row !== index));
       }}>Remove item</button>}
     </fieldset>)}
     <button className="button secondary" type="button" disabled={lines.length >= 20} onClick={() => {
-      setQuote(null);
+      invalidateQuote();
       setLines(current => [...current, blankLine]);
     }}>Add item</button>
     <h2>Payment and sale details</h2>

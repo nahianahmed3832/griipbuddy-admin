@@ -75,6 +75,9 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
   const overall = discount(input.discount, subtotal);
   const total = subtotal - overall.minor;
   if (review) return { subtotal: subtotal / 100, discount: overall.minor / 100, total: total / 100 };
+  if (typeof input.quotedTotal !== 'number' || Math.round(input.quotedTotal * 100) !== total) {
+    throw new ApiError(409, 'Sale totals changed. Review the updated totals before saving.');
+  }
   const paid = money(input.paid, 'Amount received');
   if (paid > total) throw invalid('Amount received exceeds the sale total.');
   const account = str(input.paymentAccount);

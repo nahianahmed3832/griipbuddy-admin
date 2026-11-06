@@ -1,4 +1,4 @@
-const http = require('node:http');
+import http from 'node:http';
 
 http.createServer((request, response) => {
   if (request.headers.host !== '127.0.0.1:14811' || !/^\/api\/v1(?:\/|$)/.test(request.url ?? '')) {

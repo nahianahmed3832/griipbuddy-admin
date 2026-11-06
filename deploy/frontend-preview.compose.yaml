@@ -45,8 +45,8 @@ services:
       redis: {condition: service_started}
   edge:
     image: node:22.22.3-bookworm-slim
-    entrypoint: ["node", "/preview-edge.cjs"]
-    volumes: [./preview-edge.cjs:/preview-edge.cjs:ro]
+    entrypoint: ["node", "/preview-edge.mjs"]
+    volumes: [./preview-edge.mjs:/preview-edge.mjs:ro]
     networks: [isolated, edge]
     ports: ["127.0.0.1:14811:14811"]
     mem_limit: 96m
