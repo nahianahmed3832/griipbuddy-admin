@@ -22,14 +22,14 @@ export type Resource = {
 
 const col = (label: string, fields: string, kind?: Column['kind']): Column => ({ label, fields, kind });
 const title = col('Name', 'name|title|name_en|full_name');
-const state = col('Status', 'status|is_active|isActive|is_published|isPublished', 'badge');
+const state = col('Status', 'status|is_active|isActive|is_published|isPublished|enabled', 'badge');
 const sku = col('SKU', 'sku|variant.sku|selected_variant.sku');
 const date = col('Date', 'createdAt|created_at|date', 'date');
 const region = col('Region', 'region', 'badge');
 const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name');
 const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), col('Customer', 'customer_name|user.full_name'),
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
-const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'RETURNED', 'CANCELLED'];
+const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
 const orders: Resource = {
   title: 'Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
@@ -38,8 +38,8 @@ const orders: Resource = {
 const catalogColumns = [title, sku, col('Category', 'category.name'), region, col('Variants', 'variants', 'count'), state];
 const promo: Resource = {
   title: 'Coupons', endpoint: '/coupon/admin/all', permission: 'coupon.view', rows: 'coupons',
-  columns: [col('Code', 'code|coupon_code'), col('Discount type', 'discount_type|type'), col('Usage limit', 'usage_limit|max_uses'),
-    col('Ends', 'end_date|expires_at', 'date'), state], legacy: 'coupons', legacyCreate: 'create-coupon', legacyDetail: 'coupons/:id',
+  columns: [col('Code', 'code|coupon_code'), col('Discount type', 'discountType|discount_type|type'), col('Usage limit', 'usageLimit|usage_limit|max_uses'),
+    col('Ends', 'expireAt|end_date|expires_at', 'date'), state], legacy: 'coupons', legacyCreate: 'create-coupon', legacyDetail: 'coupons/:id',
 };
 
 export const resources: Record<string, Record<string, Resource>> = {
@@ -50,7 +50,8 @@ export const resources: Record<string, Record<string, Resource>> = {
       legacy: 'pre-orders', legacyCreate: 'pre-orders/create', legacyDetail: 'pre-orders/:id' },
     assigned: { title: 'Assigned orders', endpoint: '/assigned-orders', permission: 'order.view', rows: 'assignedOrders',
       columns: [...orderColumns, location], legacy: 'assigned-orders' },
-    returns: { ...orders, title: 'Returns', filter: undefined, params: { filter: 'RETURNED' }, legacyCreate: undefined },
+    returns: { ...orders, title: 'Returns', filter: { key: 'filter', label: 'Return status', options: ['PENDING_RETURN', 'PARTIAL', 'RETURNED'] },
+      params: { filter: 'RETURNED' }, legacyCreate: undefined },
   },
   catalog: {
     products: { title: 'Products', endpoint: '/product/admin/all', permission: 'product.view', region: true, search: 'searchQuery',
@@ -140,7 +141,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [title, col('Placement', 'position|order'), state, date], legacy: 'hero-section' },
   },
   pos: {
-    sales: { title: 'Point of sale', endpoint: '/pos/sale', permission: 'pos.view', rows: 'posSales',
+    sales: { title: 'Point of sale', endpoint: '/pos/sale', permission: 'pos.view', rows: 'posSales', search: 'q', region: true,
       columns: [col('Sale', 'sale_serial_id|invoice_number'), location, col('Amount', 'total_amount|grand_total', 'money'), state, date],
       legacy: 'pos/all', legacyCreate: 'pos/create', legacyDetail: 'pos/edit/:id' },
     report: { title: 'POS report', endpoint: '/pos/admin/report', permission: 'pos.view', rows: 'products', flags: 'pos-finance',

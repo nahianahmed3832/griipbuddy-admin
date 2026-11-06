@@ -7,6 +7,7 @@ import { has, type Column, type Region, type Resource, type Section } from '@/li
 import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
 import { MarketForm } from './market-form';
+import { OperationActions } from './operation-actions';
 
 const createPermissions: Record<string,string> = {
   'create-order':'order.create','pre-orders/create':'pre_order.create','create-product':'product.create','add-new-category':'product.create',
@@ -20,7 +21,9 @@ const createPermissions: Record<string,string> = {
 const detailPath: Record<string,string> = {
   '/order': '/order/', '/product/admin/all': '/product/admin/products/',
   '/country/admin/all': '/country/', '/stocks': '/stocks/variant/', '/product/admin/variants': '/product/variant/single/',
+  '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
 };
+const hasDetail = (endpoint: string) => Boolean(detailPath[endpoint]) || endpoint === '/cms/admin/top-bar-messages';
 
 const label = (value: string) => value.replaceAll('_',' ').replace(/^./, char => char.toUpperCase());
 export async function ResourcePage({ section, view, resource, auth, q, region }: {
@@ -40,7 +43,7 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     const currency = str(record.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
     return {
       id: id || String(index), values: resource.columns.map(col => printable(valueAt(record,col.fields),col.kind,currency)),
-      href: detailPath[resource.endpoint] && mongoId(detailId) ? url(path+'/'+detailId,{region}) : undefined,
+      href: hasDetail(resource.endpoint) && mongoId(detailId) ? url(path+'/'+detailId,{region}) : undefined,
       legacy: legacy && !legacy.endsWith('/') && legacyUrl(legacy) || undefined,
     };
   });
@@ -48,11 +51,12 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     <PageHeading eyebrow={section.group.toUpperCase()+' / '+section.label.toUpperCase()} title={resource.title} description={section.description}>
       {classic && <a className="button secondary" href={classic} target="_blank" rel="noreferrer">Preserved workflow <ArrowUpRight size={15}/></a>}
       {create && <a className="button primary" href={create} target="_blank" rel="noreferrer"><Plus size={17}/> Open create form</a>}
+      <OperationActions endpoint={resource.endpoint} auth={auth} region={region}/>
     </PageHeading>
     {section.id === 'markets' && <div className="market-context"><span><strong>Country configuration</strong><small>Country activation and currency</small></span>
       <span><strong>Regional catalog</strong><small>Visibility and variant price overrides</small></span>
       <span><strong>Shipping and fallback</strong><small>Storefront runtime settings</small></span></div>}
-    {section.id === 'shipping' && <div className="notice">Tracking records come from orders. Use the preserved courier workflow for dispatch and status refresh.</div>}
+    {section.id === 'shipping' && <div className="notice">Open an order to see its tracking record and available courier actions.</div>}
     <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
       <label className="search-input"><Search size={17}/><input aria-label={resource.search ? 'Search records' : 'Search this page'} name="q" maxLength={80} placeholder={resource.search ? 'Search records…' : 'Filter visible records…'} defaultValue={result.search}/></label>
@@ -74,16 +78,21 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
 }) {
   const prefix = detailPath[resource.endpoint];
   if (!permitted(resource,auth)) throw new ApiError(403);
-  if (!prefix || !mongoId(id)) throw new ApiError(404);
-  let raw = obj(await api(prefix + id, auth.token));
+  if (!hasDetail(resource.endpoint) || !mongoId(id)) throw new ApiError(404);
+  let raw = prefix ? obj(await api(prefix + id, auth.token)) : arr(await api(resource.endpoint, auth.token)).map(obj)
+    .find(record => record._id === id);
+  if (!raw || !Object.keys(raw).length) throw new ApiError(404);
   if (resource.endpoint === '/product/admin/variants') {
     const productId = str(obj(raw.product)._id) || str(raw.product);
     if (!mongoId(productId)) throw new ApiError(404);
     const product = obj(await api('/product/admin/products/'+productId,auth.token));
     raw = {...raw, region: product.region, product};
   }
-  const recordRegion = str(raw.region) || str(obj(raw.product).region) || 'BD';
-  if (resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
+  const locationScoped = ['/purchase', '/pos/sale'].includes(resource.endpoint);
+  const recordRegion = locationScoped ? str(obj(raw.business_location).region)
+    : str(raw.region) || str(obj(raw.product).region) || 'BD';
+  const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all'].includes(resource.endpoint);
+  if (!isShared && resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
   const columns = resource.columns;
   const slug = str(raw.slug);
   const classic = resource.legacyDetail?.replace(':id',id).replace(':slug',slug);
@@ -96,6 +105,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
+      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}/>
     </PageHeading>
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>
       <dl className="details-grid padded">{columns.map(col => {
@@ -116,6 +126,17 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       {label:'SKU',fields:'sku'}, {label:'Regular BDT',fields:'regular_price'}, {label:'Sale BDT',fields:'sale_price'},
       {label:'Currency prices',fields:'prices',kind:'list'}, {label:'Barcode',fields:'barcode'},
     ]}/>}
+    {resource.endpoint === '/purchase' && <>
+      <section className="panel padded"><h2>Purchase notes</h2><p>{str(raw.additional_notes) || 'No notes recorded.'}</p></section>
+      <ReadRows title="Purchase lines" input={raw.items} columns={[
+        {label:'Product',fields:'product.name'}, {label:'SKU',fields:'variant.sku'}, {label:'Quantity',fields:'qty'},
+        ...(has(auth.staff,'purchase.price.view') ? [{label:'Cost per unit',fields:'unit_cost'}] : []),
+      ]}/>
+    </>}
+    {resource.endpoint === '/pos/sale' && <ReadRows title="Sale items" input={raw.products} columns={[
+      {label:'Product',fields:'product.name'}, {label:'SKU',fields:'selected_variant.sku'},
+      {label:'Remaining quantity',fields:'quantity'}, {label:'Line amount',fields:'total_price',kind:'money'},
+    ]}/>}
     {resource.endpoint === '/stocks' && <>
       <ReadRows title="Stock by location" input={raw.stocks_by_location} columns={[
         {label:'Location',fields:'location.name|location.business_location_name'}, {label:'On hand',fields:'available_quantity'},
@@ -127,7 +148,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
         ...(has(auth.staff,'purchase.price.view') ? [{label:'Cost per unit',fields:'cost_per_unit'}] : []),
       ]}/>
       <ReadRows title="Stock movements" input={obj(raw.stock_movements).data} columns={[
-        {label:'Movement',fields:'movement_type|type|source_type'}, {label:'Quantity',fields:'quantity'},
+        {label:'Movement',fields:'movement_type|type|source_type'}, {label:'Quantity',fields:'qty|quantity'},
         {label:'Date',fields:'createdAt|created_at|date',kind:'date'},
       ]}/>
     </>}

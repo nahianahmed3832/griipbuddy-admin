@@ -1,5 +1,26 @@
 # Step 8 admin reconstruction acceptance
 
+## Native workflow follow-up
+
+The local candidate extends the admin with operations backed by the recovered API and its existing records. New writes require an authorized fixture administrator. POS cash workflows and explicit coupon status also require the private parity backend and the local parity flag. The existing staging connection is used for the role, report and view acceptance suite.
+
+| Area | Scope of the candidate | Remaining acceptance |
+| --- | --- | --- |
+| Inventory and purchasing | Location-scoped stock adjustments and transfers, supplier creation, purchase rates, barcode generation and receiving, purchase details and notes. | Verify multi-line and edited transfers, purchase line corrections, barcode grading and resets, and lot and barcode location reconciliation on scrubbed staging records. |
+| Orders and shipping | Native barcode assignment, partial scanned returns, pending returns and simulated courier status refresh. | Legacy order and pre-order forms, bulk handover and courier replay and reconciliation with the approved provider configuration. |
+| POS | Paid Bangladesh cash sales and returns, sale detail, and backend checks for shared last-unit contention, sale line edits and repeated partial returns. | Multi-item checkout, discounts, payment accounts and advanced sale editing in the native interface. Legacy data and outlet acceptance are still pending. |
+| Markets and marketing | Product publication, country coverage, regional variant pricing, coupon creation and explicit coupon activation. | Region-specific promotion and inventory routing contracts. Verify concurrent price edits before enabling the recovered variant editor for staging writes. |
+| CMS and administration | Native announcement creation and editing. The workflow library retains the recovered routes and points to the native actions when available. | Native banner, hero, homepage, SEO, full catalog and staff CRUD, and specialized support and system workflows. |
+| Payments | Existing simulated COD, manual payment verification, PayPal and Stripe controls. | An approved live payment adapter and an atomic MongoDB inventory claim for paid orders, provider credentials, settlement and refund acceptance. |
+
+The private backend correction keeps the physical warehouse and lot quantities authoritative, checks online holds before stock deductions, and reconciles global availability in the POS sale, edit and return transactions. POS lists also retain historical sales when a date filter is omitted. The fixture test races POS and COD for one unit, edits the resulting sale, returns the units in separate operations and verifies the ledger and inventory counts.
+
+The candidate passed lint, TypeScript and a production build. All 14 Playwright scenarios passed across the isolated staging connection and the disposable fixture. They covered the five staff roles, ten reports and their CSV/XLSX exports, and the new write workflows. The native transfer dialog fit a 390 px viewport and had no serious or critical axe findings. The private recovered backend passed 21 baseline checks with simulated providers. Backend commits are `f779eb2` and `d880943`.
+
+Full Step 8 acceptance remains open. The test order used the recovered checkout contract to produce a schema-valid record. Older orders with missing required fields, actual payment settlement, and the legacy workflows listed above still need acceptance before cutover. This candidate was built and committed locally.
+
+## Initial acceptance evidence
+
 The development candidate adds a responsive admin workspace and a separate storefront preview. The native workspace uses the recovered staff API. The workflow library retains access to the preserved admin for operations that still use its original forms. Production replacement remains blocked on workflow parity and the commerce engine gates from Step 7.
 
 ## Functionality

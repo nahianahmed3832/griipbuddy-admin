@@ -3,9 +3,21 @@ import { ArrowUpRight, BookOpen, LockKeyhole, Search } from 'lucide-react';
 import { legacyUrl, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
+import { canOperate, type OperationId } from '@/lib/operations';
 import { workflowRoutes } from '@/lib/workflows';
 import { PageHeading } from './dashboard';
 import { Empty } from './tables';
+
+const nativeWorkflows: Record<string, { action: OperationId; href: string }> = {
+  'barcodes/generate': { action: 'barcode-generate', href: '/desk/inventory/barcodes' },
+  'barcodes/receive': { action: 'barcode-receive', href: '/desk/inventory/barcodes' },
+  'barcodes/default-rate': { action: 'purchase-rate', href: '/desk/catalog/variants' },
+  'suppliers/create': { action: 'supplier-create', href: '/desk/inventory/suppliers' },
+  'stock-adjustment/create': { action: 'stock-adjust', href: '/desk/inventory/stock' },
+  'stock-transfer/create': { action: 'stock-transfer', href: '/desk/inventory/stock' },
+  'create-coupon': { action: 'coupon-create', href: '/desk/marketing/coupons' },
+  'header': { action: 'announcement-create', href: '/desk/content/announcements' },
+};
 
 export function WorkflowLibrary({ auth, q }: { auth: Session; q: Query }) {
   const search = (param(q,'q') ?? '').trim().toLowerCase().slice(0,80);
@@ -21,8 +33,10 @@ export function WorkflowLibrary({ auth, q }: { auth: Session; q: Query }) {
       <div className="panel-header"><div><h2>{group}</h2><p>{matches.filter(entry => entry.group === group).length} routes</p></div></div>
       <div className="workflow-grid">{matches.filter(entry => entry.group === group).map(entry => {
         const href = !entry.dynamic && !entry.blocked && legacyUrl(entry.name);
+        const native = nativeWorkflows[entry.name];
         return <div key={entry.name} className="workflow-row"><span>{entry.name.replaceAll('-', ' ')}</span>
-          {href ? <a href={href} target="_blank" rel="noreferrer">Open <ArrowUpRight size={14}/></a> :
+          {native && canOperate(auth.staff, native.action) ? <Link href={native.href}>Open workspace</Link>
+            : href ? <a href={href} target="_blank" rel="noreferrer">Open <ArrowUpRight size={14}/></a> :
             <small>{entry.blocked ? 'Provider access blocked' : entry.dynamic ? 'Record required' : 'Preserved route'}</small>}
         </div>;
       })}</div>
