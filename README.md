@@ -26,6 +26,6 @@ For an admin rollback, build the approved admin commit and replace the `admin` s
 
 ## Frontend preview
 
-The frontend preview bundles the admin, storefront and private recovery backend into sibling `admin`, `storefront` and `backend` directories. Use `admin/deploy/frontend-preview.compose.yaml` with `admin/deploy/frontend-preview.nginx.conf`. It owns a separate MongoDB volume and an internal provider-stub network. The edge exposes only a loopback API for the storefront and admin processes. Both HTTPS entry points use preview access, and the admin also checks staff login and operation permissions.
+The frontend preview bundles the admin, storefront and private recovery backend into sibling `admin`, `storefront` and `backend` directories. Use `admin/deploy/frontend-preview.compose.yaml` with `admin/deploy/frontend-preview.nginx.conf`. It owns a separate MongoDB volume and an internal provider-stub network. Visitors can browse the storefront. The admin accepts the configured preview staff account and checks operation permissions. The recovered API is available only to the apps through loopback.
 
 The new admin uses `/admin`, the storefront uses `/`, and checkout on this hostname is browse-only. The content editor updates the storefront without changing its canonical origin or preview indexing policy. POS records offline payments and supports several lines, item and sale discounts, accounting sources, and partial paid cash returns. Bulk courier handover records a physical handoff for already assigned consignments.

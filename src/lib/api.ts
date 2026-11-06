@@ -76,6 +76,7 @@ export async function who(token: string): Promise<Staff | null> {
   try {
     const user = obj(await api('/user', token));
     if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
+    if (process.env.GRIIP_ADMIN_TARGET === 'preview' && str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE) return null;
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
       permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };
   } catch (error) {

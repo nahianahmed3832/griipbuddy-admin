@@ -2,7 +2,7 @@
 
 ## Frontend preview release
 
-The [storefront](https://frontend.griipbuddy.com/) and [admin](https://frontend.griipbuddy.com/admin) run on Hostinger in the separate `griipbuddy-frontend-preview` Compose project. Preview access and staff sign-in protect the workspace. MongoDB and Redis use dedicated volumes or processes, the recovered API uses synthetic records and provider stubs, and the preview blocks checkout mutations and raw API access at the HTTPS edge. Production service container IDs and start times matched the predeployment receipt.
+The [storefront](https://frontend.griipbuddy.com/) and [admin](https://frontend.griipbuddy.com/admin) run on Hostinger in the separate `griipbuddy-frontend-preview` Compose project. The storefront is open for browsing and the admin requires sign-in with the configured preview staff account. MongoDB and Redis use dedicated volumes or processes, the recovered API uses synthetic records and provider stubs, and the preview blocks checkout mutations and raw API access at the HTTPS edge. Production service container IDs and start times matched the predeployment receipt.
 
 | Requested workflow | Acceptance | Scope |
 | --- | --- | --- |
