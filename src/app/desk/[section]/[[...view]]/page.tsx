@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { ApiError, connection, getRegion, session, url } from '@/lib/api';
+import { api, ApiError, connection, getRegion, session, url } from '@/lib/api';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
@@ -11,6 +11,7 @@ import { Shell } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
 import { CheckoutPanel } from '@/components/checkout-panel';
 import { ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
+import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/components/integrated-commerce';
 import { advancedEnabled } from '@/lib/advanced';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,7 @@ export default async function Desk({ params, searchParams }: {
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
   const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
+  const integrated = process.env.GRIIP_ADMIN_INTEGRATED === '1';
   const allowCheckout = process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const tabs = sectionResources.map(([key,res]) => [key,res.title]);
   if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
@@ -50,7 +52,17 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({auth,id:view[0],q,region});
     else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
     else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
-    else if (allowCheckout && active === 'checkout' && view.length < 2) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
+    else if (allowCheckout && active === 'checkout' && view.length < 2) {
+      if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
+      else if (sectionId === 'markets') content = <>
+        <PageHeading eyebrow="COMMERCE / MARKETS" title="Storefront controls" description="Edit shipping and payment availability for each market."/>
+        <CommerceMarkets markets={await api('/commerce/admin/markets', auth.token) as CommerceMarket[]}/>
+      </>;
+      else content = <>
+        <PageHeading eyebrow="COMMERCE / PAYMENTS" title="Checkout receipts" description="Review private evidence submitted with integrated orders."/>
+        <CommerceReceipts initial={param(q, 'receipt')}/>
+      </>;
+    }
     else if (sectionId === 'content' && active === 'workspace' && view.length <= 1) content = await ContentWorkspace({ auth });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
     else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})

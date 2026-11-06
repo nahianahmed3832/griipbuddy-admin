@@ -1,7 +1,9 @@
 import http from 'node:http';
 
+const port = process.env.GRIIP_EDGE_PORT === '14819' ? 14819 : 14811;
+
 http.createServer((request, response) => {
-  if (request.headers.host !== '127.0.0.1:14811' || !/^\/api\/v1(?:\/|$)/.test(request.url ?? '')) {
+  if (request.headers.host !== '127.0.0.1:' + port || !/^\/api\/v1(?:\/|$)/.test(request.url ?? '')) {
     response.writeHead(404).end();
     return;
   }
@@ -17,4 +19,4 @@ http.createServer((request, response) => {
   });
   request.on('aborted', () => upstream.destroy());
   request.pipe(upstream);
-}).listen(14811, '0.0.0.0');
+}).listen(port, '0.0.0.0');

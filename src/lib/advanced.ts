@@ -3,7 +3,7 @@ import { findVariantBySku, locationInRegion } from './operations';
 import { has, type Region } from './sections';
 
 export function advancedEnabled() {
-  return process.env.GRIIP_ADMIN_TARGET === 'preview' || (process.env.GRIIP_ADMIN_TARGET === 'fixture'
+  return ['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') || (process.env.GRIIP_ADMIN_TARGET === 'fixture'
     && process.env.GRIIP_ADMIN_FIXTURE_WORKSPACE === '1');
 }
 

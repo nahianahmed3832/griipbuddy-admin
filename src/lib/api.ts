@@ -16,6 +16,9 @@ export class ApiError extends Error {
 }
 
 export function connection() {
+  if (process.env.GRIIP_ADMIN_TARGET === 'integration') {
+    return { origin: 'http://127.0.0.1:14819', name: 'Isolated integration staging', legacy: null };
+  }
   if (process.env.GRIIP_ADMIN_TARGET === 'preview') {
     return { origin: 'http://127.0.0.1:14811', name: 'Isolated frontend preview', legacy: null };
   }
@@ -37,7 +40,8 @@ export function canWrite(staff: Staff) {
   const local = target === 'Local fixture' && process.env.GRIIP_ADMIN_FIXTURE_WRITES === '1';
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
   const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
-  return superAdmin(staff) && (local || stage || preview);
+  const integration = target === 'Isolated integration staging' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
+  return superAdmin(staff) && (local || stage || preview || integration);
 }
 
 export function legacyUrl(path?: string) {
@@ -76,7 +80,7 @@ export async function who(token: string): Promise<Staff | null> {
   try {
     const user = obj(await api('/user', token));
     if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
-    if (process.env.GRIIP_ADMIN_TARGET === 'preview' && str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE) return null;
+    if (['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') && str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE) return null;
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
       permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };
   } catch (error) {

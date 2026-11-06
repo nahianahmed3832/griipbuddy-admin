@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     : identifier;
   const password = form.get('password') ?? '';
   if (!/^\+?\d{8,16}$/.test(phone_number) || password.length < 6 || password.length > 200) return redirect('/sign-in?error=credentials');
-  if (process.env.GRIIP_ADMIN_TARGET === 'preview' && phone_number !== staffPhone) return redirect('/sign-in?error=credentials');
+  if (['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') && phone_number !== staffPhone) return redirect('/sign-in?error=credentials');
   try {
     const result = obj(await api('/user/admin/login', undefined, { method: 'POST', body: JSON.stringify({ phone_number, password }) }));
     const token = str(result.access_token);
