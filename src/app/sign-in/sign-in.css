@@ -1,0 +1,283 @@
+.sign-in-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #f8f6f9;
+}
+
+.sign-in-brand-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 36px;
+  padding: clamp(30px, 4.5vw, 72px);
+  background: radial-gradient(ellipse at 0 100%, #402750, transparent 72%), var(--nav);
+  color: #fbf8ff;
+}
+
+.sign-in-brand-panel::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 50% -30% -50% 33%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: repeating-radial-gradient(circle at 65% 65%, transparent 0 27px, #e8c7fd17 28px 29px);
+  mask-image: linear-gradient(135deg, transparent, #000 70%);
+}
+
+.sign-in-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 800 19px/1.2 'Manrope Variable', sans-serif;
+}
+
+.sign-in-brand img {
+  display: block;
+  border-radius: 10px;
+}
+
+.sign-in-brand small {
+  display: block;
+  margin-top: 4px;
+  color: #d3c6df;
+  font: 500 12px/1.2 'Inter Variable', sans-serif;
+}
+
+.sign-in-intro {
+  align-self: center;
+  max-width: 440px;
+}
+
+.sign-in-eyebrow {
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.sign-in-display {
+  margin: 16px 0 30px;
+  font: 800 clamp(39px, 4.2vw, 66px)/1.05 'Manrope Variable', sans-serif;
+  letter-spacing: -.055em;
+  text-wrap: balance;
+}
+
+.sign-in-areas {
+  display: grid;
+  gap: 13px;
+  margin: 0;
+  padding: 20px 0 0;
+  border-top: 1px solid #ffffff26;
+  list-style: none;
+  color: #e0d5e9;
+}
+
+.sign-in-areas li,
+.sign-in-environment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sign-in-areas svg {
+  width: 17px;
+  height: 17px;
+  color: #e9b4fc;
+}
+
+.sign-in-environment {
+  color: #d3c6df;
+  font-size: 12px;
+}
+
+.sign-in-environment::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+.sign-in-main {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 40px clamp(24px, 5vw, 72px);
+}
+
+.sign-in-card {
+  width: min(100%, 460px);
+  padding: clamp(25px, 4vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 16px 44px #3219480a, 0 2px 4px #32194805;
+}
+
+.sign-in-heading {
+  margin-bottom: 27px;
+}
+
+.sign-in-heading h1 {
+  margin: 0 0 9px;
+  font-size: clamp(29px, 4vw, 38px);
+  letter-spacing: -.045em;
+}
+
+.sign-in-heading p,
+.sign-in-access {
+  color: var(--muted);
+}
+
+.sign-in-form {
+  display: grid;
+  gap: 17px;
+}
+
+.sign-in-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sign-in-field label {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sign-in-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 13px;
+  border: 1px solid #cbc3d3;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.sign-in-field input::placeholder {
+  color: #776e80;
+  font-size: 14px;
+}
+
+.sign-in-password {
+  position: relative;
+}
+
+.sign-in-password input {
+  padding-right: 51px;
+}
+
+.sign-in-reveal {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sign-in-reveal:hover {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.sign-in-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.sign-in-submit:hover {
+  background: var(--accent-hover);
+}
+
+.sign-in-submit:disabled {
+  background: #58436f;
+  cursor: wait;
+}
+
+.sign-in-field input:focus-visible,
+.sign-in-reveal:focus-visible,
+.sign-in-submit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sign-in-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid #f0ccd3;
+  border-radius: 8px;
+  background: #fff3f5;
+  color: #86293c;
+  font-size: 13px;
+}
+
+.sign-in-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.sign-in-access {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 25px;
+  padding-top: 19px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .sign-in-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .sign-in-brand-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 13px;
+    padding: 19px 22px;
+  }
+
+  .sign-in-intro {
+    display: none;
+  }
+
+  .sign-in-main {
+    align-items: start;
+    padding: clamp(26px, 7vw, 48px) 16px;
+  }
+}
