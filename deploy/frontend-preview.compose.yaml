@@ -1,0 +1,89 @@
+name: griipbuddy-frontend-preview
+services:
+  mongo:
+    image: mongo:8.0
+    command: ["mongod", "--bind_ip_all", "--replSet", "griip-dev", "--oplogSize", "128", "--wiredTigerCacheSizeGB", "0.25"]
+    volumes: [preview-mongo:/data/db]
+    networks: [isolated]
+    mem_limit: 768m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.runCommand({ping: 1}).ok ? 0 : 1)"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  mongo-init:
+    image: mongo:8.0
+    entrypoint: ["mongosh", "--host", "mongo", "--quiet", "--eval"]
+    command:
+      - 'try { rs.status() } catch (e) { if (e.codeName !== "NotYetInitialized") throw e; rs.initiate({_id: "griip-dev", members: [{_id: 0, host: "mongo:27017"}]}) }'
+    networks: [isolated]
+    depends_on:
+      mongo: {condition: service_healthy}
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb"]
+    networks: [isolated]
+    mem_limit: 96m
+    restart: unless-stopped
+  api:
+    image: griipbuddy-frontend-preview-api-base:retained
+    entrypoint: ["node", "/usr/src/app/recovery/hostinger/api.cjs"]
+    command: []
+    working_dir: /usr/src/app
+    volumes:
+      - ../../backend/src:/usr/src/app/src:ro
+      - ../../backend/recovery:/usr/src/app/recovery:ro
+    env_file: /opt/griipbuddy-frontend-preview/private/api.env
+    environment:
+      GRIIP_PREVIEW_MODE: "1"
+    networks: [isolated]
+    mem_limit: 512m
+    restart: unless-stopped
+    depends_on:
+      mongo-init: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+  edge:
+    image: node:22.22.3-bookworm-slim
+    entrypoint: ["node", "/preview-edge.cjs"]
+    volumes: [./preview-edge.cjs:/preview-edge.cjs:ro]
+    networks: [isolated, edge]
+    ports: ["127.0.0.1:14811:14811"]
+    mem_limit: 96m
+    restart: unless-stopped
+  storefront:
+    build:
+      context: ../../storefront
+      dockerfile: ../admin/deploy/Dockerfile
+    network_mode: host
+    command: ["npm", "run", "start", "--", "--port", "4347"]
+    environment:
+      GRIIPBUDDY_CANONICAL_ORIGIN: https://frontend.griipbuddy.com
+      GRIIPBUDDY_CONTENT_API: http://127.0.0.1:14811/api/v1
+      GRIIPBUDDY_CATALOG_API: http://127.0.0.1:14811/api/v1
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NEXT_PUBLIC_GRIIP_ADMIN_PREFIX: /admin
+    network_mode: host
+    command: ["npm", "run", "start", "--", "--port", "4348"]
+    environment:
+      GRIIP_ADMIN_TARGET: preview
+      GRIIP_ADMIN_PUBLIC_ORIGIN: https://frontend.griipbuddy.com
+      GRIIP_ADMIN_STAFF_EMAIL: nahian@griipbuddy.com
+      GRIIP_ADMIN_STAFF_PHONE: "01000000001"
+      NEXT_PUBLIC_GRIIP_ADMIN_PREFIX: /admin
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  isolated:
+    internal: true
+  edge:
+volumes:
+  preview-mongo:

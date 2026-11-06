@@ -118,7 +118,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [col('Currency', 'code'), col('Label', 'label'), col('Symbol', 'symbol'), col('Default', 'is_default', 'badge')] },
   },
   shipping: {
-    tracking: { ...orders, title: 'Tracking', filter: { key: 'filter', label: 'Shipment status', options: ['IN_TRANSIT','DELIVERED','CANCELLED','RETURNED'] }, legacyCreate: undefined },
+    tracking: { ...orders, title: 'Tracking', filter: { key: 'filter', label: 'Shipment status', options: ['IN_REVIEW','HANDED_OVER_TO_COURIER','IN_TRANSIT','DELIVERED','CANCELLED','RETURNED'] }, legacyCreate: undefined },
   },
   payments: {
     sources: { title: 'Accounting sources', endpoint: '/payment-source', permission: 'expense.view', columns: [title, col('Type', 'type'), state, date], legacy: 'payment-sources' },

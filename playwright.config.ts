@@ -19,7 +19,8 @@ export default defineConfig({
     {command:'npm run start',url:base,reuseExistingServer:false,env:{...env,GRIIP_ADMIN_TARGET:'staging'}},
     {command:'npx next start --hostname 127.0.0.1 --port 4327',url:fixture,reuseExistingServer:false,
       env:{...env,GRIIP_ADMIN_TARGET:'fixture',GRIIP_ADMIN_FIXTURE_WRITES:'1',
-        GRIIP_ADMIN_FIXTURE_PARITY_WRITES:process.env.GRIIP_ADMIN_TEST_FIXTURE_PARITY === '1' ? '1' : ''}},
+        GRIIP_ADMIN_FIXTURE_PARITY_WRITES:process.env.GRIIP_ADMIN_TEST_FIXTURE_PARITY === '1' ? '1' : '',
+        GRIIP_ADMIN_FIXTURE_WORKSPACE:process.env.GRIIP_ADMIN_TEST_WORKSPACE === '1' ? '1' : ''}},
     {command:'npm run start -- --port 4326',cwd:process.env.GRIIP_ADMIN_TEST_STOREFRONT_DIR ?? '../griipbuddy-web',url:checkout,reuseExistingServer:false,env:{
       GRIIPBUDDY_CHECKOUT:'synthetic',GRIIPBUDDY_CHECKOUT_ADMIN_ENABLED:'1',GRIIPBUDDY_CHECKOUT_OPERATOR_SECRET:key,
       GRIIPBUDDY_STRIPE_SIM_SECRET:randomBytes(32).toString('hex'),GRIIPBUDDY_PAYPAL_SIM_SECRET:randomBytes(32).toString('hex'),

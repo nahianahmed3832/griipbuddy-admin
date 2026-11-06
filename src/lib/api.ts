@@ -16,6 +16,9 @@ export class ApiError extends Error {
 }
 
 export function connection() {
+  if (process.env.GRIIP_ADMIN_TARGET === 'preview') {
+    return { origin: 'http://127.0.0.1:14811', name: 'Isolated frontend preview', legacy: null };
+  }
   if (process.env.GRIIP_ADMIN_TARGET === 'fixture') {
     return { origin: 'http://127.0.0.1:38100', name: 'Local fixture', legacy: null };
   }
@@ -26,14 +29,15 @@ export function connection() {
 }
 
 export function hosted() {
-  return process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
+  return ['https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
 }
 
 export function canWrite(staff: Staff) {
   const target = connection().name;
   const local = target === 'Local fixture' && process.env.GRIIP_ADMIN_FIXTURE_WRITES === '1';
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
-  return superAdmin(staff) && (local || stage);
+  const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
+  return superAdmin(staff) && (local || stage || preview);
 }
 
 export function legacyUrl(path?: string) {
@@ -99,7 +103,7 @@ export function getRegion(value: string | undefined, staff: Staff): Region {
 export function sameOrigin(request: Request) {
   const host = request.headers.get('host');
   if (request.headers.get('sec-fetch-site') === 'cross-site') return false;
-  if (hosted()) return host === 'dev.griipbuddy.com' && request.headers.get('origin') === 'https://dev.griipbuddy.com';
+  if (hosted()) return 'https://' + host === process.env.GRIIP_ADMIN_PUBLIC_ORIGIN && request.headers.get('origin') === process.env.GRIIP_ADMIN_PUBLIC_ORIGIN;
   return /^127\.0\.0\.1:\d{4,5}$/.test(host ?? '') && request.headers.get('origin') === 'http://' + host;
 }
 

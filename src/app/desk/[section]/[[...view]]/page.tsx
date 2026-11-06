@@ -10,6 +10,8 @@ import { ResourceDetail, ResourcePage } from '@/components/resources';
 import { Shell } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
 import { CheckoutPanel } from '@/components/checkout-panel';
+import { ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
+import { advancedEnabled } from '@/lib/advanced';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +28,9 @@ export default async function Desk({ params, searchParams }: {
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
   const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
-  const allowCheckout = ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
+  const allowCheckout = process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const tabs = sectionResources.map(([key,res]) => [key,res.title]);
+  if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout','Storefront controls']);
     else tabs.unshift(['checkout','Checkout methods']);
@@ -48,6 +51,8 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
     else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
     else if (allowCheckout && active === 'checkout' && view.length < 2) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
+    else if (sectionId === 'content' && active === 'workspace' && view.length <= 1) content = await ContentWorkspace({ auth });
+    else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
     else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);

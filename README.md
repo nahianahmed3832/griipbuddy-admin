@@ -23,3 +23,9 @@ Set `GRIIP_ADMIN_STAFF_EMAIL` and `GRIIP_ADMIN_STAFF_PHONE` in the hosted admin 
 ### Rollback
 
 For an admin rollback, build the approved admin commit and replace the `admin` service with `docker compose -f deploy/compose.yaml up -d --no-deps admin`. Verify `/admin/sign-in` and the recovery API connection. For a shutdown of the full preview, use the private deployment runbook for both services and the shared dev vhost.
+
+## Frontend preview
+
+The frontend preview bundles the admin, storefront and private recovery backend into sibling `admin`, `storefront` and `backend` directories. Use `admin/deploy/frontend-preview.compose.yaml` with `admin/deploy/frontend-preview.nginx.conf`. It owns a separate MongoDB volume and an internal provider-stub network. The edge exposes only a loopback API for the storefront and admin processes. Both HTTPS entry points use preview access, and the admin also checks staff login and operation permissions.
+
+The new admin uses `/admin`, the storefront uses `/`, and checkout on this hostname is browse-only. The content editor updates the storefront without changing its canonical origin or preview indexing policy. POS records offline payments and supports several lines, item and sale discounts, accounting sources, and partial paid cash returns. Bulk courier handover records a physical handoff for already assigned consignments.

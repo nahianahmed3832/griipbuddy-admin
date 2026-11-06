@@ -135,9 +135,10 @@ export function operationId(value: string): value is OperationId {
 }
 
 export function canOperate(staff: Staff, id: OperationId) {
-  // Enable these writes only in the disposable fixture environment until staging acceptance.
-  return process.env.GRIIP_ADMIN_TARGET === 'fixture' && canWrite(staff)
-    && (!['pos-cash-sale', 'pos-cash-return', 'coupon-status'].includes(id) || process.env.GRIIP_ADMIN_FIXTURE_PARITY_WRITES === '1')
+  const fixture = process.env.GRIIP_ADMIN_TARGET === 'fixture';
+  const preview = process.env.GRIIP_ADMIN_TARGET === 'preview';
+  return (fixture || preview) && canWrite(staff)
+    && (!['pos-cash-sale', 'pos-cash-return', 'coupon-status'].includes(id) || preview || process.env.GRIIP_ADMIN_FIXTURE_PARITY_WRITES === '1')
     && operations[id].permissions.every(permission => has(staff, permission));
 }
 
@@ -187,7 +188,7 @@ function parseFields(id: OperationId, raw: RecordData) {
   return result;
 }
 
-async function locationInRegion(id: string, region: Region, auth: Session) {
+export async function locationInRegion(id: string, region: Region, auth: Session) {
   const record = obj(await api('/business-location/' + checkedId(id, 'Location'), auth.token));
   if (str(record.region) !== region || record.is_active === false || record.is_deleted === true) {
     invalid('Choose an active location in the selected region.');
@@ -205,7 +206,7 @@ function mutate(path: string, auth: Session, method: 'POST' | 'PATCH' | 'PUT', b
   return api(path, auth.token, { method, body: JSON.stringify(body) });
 }
 
-async function findVariantBySku(sku: string, region: Region, auth: Session) {
+export async function findVariantBySku(sku: string, region: Region, auth: Session) {
   const exactSku = sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const data = obj(await api(url('/product/admin/variants', { searchQuery: exactSku, limit: '20' }), auth.token));
   const matches = arr(data.data).map(obj).filter(variant => str(variant.sku) === sku);

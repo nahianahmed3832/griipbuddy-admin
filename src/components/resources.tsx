@@ -8,6 +8,7 @@ import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
+import { advancedEnabled, loadLocations } from '@/lib/advanced';
 
 const createPermissions: Record<string,string> = {
   'create-order':'order.create','pre-orders/create':'pre_order.create','create-product':'product.create','add-new-category':'product.create',
@@ -35,6 +36,9 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   const create = writeKey && has(auth.staff, writeKey) && legacyUrl(resource.legacyCreate);
   const classic = legacyUrl(resource.legacy);
   const query = { region, q: result.search, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
+  const handover = section.id === 'shipping' && advancedEnabled() && canWrite(auth.staff)
+    && has(auth.staff, 'courier.update') && has(auth.staff, 'business_locations.view')
+    ? { locations: await loadLocations(auth, region), region } : undefined;
   const rows = result.rows.map((record,index) => {
     const id = str(record._id);
     const slug = str(record.slug);
@@ -51,6 +55,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     <PageHeading eyebrow={section.group.toUpperCase()+' / '+section.label.toUpperCase()} title={resource.title} description={section.description}>
       {classic && <a className="button secondary" href={classic} target="_blank" rel="noreferrer">Preserved workflow <ArrowUpRight size={15}/></a>}
       {create && <a className="button primary" href={create} target="_blank" rel="noreferrer"><Plus size={17}/> Open create form</a>}
+      {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.create')
+        && <Link className="button primary" href="/desk/pos/editor"><Plus size={16}/> New POS sale</Link>}
       <OperationActions endpoint={resource.endpoint} auth={auth} region={region}/>
     </PageHeading>
     {section.id === 'markets' && <div className="market-context"><span><strong>Country configuration</strong><small>Country activation and currency</small></span>
@@ -69,7 +75,7 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     <Table key={JSON.stringify(query)+result.page} title={resource.title} columns={resource.columns} rows={rows} page={result.page} total={result.total}
       previous={result.page > 1 ? url(path,{...query,page:String(result.page-1)}) : undefined}
       next={result.hasNext ? url(path,{...query,page:String(result.page+1)}) : undefined}
-      empty={result.search ? 'Try a different search term or clear the filters.' : undefined}/>
+      handover={handover} empty={result.search ? 'Try a different search term or clear the filters.' : undefined}/>
   </>;
 }
 
@@ -105,6 +111,8 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
+      {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')
+        && <Link className="button primary" href={'/desk/pos/editor/' + id}>Edit sale</Link>}
       <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}/>
     </PageHeading>
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>

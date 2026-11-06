@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, Check, Clipboard, Search, X } from 'lucide-react';
 import type { Column } from '@/lib/sections';
 import type { ViewRow } from '@/lib/data';
+import { Handover, type HandoverOptions } from './handover';
 
 const csvCell = (value: string) => {
   const escaped = /^[\s\u200B\uFEFF]*[=+@-]|^[\r\n\t]/.test(value) ? "'" + value : value;
@@ -21,8 +22,8 @@ export function Empty({ title = 'No records in this view', detail = 'Try another
   return <div className="empty"><span className="empty-icon"><Search size={21}/></span><h3>{title}</h3><p>{detail}</p></div>;
 }
 
-export function Table({ columns, rows, title, page, total, previous, next, empty, exportable = true }: {
-  columns: Column[]; rows: ViewRow[]; title: string; page?: number; total?: number; previous?: string; next?: string; empty?: string; exportable?: boolean;
+export function Table({ columns, rows, title, page, total, previous, next, empty, exportable = true, handover }: {
+  columns: Column[]; rows: ViewRow[]; title: string; page?: number; total?: number; previous?: string; next?: string; empty?: string; exportable?: boolean; handover?: HandoverOptions;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
@@ -49,6 +50,7 @@ export function Table({ columns, rows, title, page, total, previous, next, empty
       } catch { setCopied(false); } }}>{copied ? <Check size={15}/> : <Clipboard size={15}/>} {copied ? 'Copied' : 'Copy references'}</button>
       <button className="button subtle" onClick={() => setSelected([])}><X size={15}/> Clear</button>
     </div>}
+    {handover && <div className="bulk-bar"><Handover orderIds={selectedRows.map(row => row.id)} options={handover} clear={() => setSelected([])}/></div>}
     {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label={title + ' table'}>
       <table><thead><tr>{exportable && <th scope="col" className="select-col"><input type="checkbox" checked={all} aria-label="Select all visible records" onChange={() => setSelected(all ? [] : rows.map(r => r.id))}/></th>}
         {columns.map(col => <th key={col.label} scope="col">{col.label}</th>)}{rows.some(r => r.href || r.legacy) && <th scope="col">Actions</th>}</tr></thead>
