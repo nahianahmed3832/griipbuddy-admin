@@ -1,8 +1,25 @@
 # Step 8 admin reconstruction acceptance
 
+## Frontend preview release
+
+The [storefront](https://frontend.griipbuddy.com/) and [admin](https://frontend.griipbuddy.com/admin) run on Hostinger in the separate `griipbuddy-frontend-preview` Compose project. Preview access and staff sign-in protect the workspace. MongoDB and Redis use dedicated volumes or processes, the recovered API uses synthetic records and provider stubs, and the preview blocks checkout mutations and raw API access at the HTTPS edge. Production service container IDs and start times matched the predeployment receipt.
+
+| Requested workflow | Acceptance | Scope |
+| --- | --- | --- |
+| Advanced POS | Verified on synthetic stock | Multi-line Bangladesh sale and edit, item percentage and order discounts, authoritative quote, offline cash or accounting-backed payment, stale quote rejection, identical retry and changed-request rejection. The baseline also covers last-unit contention against COD, partial cash returns and stock reconciliation. |
+| Bulk courier handover | Verified on synthetic orders | Two assigned orders with existing consignments moved to handover status. A repeated batch recorded zero new handovers. The backend rejects mixed invalid batches atomically and preserves one history entry per order. |
+| CMS and SEO | Verified on synthetic content | Staff can edit banners, hero, homepage merchandising and page metadata. The storefront reads the shared record and preserves canonical and noindex policy. Concurrent changes require a fresh revision. |
+| PayPal and Stripe | Verified as code setup | Mocked requests checked sandbox URLs, idempotency headers, amounts and redirect validation. Provider activation and settlement are outside this release. |
+
+Admin lint and production build passed. The 14 admin regression tests covered all five staff roles and ten CSV/XLSX reports. Storefront lint, production build and 16 fixture browser tests passed. The recovered backend passed 23 isolated checks. Hosted acceptance used Chromium with desktop, tablet and mobile viewports.
+
+Deployed application commits are admin `919fb8b`, storefront `a06de0b` and recovered backend `883d92d`. The earlier acceptance sections record the original development release and its outstanding legacy routes. Full production parity still requires acceptance with scrubbed historical records and the specialized workflows that use the preserved admin.
+
+The preview uses a dedicated HTTPS host and an isolated database volume. To roll back its application release, select the previous sibling release directory under `/opt/griipbuddy-frontend-preview/releases`, build the matching admin and storefront images from that release and use its Compose manifest to replace the preview services. Keep the `griipbuddy-frontend-preview` project name, private environment file and MongoDB volume. For a backup of preview content, use an authorized encrypted export of that isolated database.
+
 ## Native workflow follow-up
 
-The local candidate extends the admin with operations backed by the recovered API and its existing records. New writes require an authorized fixture administrator. POS cash workflows and explicit coupon status also require the private parity backend and the local parity flag. The existing staging connection is used for the role, report and view acceptance suite.
+This historical candidate extended the admin with operations backed by the recovered API and its existing records. New writes required an authorized fixture administrator. POS cash workflows and explicit coupon status also required the private parity backend and the local parity flag. The existing staging connection was used for the role, report and view acceptance suite.
 
 | Area | Scope of the candidate | Remaining acceptance |
 | --- | --- | --- |
