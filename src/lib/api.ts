@@ -56,14 +56,15 @@ export function legacyUrl(path?: string) {
   return base + path;
 }
 
-export async function requestApi(path: string, token?: string, init?: RequestInit) {
+export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string) {
   if (publicSandbox() && (init?.method ?? 'GET') !== 'GET') throw new ApiError(403);
   if (!/^\/[a-z0-9/-]+(?:\?[^#]*)?$/i.test(path) || path.includes('//')) throw new Error('Invalid recovery API path');
   try {
     return await fetch(connection().origin + '/api/v1' + path, {
       ...init, headers: {
         Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
       },
       redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000),

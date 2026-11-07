@@ -16,7 +16,7 @@ function recordOperations(endpoint: string, record: RecordData, region: Region):
     case '/stocks': return ['stock-adjust', 'stock-transfer'];
     case '/order': {
       const status = str(record.status);
-      const actions: OperationId[] = [];
+      const actions: OperationId[] = ['order-note'];
       if (pickStatuses.includes(status)) actions.push('order-pick');
       if (region === 'BD' && record.transfer_to_courier !== true && ['PLACED','PROCESSING','ACCEPTED'].includes(status)) actions.push('courier-dispatch');
       if (returnStatuses.includes(status)) actions.push('order-return');

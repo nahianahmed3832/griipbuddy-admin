@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { ArrowUpRight, BookOpen, LockKeyhole, Search } from 'lucide-react';
-import { legacyUrl, type Session } from '@/lib/api';
-import { param, type Query } from '@/lib/data';
+import { legacyUrl, url, type Session } from '@/lib/api';
+import { param, permitted, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { canOperate, type OperationId } from '@/lib/operations';
 import { workflowRoutes } from '@/lib/workflows';
+import { resources, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Empty } from './tables';
 
@@ -19,25 +20,35 @@ const nativeWorkflows: Record<string, { action: OperationId; href: string }> = {
   'header': { action: 'announcement-create', href: '/desk/content/announcements' },
 };
 
-export function WorkflowLibrary({ auth, q }: { auth: Session; q: Query }) {
+export function WorkflowLibrary({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
+  const workspaceRoutes = new Map([
+    ['overview','/desk/overview'],
+    ['reports','/desk/reports'],
+    ...Object.entries(resources).flatMap(([section, views]) => Object.entries(views)
+      .filter(([,resource]) => resource.legacy && permitted(resource, auth))
+      .map(([view, resource]) => [resource.legacy!, '/desk/' + section + '/' + view])),
+  ].reverse().map(([legacy, path]) => [legacy, url(path, { region })]));
   const search = (param(q,'q') ?? '').trim().toLowerCase().slice(0,80);
   const entries = workflowRoutes(auth.staff);
   const matches = entries.filter(entry => (entry.name + ' ' + entry.group).toLowerCase().includes(search));
   const groups = [...new Set(matches.map(entry => entry.group))];
   return <>
     <PageHeading eyebrow="ADMINISTRATION / COMPATIBILITY" title="Workflow library" description="Find preserved actions and screens, including those outside the original sidebar."/>
-    <div className="notice"><BookOpen size={17}/> Preserved workflows use their existing staff session. Open the parent list first for screens that require a record ID.</div>
-    <form className="panel filters" action={adminPath('/desk/workflows')}><label className="search-input"><Search size={16}/><input name="q" defaultValue={search} aria-label="Search workflows" placeholder="Search routes or modules"/></label>
-      <button className="button primary">Search</button><Link href="/desk/workflows" className="button subtle">Reset</Link><span className="muted">{matches.length} routes</span></form>
+    <div className="notice"><BookOpen size={17}/> Legacy links use the preserved staff session. Routes that need a record ID can be reached from their parent list.</div>
+    <form className="panel filters" action={adminPath('/desk/workflows')}><input type="hidden" name="region" value={region}/><label className="search-input"><Search size={16}/><input name="q" defaultValue={search} aria-label="Search workflows" placeholder="Search routes or modules"/></label>
+      <button className="button primary">Search</button><Link href={url("/desk/workflows",{region})} className="button subtle">Reset</Link><span className="muted">{matches.length} routes</span></form>
     {groups.map(group => <section className="panel workflow-panel" key={group}>
       <div className="panel-header"><div><h2>{group}</h2><p>{matches.filter(entry => entry.group === group).length} routes</p></div></div>
       <div className="workflow-grid">{matches.filter(entry => entry.group === group).map(entry => {
         const href = !entry.dynamic && !entry.blocked && legacyUrl(entry.name);
         const native = nativeWorkflows[entry.name];
+        const workspace = native && canOperate(auth.staff, native.action) ? url(native.href,{region}) : workspaceRoutes.get(entry.name);
         return <div key={entry.name} className="workflow-row"><span>{entry.name.replaceAll('-', ' ')}</span>
-          {native && canOperate(auth.staff, native.action) ? <Link href={native.href}>Open workspace</Link>
-            : href ? <a href={href} target="_blank" rel="noreferrer">Open <ArrowUpRight size={14}/></a> :
-            <small>{entry.blocked ? 'Provider access blocked' : entry.dynamic ? 'Record required' : 'Preserved route'}</small>}
+          <span className="workflow-links">
+            {workspace && <Link href={workspace}>Workspace view</Link>}
+            {href && <a href={href} target="_blank" rel="noreferrer">Legacy <ArrowUpRight size={14}/></a>}
+            {!workspace && !href && <small>{entry.blocked ? 'Provider access blocked' : entry.dynamic ? 'Record required' : 'Reference only'}</small>}
+          </span>
         </div>;
       })}</div>
     </section>)}

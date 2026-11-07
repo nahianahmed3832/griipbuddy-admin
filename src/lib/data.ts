@@ -12,6 +12,12 @@ export function valueAt(record: unknown, path: string) {
   return undefined;
 }
 
+export function columnText(row: unknown, column: Column, currency?: string) {
+  const value = valueAt(row, column.fields);
+  if (column.label === 'Publication' && typeof value === 'boolean') return value ? 'Published' : 'Unpublished';
+  return printable(value, column.kind, currency);
+}
+
 export function printable(value: unknown, kind?: Column['kind'], currency = 'BDT'): string {
   if (kind === 'count' && Array.isArray(value)) return String(value.length);
   if (kind === 'list' && Array.isArray(value)) return value.slice(0, 100).map(v => str(v) || str(obj(v).code) || str(obj(v).name)).filter(Boolean).join(', ');
@@ -33,7 +39,15 @@ export function printable(value: unknown, kind?: Column['kind'], currency = 'BDT
   return '';
 }
 
-export type ViewRow = { id: string; values: string[]; href?: string; legacy?: string };
+export type ViewRow = { id: string; values: string[]; numeric?: (number | null)[]; href?: string; legacy?: string };
+
+export function numericCells(record: RecordData, columns: Column[]) {
+  return columns.map(column => {
+    const value = valueAt(record, column.fields);
+    if (Array.isArray(value) && column.kind === 'count') return value.length;
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  });
+}
 export const perPage = 20;
 export const dateParam = (value?: string) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? value : undefined;
 
@@ -60,7 +74,10 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
     ...resource.params, page: String(page), limit: String(perPage),
     ...(resource.region ? { region } : {}),
   };
-  if (resource.search && search) params[resource.search] = search;
+  if (resource.search && search) {
+    const searchKey = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : resource.search;
+    params[searchKey] = search;
+  }
   if (resource.filter && filter && resource.filter.options.includes(filter)) params[resource.filter.key] = filter;
   if (resource.endpoint === '/order') {
     params.startDate = dateParam(param(q, 'from'));
@@ -87,7 +104,7 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
   }
   if (!resource.search && rawSearch) {
     const term = rawSearch.toLocaleLowerCase();
-    records = records.filter(row => resource.columns.some(col => printable(valueAt(row, col.fields), col.kind).toLocaleLowerCase().includes(term)));
+    records = records.filter(row => resource.columns.some(col => columnText(row, col).toLocaleLowerCase().includes(term)));
   }
   const count = obj(envelope.meta).total;
   return { rows: records, page, total: !enforceRegion && typeof count === 'number' ? count : undefined,

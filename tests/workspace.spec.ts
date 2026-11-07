@@ -28,7 +28,9 @@ test('super admin opens every registered native view and the full preserved rout
   const keys = ['manage-permissions','overview.view','order.view','pre_order.view','product.view','faq.view','review.view','defaults.purchase',
     'barcode.view','business_locations.view','supplier.view','purchase.view','stock.view','user.view','expense.view','coupon.view','cms.view','pos.view','role.view',
     'pre_order.update','order.update','product.update','faq.create','barcode.generate','business_locations.update','stock.create','purchase.update','supplier.update',
-    'coupon.update','expense.update','user.update','role.update','pos.update','report.order_status.view'];
+    'coupon.update','expense.update','user.update','role.update','pos.update','report.order_status.view',
+    'pre_order.create','order.create','product.create','barcode.assign.stock','business_locations.create','stock.transfer',
+    'supplier.create','coupon.create','expense.create','user.create','role.create','pos.create'];
   const expected = readFileSync('evidence/legacy-routes.txt','utf8').split(/\r?\n/).filter(path=>path.startsWith('/dashboard/'));
   expect(workflowRoutes({id:'fixture',name:'Fixture',role:'SUPER_ADMIN',permissions:keys})).toHaveLength(expected.length);
   await page.goto('/desk/workflows?q=barcode');
@@ -147,6 +149,11 @@ test('desktop, tablet and phone render without document overflow and support key
   const { violations } = await new AxeBuilder({page}).analyze();
   expect(violations.filter(rule=>rule.impact==='serious'||rule.impact==='critical')).toEqual([]);
   await page.screenshot({path:testInfo.outputPath('catalog-desktop.png'),fullPage:true});
+  await page.keyboard.press('Control+k');
+  await page.getByRole('textbox',{name:'Search workspace'}).fill('FIXTURE-BD');
+  await page.getByRole('link',{name:/Search product SKUs/}).click();
+  await expect(page.getByLabel('Search records')).toHaveValue('FIXTURE-BD');
+  await expect(page.getByRole('table').getByText('FIXTURE-BD',{exact:true})).toBeVisible();
   await page.goto('/desk/markets/pricing');
   await page.getByLabel('Operating region: Bangladesh').click();
   await page.getByRole('link', { name: 'International', exact: true }).click();

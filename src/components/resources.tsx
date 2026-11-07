@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowUpRight, Plus, Search } from 'lucide-react';
 import { api, ApiError, arr, canWrite, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
-import { loadResource, param, permitted, printable, valueAt, type Query } from '@/lib/data';
+import { columnText, loadResource, numericCells, param, permitted, printable, valueAt, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { has, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
@@ -10,6 +10,8 @@ import { ReviewModeration, StorefrontEditor, type StorefrontSettings } from './s
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
 import { advancedEnabled, loadLocations } from '@/lib/advanced';
+import { canOpenWorkflow } from '@/lib/workflows';
+import { canManage } from '@/lib/managed';
 
 const createPermissions: Record<string,string> = {
   'create-order':'order.create','pre-orders/create':'pre_order.create','create-product':'product.create','add-new-category':'product.create',
@@ -40,7 +42,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   const writeKey = resource.legacyCreate && createPermissions[resource.legacyCreate];
   const create = writeKey && has(auth.staff, writeKey) && legacyUrl(resource.legacyCreate);
   const classic = legacyUrl(resource.legacy);
-  const query = { region, q: result.search, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
+  const searchBy = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : undefined;
+  const query = { region, q: result.search, searchBy, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
   const handover = section.id === 'shipping' && advancedEnabled() && canWrite(auth.staff)
     && has(auth.staff, 'courier.update') && has(auth.staff, 'business_locations.view')
     ? { locations: await loadLocations(auth, region), region } : undefined;
@@ -48,10 +51,11 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     const id = str(record._id);
     const slug = str(record.slug);
     const detailId = resource.endpoint === '/stocks' ? str(obj(record.variant)._id) || str(record.variant) : id;
-    const legacy = resource.legacyDetail?.replace(':id', id).replace(':slug',slug);
+    const legacy = resource.legacyDetail && canOpenWorkflow(resource.legacyDetail.replace(':id','[id]').replace(':slug','[slug]'), auth.staff)
+      ? resource.legacyDetail.replace(':id', id).replace(':slug',slug) : undefined;
     const currency = str(record.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
     return {
-      id: id || String(index), values: resource.columns.map(col => printable(valueAt(record,col.fields),col.kind,currency)),
+      id: id || String(index), numeric: numericCells(record, resource.columns), values: resource.columns.map(col => columnText(record,col,currency)),
       href: hasDetail(resource.endpoint) && mongoId(detailId) ? url(path+'/'+detailId,{region}) : undefined,
       legacy: legacy && !legacy.endsWith('/') && legacyUrl(legacy) || undefined,
     };
@@ -71,6 +75,9 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
       <label className="search-input"><Search size={17}/><input aria-label={resource.search ? 'Search records' : 'Search this page'} name="q" maxLength={80} placeholder={resource.search ? 'Search records…' : 'Filter visible records…'} defaultValue={result.search}/></label>
+      {resource.endpoint === '/product/admin/all' && <label className="filter-label">Search by
+        <select name="searchBy" defaultValue={searchBy ?? 'text'}><option value="text">Name or description</option><option value="sku">Product SKU</option></select>
+      </label>}
       {locations.length > 0 && <label className="filter-label">Location<select name="location" defaultValue={param(q,'location') ?? ''}>
         <option value="">All locations</option>{locations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
       </select></label>}
@@ -109,7 +116,8 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   if (!isShared && resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
   const columns = resource.columns;
   const slug = str(raw.slug);
-  const classic = resource.legacyDetail?.replace(':id',id).replace(':slug',slug);
+  const classic = resource.legacyDetail && canOpenWorkflow(resource.legacyDetail.replace(':id','[id]').replace(':slug','[slug]'), auth.staff)
+    ? resource.legacyDetail.replace(':id',id).replace(':slug',slug) : undefined;
   const href = classic && !classic.endsWith('/') ? legacyUrl(classic) : legacyUrl(resource.legacy);
   const heading = resource.endpoint === '/stocks' ? str(obj(raw.variant).sku) : printable(valueAt(raw,columns[0].fields), columns[0].kind);
   const currency = str(raw.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
@@ -120,6 +128,10 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   return <>
     <PageHeading eyebrow={section.label.toUpperCase()+' / RECORD'} title={heading || resource.title} description="Record details from the recovery API.">
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
+      {resource.endpoint === '/order' && canManage(auth.staff) && <>
+        <Link className="button secondary" href={url('/desk/shipping/shipment-desk',{region,order:id})}>Manage shipments</Link>
+        <Link className="button secondary" href={url('/desk/payments/payment-desk',{region,order:id})}>Manage payments</Link>
+      </>}
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')
@@ -128,7 +140,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
     </PageHeading>
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>
       <dl className="details-grid padded">{columns.map(col => {
-        const value = printable(valueAt(raw,col.fields),col.kind,currency);
+        const value = columnText(raw,col,currency);
         return <div key={col.label}><dt>{col.label}</dt><dd>{value && col.kind === 'badge' ? <Badge value={value}/> : value || '—'}</dd></div>;
       })}</dl></section>}
     {storefrontSettings && <StorefrontEditor id={id} settings={storefrontSettings} />}
@@ -138,6 +150,9 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       <ReadRows title="Order items" input={raw.products} columns={[
         {label:'Product',fields:'product.name|selected_variant.product_name|selected_variant.sku'},
         {label:'Quantity',fields:'total_quantity|quantity'}, {label:'SKU',fields:'selected_variant.sku|variant.sku'},
+      ]}/>
+      <ReadRows title="Staff notes" input={raw.admin_notes} columns={[
+        {label:'Note',fields:'note'}, {label:'Staff',fields:'added_by.full_name|added_by'}, {label:'Recorded',fields:'added_at'},
       ]}/>
       <ReadRows title="Order activity" input={raw.status_history} columns={[
         {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'date|createdAt|updated_at',kind:'date'},

@@ -35,7 +35,8 @@ const orders: Resource = {
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
   legacyCreate: 'create-order', legacyDetail: 'order-details/:id',
 };
-const catalogColumns = [title, sku, col('Category', 'category.name'), region, col('Variants', 'variants', 'count'), state];
+const catalogColumns = [title, sku, col('Category', 'category.name'), region, col('Variants', 'variants', 'count'),
+  col('Publication', 'is_published|isPublished', 'badge')];
 const promo: Resource = {
   title: 'Coupons', endpoint: '/coupon/admin/all', permission: 'coupon.view', rows: 'coupons',
   columns: [col('Code', 'code|coupon_code'), col('Discount type', 'discountType|discount_type|type'), col('Usage limit', 'usageLimit|usage_limit|max_uses'),

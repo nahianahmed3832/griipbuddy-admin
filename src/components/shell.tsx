@@ -10,7 +10,7 @@ import type { Region, Section, Staff } from '@/lib/sections';
 import { SectionIcon } from './icons';
 
 type Nav = Pick<Section,'id'|'label'|'group'|'icon'|'description'>;
-export type Destination = { label: string; href: string; description?: string };
+export type Destination = { label: string; href: string; description?: string; recordSearch?: boolean; skuSearch?: boolean };
 const groups = ['Workspace','Commerce','Operations','Storefront','Administration'];
 
 export function Brand() {
@@ -26,7 +26,9 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
   const sidebar = useRef<HTMLElement>(null);
   const menu = useRef<HTMLButtonElement>(null);
   const initials = staff.name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
-  const results = destinations.filter(item => (item.label + ' ' + (item.description ?? '')).toLowerCase().includes(query.toLowerCase())).slice(0, 12);
+  const term = query.trim().slice(0,80);
+  const results = destinations.filter(item => (item.label + ' ' + (item.description ?? '')).toLowerCase().includes(term.toLowerCase())).slice(0, 12);
+  const recordSearches = term.length >= 2 ? destinations.filter(item => item.recordSearch) : [];
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
 
   function openSearch() {
@@ -84,7 +86,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
       <header className="topbar">
         <button ref={menu} type="button" aria-label="Open navigation" aria-expanded={open} aria-controls="navigation" className="icon-button mobile-menu" onClick={() => setOpen(true)}><Menu size={21}/></button>
         <div className="crumb"><span>Workspace</span><span className="slash">/</span><strong>{section.label}</strong></div>
-        <button className="global-search" type="button" onClick={openSearch}><Search size={17}/><span>Search workspace</span><kbd><Command size={11}/> K</kbd></button>
+        <button className="global-search" type="button" aria-label="Search workspace" onClick={openSearch}><Search size={17}/><span>Search workspace</span><kbd><Command size={11}/> K</kbd></button>
         <div className="header-actions">
           {international ? <details className="header-menu"><summary aria-label={'Operating region: ' + (region === 'BD' ? 'Bangladesh' : 'International')}><SectionIcon name="markets" size={16}/><span className="market-label">{region === 'BD' ? 'Bangladesh' : 'International'}</span><ChevronDown size={14}/></summary>
             <div className="header-pop"><strong>Operating region</strong>{(['BD', 'INTERNATIONAL'] as const).map(value => <Link key={value}
@@ -92,7 +94,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
               onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{value === 'BD' ? 'Bangladesh' : 'International'}</Link>)}</div>
           </details> : <span className="market-chip"><SectionIcon name="markets" size={16}/><span className="market-label">Bangladesh</span></span>}
           <Link className="icon-button notification" aria-label="Operational alerts" href={'/desk/overview' + regionQuery + '#work-queue'}><Bell size={18}/></Link>
-          <details className="header-menu account-menu"><summary aria-label="Account menu"><span className="avatar">{initials}</span><ChevronDown size={13}/></summary>
+          <details className="header-menu account-menu"><summary aria-label="Account menu"><span className="avatar">{initials}</span><span className="account-label">{staff.name}<small>{staff.role.replaceAll('_', ' ')}</small></span><ChevronDown size={13}/></summary>
             <div className="header-pop"><strong>{staff.name}</strong><small>{staff.role.replaceAll('_',' ')}</small>
               {!readOnly && <form method="post" action={adminPath('/api/session')}><button className="button subtle" name="action" value="signout"><LogOut size={15}/> Sign out</button></form>}
             </div>
@@ -105,9 +107,15 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
     <dialog className="search-dialog" ref={dialog} aria-label="Search workspace">
       <form method="dialog"><button className="icon-button search-close" aria-label="Close workspace search"><X size={19}/></button></form>
       <label htmlFor="workspace-search"><Search size={20}/> Search workspace</label>
-      <input id="workspace-search" autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Find orders, warehouses, reports…" />
+      <input id="workspace-search" autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Find modules or enter a record reference…" />
       <div className="search-results">
-        {results.length ? results.map(item => <Link key={item.href} href={item.href} onClick={() => dialog.current?.close()}><div><strong>{item.label}</strong>{item.description && <small>{item.description}</small>}</div><ArrowRight size={16}/></Link>) : <p>No matching modules.</p>}
+        {recordSearches.map(item => <Link key={item.href + '-query'} href={item.href + '&q=' + encodeURIComponent(term)}
+          onClick={() => dialog.current?.close()}><div><strong>Search {item.label.toLowerCase()}</strong><small>{term}</small></div><Search size={15}/></Link>)}
+        {recordSearches.filter(item => item.skuSearch).map(item => <Link key={item.href + '-sku'}
+          href={item.href + '&searchBy=sku&q=' + encodeURIComponent(term)} onClick={() => dialog.current?.close()}>
+          <div><strong>Search product SKUs</strong><small>{term}</small></div><Search size={15}/></Link>)}
+        {results.map(item => <Link key={item.href} href={item.href} onClick={() => dialog.current?.close()}><div><strong>{item.label}</strong>{item.description && <small>{item.description}</small>}</div><ArrowRight size={16}/></Link>)}
+        {!results.length && !recordSearches.length && <p>No matching modules.</p>}
       </div>
     </dialog>
   </div>;

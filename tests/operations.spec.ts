@@ -156,6 +156,10 @@ test('native receiving creates a purchase and supports a partial scanned return'
     } });
   });
   await page.goto(origin + '/desk/orders/orders/' + order);
+  await page.getByRole('button', { name: 'Add staff note' }).click();
+  await page.getByRole('dialog').getByLabel('Staff note').fill('Confirmed delivery details during acceptance');
+  await confirm(page);
+  await expect(page.getByRole('cell',{name:'Confirmed delivery details during acceptance'})).toBeVisible();
   await page.getByRole('button', { name: 'Assign order barcodes' }).click();
   await page.getByRole('dialog').getByLabel('Scanned barcodes').fill(codes.join('\n'));
   await confirm(page);

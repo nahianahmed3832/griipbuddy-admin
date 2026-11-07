@@ -13,6 +13,8 @@ import { CheckoutPanel } from '@/components/checkout-panel';
 import { ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
 import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/components/integrated-commerce';
 import { advancedEnabled } from '@/lib/advanced';
+import { managedProfile, managedViewsFor } from '@/lib/managed';
+import { ManagedWorkspace } from '@/components/managed-workspace';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,19 +36,26 @@ export default async function Desk({ params, searchParams }: {
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
   const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
   const integrated = process.env.GRIIP_ADMIN_INTEGRATED === '1';
-  const allowCheckout = process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
-  const tabs = sectionResources.map(([key,res]) => [key,res.title]);
+  const allowCheckout = !managedProfile() && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
+  const managed = new Map(managedViewsFor(auth.staff, sectionId));
+  const tabs = [...sectionResources.map(([key,res]) => [key,res.title]), ...managed];
   if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout','Storefront controls']);
-    else tabs.unshift(['checkout','Checkout methods']);
+    else if (sectionId === 'payments') tabs.unshift(['checkout','Checkout methods']);
   }
   const active = view[0] ?? tabs[0]?.[0];
   const destinations = [...new Map(nav.flatMap(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
-      .map(([key,res]) => ({label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
-  ]).map(destination => [destination.label, destination])).values()];
+      .map(([key,res]) => ({
+        label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
+        skuSearch: item.id === 'catalog' && key === 'products',
+        recordSearch: Boolean(res.search) && ['orders/orders','catalog/products','inventory/stock','pos/sales'].includes(item.id+'/'+key),
+      })),
+    ...managedViewsFor(auth.staff,item.id)
+      .map(([key,label]) => ({label,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
+  ]).map(destination => [destination.href, destination])).values()];
   const resource = active && resources[sectionId]?.[active];
   let content;
   try {
@@ -54,8 +63,10 @@ export default async function Desk({ params, searchParams }: {
     if (!nav.some(item => item.id === sectionId)) throw new ApiError(403);
     if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region});
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({auth,id:view[0],q,region});
-    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
+    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q} region={region}/>;
     else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
+    else if (active && managed.has(active) && view.length < 2)
+      content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (allowCheckout && active === 'checkout' && view.length < 2) {
       if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
       else if (sectionId === 'markets') content = <>

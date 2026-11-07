@@ -16,6 +16,28 @@ GRIIP_ADMIN_TEST_FIXTURE_PARITY=1 GRIIP_ADMIN_TEST_WORKSPACE=1 npm test -- --wor
 
 Playwright starts two local admin processes and a disposable checkout simulator. It uses the fixture role grants and exercises edits on the dedicated replica. No tunnel or hosted account is needed.
 
+### Managed Step 7 profile
+
+Use backend branch `feature/step8-growth-operator` at `829c530` or a compatible revision. Start its isolated recovery runner with `npm start` from the backend directory. It provisions a fresh synthetic MongoDB replica, private receipt storage stubs and isolated provider transports. Wait for the backend to report port 38100 ready.
+
+Start this admin with the managed profile and the fixture write flag. The fixture password comes from the synthetic backend fixture.
+
+```sh
+GRIIP_ADMIN_TARGET=fixture GRIIP_ADMIN_MANAGED=1 GRIIP_ADMIN_FIXTURE_WRITES=1 \
+  GRIIP_ADMIN_FIXTURE_WORKSPACE=1 npm start
+```
+
+Use the same fixture with the browser suite and include the storefront build used by Playwright's local simulator server.
+
+```sh
+export GRIIP_ADMIN_TEST_BACKEND_DIR=/path/to/step8-growth/backend
+export GRIIP_ADMIN_TEST_STOREFRONT_DIR=/path/to/built/storefront
+export GRIIPBUDDY_TEST_FIXTURE_PASSWORD="$(node -p 'require(process.env.GRIIP_ADMIN_TEST_BACKEND_DIR + "/recovery/fixture.cjs").login.password')"
+GRIIP_ADMIN_MANAGED=1 npm test -- tests/managed.spec.ts --workers=1
+```
+
+Run the managed suite on a fresh fixture. The profile uses the same backend origin and staff identity for the recovered and managed routes. It switches off the standalone checkout simulator controls. The later integration backend has a separate checkout contract and continues using its existing configuration. See [Step 8 acceptance](STEP8_ACCEPTANCE.md) for coverage and release blockers. For a local-only commit on a machine with the dev release hook installed, set `GRIIPBUDDY_SKIP_DEV_DEPLOY=1` when committing.
+
 The storefront simulator stores method availability, shipping rates, fallback selection and activity in its existing checkout ledger. It applies those settings to checkout and quote calculations. The admin receives only a privileged service response. Its UI exposes no provider secrets. Receipt downloads are authenticated, and approval requires matching the submitted reference and expected advance amount. The recovered MongoDB and the checkout simulator remain separately labeled in the workspace.
 
 ## Hosted sample preview

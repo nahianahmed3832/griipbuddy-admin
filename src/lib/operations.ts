@@ -47,6 +47,10 @@ export const operations = {
     permissions: ['barcode.view', 'barcode.assign.stock', 'business_locations.view'],
     fields: [location('location', 'Receiving location'), codes, note],
   },
+  'order-note': {
+    label: 'Add staff note', description: 'Record an internal note on this order. The order API records the staff member and time.',
+    permissions: ['order.view', 'order.update'], fields: [{ ...textField('staffNote', 'Staff note', 500), type: 'textarea' }],
+  },
   'order-pick': {
     label: 'Assign order barcodes', description: 'Scan the units reserved for this order. The inventory API records the pick.',
     permissions: ['order.view', 'order.update'], fields: [codes],
@@ -290,6 +294,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       break;
     }
     case 'courier-dispatch':
+    case 'order-note':
     case 'order-pick':
     case 'order-return':
     case 'return-pending':
@@ -297,7 +302,9 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const orderId = checkedId(recordId, 'Order');
       const order = obj(await api('/order/' + orderId, auth.token));
       if ((str(order.region) || 'BD') !== region) invalid('Order is outside the selected region.', 404);
-      if (id === 'courier-dispatch') {
+      if (id === 'order-note') {
+        await mutate('/order/admin-note/' + orderId, auth, 'PUT', { note: input.staffNote });
+      } else if (id === 'courier-dispatch') {
         if (region !== 'BD' || order.transfer_to_courier === true || !['PLACED','PROCESSING','ACCEPTED'].includes(str(order.status))) {
           invalid('Only a confirmed Bangladesh order can be sent to the courier.', 409);
         }
