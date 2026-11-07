@@ -2,7 +2,7 @@ import { api, ApiError, integratedCheckoutEnabled, mongoId, obj, requestApi, str
 import { has, superAdmin, type Staff } from './sections';
 
 const managedViews = {
-  catalog: { 'listing-studio': 'Listing studio', taxonomy: 'Taxonomy studio' },
+  catalog: { 'listing-studio': 'Listing studio' },
   inventory: { imports: 'Supplier imports', 'managed-stock': 'Warehouse lots', 'managed-purchases': 'Purchase orders' },
   marketing: { campaigns: 'Campaigns', groups: 'Group buying', rewards: 'Loyalty and referrals', recommendations: 'Recommendations' },
   content: { collections: 'Curated collections' },
@@ -21,7 +21,6 @@ export function canManage(staff: Staff) {
 
 const viewPermissions: Record<string, string[]> = {
   'listing-studio':['product.view'],
-  taxonomy:['product.view'],
   imports:['supplier.view'],
   'managed-stock':['stock.view','business_locations.view'],
   'managed-purchases':['purchase.view'],
