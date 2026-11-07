@@ -5,8 +5,11 @@ const origin = process.env.GRIIP_ADMIN_TEST_ACCOUNTING_ORIGIN ?? 'http://127.0.0
 const path = '/desk/payments/accounting';
 
 test('opens an entity, approves income and a regional expense, and exports the HQ statement', async ({ page }) => {
+  page.setDefaultTimeout(10_000);
   const name = 'Accounting browser fixture ' + Date.now();
   const book = 'browser-' + Date.now();
+  const incomeMemo = name + ' sale';
+  const expenseMemo = name + ' warehouse';
   await page.goto(origin + '/sign-in');
   await page.getByLabel('Staff email or phone number').fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
@@ -25,34 +28,35 @@ test('opens an entity, approves income and a regional expense, and exports the H
   await page.getByLabel('Entry type').selectOption('income');
   await page.getByLabel('Transaction currency').selectOption('USD');
   await page.getByLabel('Amount', { exact: true }).fill('200');
-  await page.getByLabel('Description').fill('Fixture sales income');
+  await page.getByLabel('Description').fill(incomeMemo);
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(page).toHaveURL(/view=journal/);
-  const income = page.locator('details.finance-record').filter({ hasText: 'Fixture sales income' }).first();
-  await income.locator('summary').click();
+  const income = page.locator('details.finance-record').filter({ hasText: incomeMemo }).first();
+  await income.locator(':scope > summary').click();
   await income.getByRole('checkbox').check();
   await income.getByRole('button', { name: 'Approve and post' }).click();
-  await expect(income.locator('summary')).toContainText('posted');
+  await expect(income.locator(':scope > summary')).toContainText('posted');
 
   await page.getByRole('link', { name: 'Record income or expense' }).click();
   await page.getByLabel('Legal entity book').selectOption(book);
   await page.getByLabel('Amount', { exact: true }).fill('3000');
-  await page.getByLabel('Description').fill('Fixture Dhaka warehouse');
+  await page.getByLabel('Description').fill(expenseMemo);
   await page.getByLabel('USD per 1 BDT').fill('0.008');
   await page.getByLabel('Exchange-rate source for this date').fill('Fixture rate evidence');
   await page.getByLabel('Debit account').selectOption('6100');
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(page).toHaveURL(/view=journal/);
-  const expense = page.locator('details.finance-record').filter({ hasText: 'Fixture Dhaka warehouse' }).first();
-  await expense.locator('summary').click();
+  const expense = page.locator('details.finance-record').filter({ hasText: expenseMemo }).first();
+  await expense.locator(':scope > summary').click();
   await expect(expense.getByText('BDT 3,000.00', { exact: true })).toHaveCount(2);
   await expense.getByRole('checkbox').check();
   await expense.getByRole('button', { name: 'Approve and post' }).click();
-  await expect(expense.locator('summary')).toContainText('posted');
+  await expect(expense.locator(':scope > summary')).toContainText('posted');
 
   await page.getByRole('link', { name: 'Profit & loss' }).click();
+  await expect(page.getByRole('heading', { name: 'Income statement' })).toBeVisible();
   await page.getByLabel('Reporting scope').selectOption('hq');
-  await page.getByLabel('Legal entity', { exact: true }).selectOption(book);
+  await page.getByRole('combobox', { name: /Legal entity/ }).selectOption(book);
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.locator('.metric').filter({ hasText: 'Net profit / loss' })).toContainText('USD 176.00');
   const exportLink = page.getByRole('link', { name: 'Download working papers' });

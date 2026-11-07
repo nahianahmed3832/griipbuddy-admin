@@ -269,7 +269,7 @@ export function AcceptStaffSetup() {
     finally { setPending(false); }
   }
   if (done) return <div className="staff-block"><h2>Account is ready</h2><p>Sign in with your phone number and new password.</p>
-    <Link className="button primary" href="/sign-in">Go to staff sign-in</Link></div>;
+    <a className="button primary" href={adminPath('/sign-in')}>Go to staff sign-in</a></div>;
   return <form className="staff-form staff-block" onSubmit={accept}>
     <label>New password<input autoComplete="new-password" name="password" type="password" required minLength={15} maxLength={256}/>
       <small>Use 15 to 128 characters. A password manager or a long passphrase works well.</small></label>

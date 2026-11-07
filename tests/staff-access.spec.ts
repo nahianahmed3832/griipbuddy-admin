@@ -10,7 +10,7 @@ test('a staff member can set a password and the owner can revoke access', async 
   const phone = '01999' + sequence;
   const password = 'Example warehouse passphrase ' + sequence;
   await page.goto(base + '/sign-in');
-  await page.getByLabel('Email address or phone number').fill('01000000001');
+  await page.getByLabel('Staff email or phone number').fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/desk/overview');
@@ -29,7 +29,7 @@ test('a staff member can set a password and the owner can revoke access', async 
   await page.goto(base + '/desk/staff/staff/new');
   await page.getByLabel('Full name').fill(name);
   await page.getByLabel('Sign-in phone number').fill(phone);
-  await page.getByLabel('Role', { exact: true }).selectOption({ label: role });
+  await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption({ label: role });
   await page.getByLabel('Assigned business location').selectOption({ label: 'Fixture warehouse (Bangladesh)' });
   await page.getByRole('button', { name: 'Create setup link' }).click();
   await expect(page.getByRole('heading', { name: 'Setup link ready' })).toBeVisible();
@@ -42,7 +42,7 @@ test('a staff member can set a password and the owner can revoke access', async 
     await invitee.getByRole('button', { name: 'Activate account' }).click();
     await expect(invitee.getByRole('heading', { name: 'Account is ready' })).toBeVisible();
     await invitee.getByRole('link', { name: 'Go to staff sign-in' }).click();
-    await invitee.getByLabel('Email address or phone number').fill(phone);
+    await invitee.getByLabel('Staff email or phone number').fill(phone);
     await invitee.getByLabel('Password', { exact: true }).fill(password);
     await invitee.getByRole('button', { name: 'Sign in' }).click();
     await invitee.waitForURL('**/desk/overview');
