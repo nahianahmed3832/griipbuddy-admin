@@ -479,3 +479,6 @@ a.overview-card:hover { box-shadow: 0 3px 12px #29183820; }
 @media(max-width:1150px){.website-filters-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.website-create-layout{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:560px){.website-filters-form{grid-template-columns:minmax(0,1fr);padding:13px}.website-dates{grid-template-columns:repeat(2,minmax(0,1fr))}.website-dates select{grid-column:1/-1}.website-customer-summary,.website-data-list{grid-template-columns:repeat(2,minmax(0,1fr))}.website-create-panel{padding:12px}.website-form-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}.website-action-list{grid-template-columns:minmax(0,1fr)}}
+
+.carousel-upload { margin-top: 8px; font-size: .82rem; }
+.carousel-upload input[type="file"] { width: 100%; height: auto; }

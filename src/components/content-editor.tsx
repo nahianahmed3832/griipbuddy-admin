@@ -13,8 +13,8 @@ const sections: Section[] = [
   { id:'banners', label:'Desktop banners', fields:banner, max:20 },
   { id:'mobile_banners', label:'Mobile banners', fields:banner, max:20 },
   { id:'featured_products', label:'Featured products', fields:banner, max:20 },
-  { id:'hero_section', label:'Hero media', max:3, fields:[
-    ['title','Headline'], ['video_url','Video URL'], ['thumbnail_url','Cover image URL','optional'],
+  { id:'hero_section', label:'Homepage carousel', max:5, fields:[
+    ['title','Headline'], ['video_url','Video URL (MP4 or WebM)','optional'], ['thumbnail_url','Photo or video cover URL','optional'],
     ['button.enabled','Show button','toggle'], ['button.text','Button label','optional'], ['button.redirect_route','Button path','optional'],
   ] },
   { id:'homepage.shop_by_category', label:'Shop by category', max:3, fields:[
@@ -52,6 +52,7 @@ export function ContentEditor({ doc, writable }: { doc: Row; writable: boolean }
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const submitting = useRef(false);
   const router = useRouter();
 
@@ -68,9 +69,36 @@ export function ContentEditor({ doc, writable }: { doc: Row; writable: boolean }
     setDirty(true);
   }
 
+  async function upload(index: number, field: string, file?: File) {
+    if (!file || busy || uploading || !writable) return;
+    setUploading(true);
+    setFeedback('');
+    try {
+      const response = await fetch(adminPath('/api/carousel-media'), {
+        method: 'POST', headers: { 'X-Griip-Media-Kind': field === 'video_url' ? 'video' : 'photo' }, body: file,
+      });
+      const result = object(await response.json().catch(() => ({})));
+      if (!response.ok || typeof result.url !== 'string') {
+        throw new Error(typeof result.error === 'string' ? result.error : 'Upload unavailable. Use a direct media URL.');
+      }
+      update(rows.map((row, position) => position === index ? set(row, field, result.url) : row));
+      setError(false);
+      setFeedback('File uploaded. Save content to publish the slide.');
+    } catch (error) {
+      setError(true);
+      setFeedback(error instanceof Error ? error.message : 'Upload failed. Try again.');
+    } finally { setUploading(false); }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current || !writable) return;
+    if (submitting.current || uploading || !writable) return;
+    if (section.id === 'hero_section' && rows.some(row =>
+      !String(row.video_url ?? '').trim() && !String(row.thumbnail_url ?? '').trim())) {
+      setError(true);
+      setFeedback('Add a photo or a video to every slide.');
+      return;
+    }
     submitting.current = true;
     setBusy(true);
     setFeedback('');
@@ -80,7 +108,7 @@ export function ContentEditor({ doc, writable }: { doc: Row; writable: boolean }
         let result: Row = { ...(section.max && row._id ? { _id: row._id } : {}), ...(positioned ? { position: index + 1 } : {}) };
         for (const [name,,kind] of section.fields) {
           const value = get(row, name);
-          if (kind === 'optional' && !value) continue;
+          if (kind === 'optional' && !String(value ?? '').trim()) continue;
           const input = kind === 'ids' ? (Array.isArray(value) ? value : String(value ?? '').split(/[\s,]+/).filter(Boolean))
             : kind === 'toggle' ? value === true : kind === 'number' ? Number(value) : String(value ?? '').trim();
           result = set(result, name, input);
@@ -104,25 +132,40 @@ export function ContentEditor({ doc, writable }: { doc: Row; writable: boolean }
   return <section className="panel padded">
     <div className="tabs" aria-label="Content sections">{sections.map(item =>
       <button className={'button ' + (section.id === item.id ? 'primary' : 'subtle')} key={item.id} type="button"
-        aria-pressed={section.id === item.id} disabled={busy} onClick={() => switchSection(item)}>{item.label}</button>)}</div>
+        aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{item.label}</button>)}</div>
     <form className="stack-form" onSubmit={save}>
       <h2>{section.label}</h2>
+      {section.id === 'hero_section' && <p>
+        Add up to five slides. Upload a photo (JPG, PNG, WebP or AVIF, up to 6 MB) or video (MP4 or WebM, up to 24 MB),
+        or paste a direct media URL. A video may have a cover photo. Videos play muted and loop while visible.
+      </p>}
       {section.id === 'seo' && <p>Use / for the homepage or a storefront route such as /bd/products. The storefront keeps its canonical URL and indexing policy.</p>}
       {!rows.length && <p>No entries yet.</p>}
-      {rows.map((row, index) => <fieldset className="editor-fieldset" key={index} disabled={!writable || busy}>
-        <legend>Entry {index + 1}</legend>
+      {rows.map((row, index) => <fieldset className="editor-fieldset" key={index} disabled={!writable || busy || uploading}>
+        <legend>{section.id === 'hero_section' ? 'Slide' : 'Entry'} {index + 1}</legend>
         <div className="editor-grid">{section.fields.map(([name, label, kind]) => {
           const value = get(row, name);
           const change = (input: unknown) => update(rows.map((item, position) => position === index ? set(item, name, input) : item));
           const text = Array.isArray(value) ? value.join('\n') : String(value ?? '');
-          return <label key={name}>{label}
+          const media = section.id === 'hero_section' && (name === 'video_url' || name === 'thumbnail_url');
+          return <div className="editor-field" key={name}><label>{label}
             {kind === 'toggle' ? <select value={String(value === true)} onChange={event => change(event.target.value === 'true')}>
               <option value="true">Yes</option><option value="false">No</option>
             </select> : kind === 'ids' || kind === 'long' ? <textarea rows={3} value={text} maxLength={kind === 'long' ? 170 : 1500}
               onChange={event => change(event.target.value)} required={kind === 'long'}/>
               : <input value={text} type={kind === 'number' ? 'number' : 'text'} required={kind !== 'optional'}
-                maxLength={1000} onChange={event => change(event.target.value)}/>}
-          </label>;
+                maxLength={section.id === 'hero_section' && name === 'title' ? 120 : 1000} onChange={event => change(event.target.value)}/>}
+          </label>
+          {media && writable && <label className="carousel-upload">
+            {name === 'video_url' ? 'Upload video' : 'Upload photo'}
+            <input type="file" accept={name === 'video_url' ? '.mp4,.webm' : '.jpg,.jpeg,.png,.webp,.avif'}
+              onChange={event => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                void upload(index, name, file);
+              }} />
+          </label>}
+          </div>;
         })}</div>
         {section.max && writable && <div className="page-actions">
           {index > 0 && <button className="button subtle" type="button" onClick={() => {
@@ -130,14 +173,15 @@ export function ContentEditor({ doc, writable }: { doc: Row; writable: boolean }
             [next[index - 1], next[index]] = [next[index], next[index - 1]];
             update(next);
           }}>Move up</button>}
-          <button className="button subtle" type="button" onClick={() => update(rows.filter((_, position) => position !== index))}>Remove entry</button>
+          <button className="button subtle" type="button" onClick={() => update(rows.filter((_, position) => position !== index))}>{section.id === 'hero_section' ? 'Remove slide' : 'Remove entry'}</button>
         </div>}
       </fieldset>)}
       {writable && <div className="page-actions">
-        {section.max && <button className="button secondary" type="button" disabled={busy || rows.length >= section.max}
-          onClick={() => update([...rows, {}])}>Add entry</button>}
-        <button className="button primary" disabled={!dirty || busy}>{busy ? 'Saving…' : 'Save content'}</button>
+        {section.max && <button className="button secondary" type="button" disabled={busy || uploading || rows.length >= section.max}
+          onClick={() => update([...rows, {}])}>{section.id === 'hero_section' ? 'Add slide' : 'Add entry'}</button>}
+        <button className="button primary" disabled={!dirty || busy || uploading}>{busy ? 'Saving…' : 'Save content'}</button>
       </div>}
+      {uploading && <p role="status">Uploading media…</p>}
       {feedback && <p className={error ? 'notice warn' : 'notice'} role={error ? 'alert' : 'status'}>{feedback}</p>}
     </form>
   </section>;
