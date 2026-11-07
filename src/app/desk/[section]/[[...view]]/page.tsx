@@ -15,6 +15,8 @@ import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/compon
 import { advancedEnabled } from '@/lib/advanced';
 import { managedProfile, managedViewsFor } from '@/lib/managed';
 import { ManagedWorkspace } from '@/components/managed-workspace';
+import { CategoryManager } from '@/components/category-manager';
+import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
 import { WebsiteOrderCreatePage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +37,8 @@ export default async function Desk({ params, searchParams }: {
   const nav = visibleSections(auth.staff);
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
-  const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
+  const unifiedCategory = sectionId === 'catalog' && ['categories','subcategories','taxonomy'].includes(view[0] ?? '');
+  const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
   const integrated = integratedCheckoutEnabled();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
@@ -46,12 +49,12 @@ export default async function Desk({ params, searchParams }: {
     if (sectionId === 'markets') tabs.push(['checkout',integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
     else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
   }
-  const active = view[0] ?? tabs[0]?.[0];
+  const active = unifiedCategory ? 'categories' : view[0] ?? tabs[0]?.[0];
   const reportLinks = reportShortcuts(auth.staff,region);
   const destinations = [...new Map(nav.flatMap(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...(item.id === 'reports' ? reportLinks : []),
-    ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
+    ...Object.entries(resources[item.id] ?? {}).filter(([key,res]) => permitted(res,auth) && !(item.id === 'catalog' && key === 'subcategories'))
       .map(([key,res]) => ({
         label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
         skuSearch: item.id === 'catalog' && key === 'products',
@@ -69,6 +72,16 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({auth,id:view[0],q,region});
     else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q} region={region}/>;
     else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
+    else if (unifiedCategory) {
+      if (!has(auth.staff,'product.view')) throw new ApiError(403);
+      if (view[0] !== 'categories' || view.length > 1) {
+        redirect(url('/desk/catalog/categories',{ region, record: view[1] ?? param(q,'record') }));
+      }
+      const { nodes, managed: editable } = await loadCategories(auth);
+      content = <CategoryManager nodes={nodes} initial={param(q,'record')}
+        canCreate={editable && canChangeCategories(auth,'product.create')}
+        canEdit={editable && canChangeCategories(auth,'product.update')}/>;
+    }
     else if (active && managed.has(active) && view.length < 2)
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (allowCheckout && active === 'checkout' && view.length < 2) {

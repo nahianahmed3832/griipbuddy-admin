@@ -274,41 +274,6 @@ async function Listings(context: Context) {
   </>;
 }
 
-async function Taxonomy(context: Context) {
-  const { q, region, path } = context;
-  const parent = afterId(q,'parent');
-  const depth = parent && ['1','2','3'].includes(param(q,'depth') ?? '') ? param(q,'depth')! : '0';
-  const after = afterId(q);
-  const base = {region, depth, parent:depth === '0' ? undefined : parent};
-  const rows = obj(await read(context,url('/catalog/categories/' + depth,{after,parent:base.parent})));
-  const id = afterId(q,'record');
-  const selected = arr(rows.items).map(obj).find(row => row._id === id);
-  const fields = (row: RecordData = {}, optional = false): ManagedField[] => [
-    text('name_en','English name',row.name_en ?? row.name,optional),text('name_bn','Bangla name',row.name_bn,optional),
-    {...text('description_en','English description',row.description_en,optional),type:'multiline'},
-    {...text('description_bn','Bangla description',row.description_bn,optional),type:'multiline'},
-    number('position','Position',row.position ?? 0),
-    {...enabled(row.is_published),name:'is_published',label:'Published'},
-  ];
-  return <>
-    <div className="page-actions">{editor(context,'taxonomy-new','New category',[
-      text('slug','Category slug'),...(base.parent ? [text('parent','Direct parent ID',base.parent)] : []),...fields(),
-    ],{step:depth,primary:true})}
-      {depth !== '0' && <Link className="button secondary" href={url(path,{region})}>Root categories</Link>}
-    </div>
-    {selected && <section className="panel padded managed-record">
-      <div><h2>{str(selected.name_en) || str(selected.name)}</h2><p className="muted">{id}</p></div>
-      <div className="page-actions">{editor(context,'taxonomy-edit','Edit category',fields(selected,true),{id,step:depth})}
-        {depth !== '3' && <Link className="button secondary" href={url(path,{region,depth:String(Number(depth) + 1),parent:id})}>
-          Open child categories <ArrowRight size={15}/></Link>}</div>
-    </section>}
-    <Grid title={depth === '0' ? 'Root categories' : 'Child categories · level ' + depth}
-      data={rows} columns={[col('Category','name_en|name'),col('Bangla name','name_bn'),col('Slug','slug'),col('ID','_id'),col('Position','position'),
-        col('Published','is_published','badge')]} select={row => url(path,{...base,after,record:str(row._id)})}
-      next={rows.next ? url(path,{...base,after:str(rows.next)}) : undefined}/>
-  </>;
-}
-
 async function Recommendations(context: Context) {
   const { market, path, region, q } = context;
   const days = ['1','7','14','30'].includes(param(q,'days') ?? '') ? param(q,'days') : '7';
@@ -350,7 +315,6 @@ const screens = {
   history: (context: Context) => ListsOrHistory(context, true),
   imports: Imports,
   'listing-studio': Listings,
-  taxonomy: Taxonomy,
   'managed-stock': ManagedStock,
   'managed-purchases': ManagedPurchases,
   sourcing: ManagedSourcing,
@@ -369,7 +333,6 @@ const descriptions: Record<string,string> = {
   history:'Review the staff and revisions behind managed commerce changes.',
   coverage:'Set checkout payment availability and domestic or international shipping zones.',
   imports:'Queue approved supplier feeds and review job and row outcomes.',
-  taxonomy:'Create and edit category hierarchies and localized category labels.',
   'listing-studio':'Manage catalog drafts, variants and market publication workflow.',
   'managed-stock':'Inspect physical stock, FIFO lots and bins in the recovered warehouses.',
   'managed-purchases':'Open supplier purchase orders and receive tracked units into existing stock.',
