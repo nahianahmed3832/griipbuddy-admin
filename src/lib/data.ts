@@ -117,8 +117,17 @@ export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type
 
 export function reportQuery(q: Query, region: Region) {
   const currency = param(q, 'currency');
-  return { region, currency: region === 'INTERNATIONAL' && ['USD','EUR','AUD','BDT'].includes(currency ?? '') ? currency : undefined, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')),
-    compare: param(q, 'compare') === 'none' ? 'none' : undefined,
-    locations: (param(q, 'locations') ?? '').split(',').filter(mongoId).slice(0, 20).join(',') || undefined,
-    ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])) };
+  const selected = q.location ?? param(q, 'locations')?.split(',');
+  const locations = [...new Set((Array.isArray(selected) ? selected : [selected ?? '']).filter(mongoId))].slice(0, 20);
+  const compare = param(q,'compare');
+  const sort = param(q,'sort');
+  return {
+    region, currency: region === 'INTERNATIONAL' && ['USD','EUR','AUD','BDT'].includes(currency ?? '') ? currency : undefined,
+    from: dateParam(param(q,'from')), to: dateParam(param(q,'to')),
+    compare: compare === 'none' || (param(q,'filterApplied') === '1' && compare !== 'previous') ? 'none' : undefined,
+    locations: locations.join(',') || undefined,
+    sort: sort && /^[A-Za-z0-9_]{1,40}$/.test(sort) ? sort : undefined,
+    order: param(q,'order') === 'asc' ? 'asc' : undefined,
+    ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])),
+  };
 }

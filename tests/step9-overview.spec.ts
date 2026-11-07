@@ -21,7 +21,7 @@ async function signIn(page: Page, suffix = '1') {
   await expect(page).toHaveURL(/\/desk\/overview$/);
 }
 
-test('managed policy, storefront order, Overview and private receipt share one Step 9 record', async ({ page, browser, request }) => {
+test('managed policy, storefront order, Overview and private receipt share one Step 9 record', async ({ page, browser, request }, testInfo) => {
   await signIn(page);
   await page.goto(admin + '/desk/markets/checkout');
   const market = page.locator('form').filter({ has:page.getByRole('heading',{name:'Bangladesh · BDT'}) });
@@ -94,7 +94,17 @@ test('managed policy, storefront order, Overview and private receipt share one S
       await page.screenshot({path:join(evidence,'overview-mobile.png'),fullPage:true});
       await page.setViewportSize({width:1280,height:900});
     }
+    await page.goto(admin + '/desk/reports/sales-summary?refresh=1');
+    await expect(page.getByRole('img',{name:/Booked value, delivered sales and net sales/})).toBeVisible();
+    await expect(page.locator('tfoot')).toContainText('Total');
+    await expect(page.locator('tfoot')).toContainText('800');
+    await page.screenshot({path:testInfo.outputPath('sales-summary.png'),fullPage:true});
+
+    await page.goto(admin + '/desk/overview?period=7&refresh=1');
     await page.getByRole('link',{name:/Payments to verify/}).click();
+    await expect(page.getByRole('combobox',{name:'Show',exact:true})).toHaveValue('payment_proof');
+    await expect(page.getByRole('columnheader',{name:/Sort by Waiting/})).toHaveAttribute('aria-sort','descending');
+    await page.screenshot({path:testInfo.outputPath('orders-needing-action.png'),fullPage:true});
     const record = page.locator('a[href$="/' + order.id + '?region=BD"]');
     await expect(record).toBeVisible();
     await record.click();

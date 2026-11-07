@@ -18,16 +18,18 @@ function offset(day: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function overviewQuery(query: Query, region: Region) {
+export function periodRange(query: Query, fallback = 'today') {
   const input = param(query, 'period');
   const custom = validDay(param(query, 'from')) || validDay(param(query, 'to'));
-  const period = input && ['today','yesterday','7','30','90','custom'].includes(input) ? input : custom ? 'custom' : 'today';
+  const period = input && ['today','yesterday','7','30','90','custom'].includes(input) ? input : custom ? 'custom' : fallback;
   const today = dhakaDay();
   const to = period === 'yesterday' ? offset(today, -1) : period === 'custom' ? validDay(param(query,'to')) ?? today : today;
   const from = period === 'custom' ? validDay(param(query,'from')) ?? to : ['7','30','90'].includes(period) ? offset(to, 1 - Number(period)) : to;
-  const location = query.location;
-  const locations = Array.isArray(location) ? location.join(',') : location ?? param(query,'locations');
-  const compare = param(query, 'filterApplied') === '1' && param(query,'compare') !== 'previous' ? 'none' : param(query,'compare');
-  const scope = reportQuery({ ...query, from, to, compare, locations }, region);
+  return { period, from, to };
+}
+
+export function overviewQuery(query: Query, region: Region) {
+  const { period, from, to } = periodRange(query);
+  const scope = reportQuery({ ...query, from, to }, region);
   return { period, scope, refresh: param(query,'refresh') === '1' ? '1' : undefined };
 }

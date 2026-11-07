@@ -6,6 +6,8 @@ import { printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
+import { TrendChart } from './trend-chart';
+import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
 
 export function PageHeading({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) {
@@ -60,46 +62,16 @@ function Bars({ title, bars }: { title: string; bars: Bar[] }) {
 type Point = { key: string; booked: number; delivered: number };
 function SalesChart({ points, currency }: { points: Point[]; currency: string }) {
   const money = (value: number) => printable(value, 'money', currency);
-  const maximum = Math.max(1, ...points.map(point => Math.max(point.booked, point.delivered)));
-  const x = (index: number) => points.length > 1 ? 62 + index * 621 / (points.length - 1) : 373;
-  const y = (value: number) => 166 - value / maximum * 146;
-  const ticks = [1,.75,.5,.25,0];
-  const mark = (key: 'booked' | 'delivered', color: string) => <g className={color}>
-    {points.length > 1 && <polyline points={points.map((point,index) => x(index) + ',' + y(point[key])).join(' ')}/>}
-    {points.map((point,index) => <circle key={point.key} cx={x(index)} cy={y(point[key])} r={points.length > 32 ? 1.5 : 3.5}>
-      <title>{point.key} · {money(point[key])}</title>
-    </circle>)}
-  </g>;
   return <div className="overview-subpanel"><h3>Booked vs delivered</h3>
-    {points.some(point => point.booked || point.delivered) ?
-      <svg className="overview-chart" viewBox="0 0 700 199" aria-hidden="true">
-        {ticks.map(tick => <g key={tick}><line x1="61" x2="685" y1={y(maximum * tick)} y2={y(maximum * tick)}/>
-          <text x="54" y={y(maximum * tick) + 4} textAnchor="end">{new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1}).format(maximum * tick)}</text></g>)}
-        {mark('booked','overview-booked')}{mark('delivered','overview-delivered')}
-        {points.map((point,index) => index % Math.ceil(points.length / 6) === 0 &&
-          <text key={point.key} x={x(index)} y="188" textAnchor="middle">{point.key.length === 10 ? point.key.slice(5) : point.key}</text>)}
-      </svg> : <p className="overview-chart-empty muted">No sales activity in this period</p>}
-    <div className="overview-chart-key"><span>Booked value</span><span>Delivered sales</span></div>
+    <TrendChart label="Booked value and delivered sales by period" lines={['Booked value','Delivered sales']} format={money}
+      points={points.map(point => ({key:point.key,label:point.key,tick:point.key.length === 10 ? point.key.slice(5) : point.key,
+        values:[point.booked, point.delivered]}))}/>
     {points.length > 0 && <details className="chart-values"><summary>View chart data</summary>
       <div className="chart-values-scroll"><table><thead><tr><th scope="col">Period</th><th scope="col">Booked</th><th scope="col">Delivered</th></tr></thead>
         <tbody>{points.map(point => <tr key={point.key}><th scope="row">{point.key}</th><td>{money(point.booked)}</td><td>{money(point.delivered)}</td></tr>)}</tbody>
       </table></div>
     </details>}
   </div>;
-}
-
-function Thumbnail({ source }: { source: unknown }) {
-  const configured = process.env.GRIIP_ADMIN_IMAGE_ORIGIN;
-  if (configured && typeof source === 'string') {
-    try {
-      const image = new URL(source);
-      if (image.protocol === 'https:' && image.origin === configured && !image.username && !image.password) {
-        // eslint-disable-next-line @next/next/no-img-element
-        return <img className="overview-thumbnail" src={image.href} width={32} height={32} alt="" loading="lazy" referrerPolicy="no-referrer"/>;
-      }
-    } catch { /* Old records can contain incomplete asset URLs. */ }
-  }
-  return <span className="overview-thumbnail overview-placeholder" aria-hidden="true"><Package size={15}/></span>;
 }
 
 function ProductTable({ products, currency, region, canOpen }: { products: RecordData[]; currency: string; region: Region; canOpen: boolean }) {
@@ -109,7 +81,7 @@ function ProductTable({ products, currency, region, canOpen }: { products: Recor
     </tr></thead><tbody>{products.map((row,index) => {
       const name = str(row.name) || 'Unnamed product';
       const id = str(row.productId);
-      return <tr key={index}><td><div className="overview-product"><Thumbnail source={row.image}/>
+      return <tr key={index}><td><div className="overview-product"><ProductThumbnail source={row.image}/>
         {canOpen && mongoId(id) ? <Link className="table-link" href={url('/desk/catalog/products/' + id, {region})}>{name}</Link> : name}</div></td>
         <td>{str(row.sku) || '—'}</td><td>{count(row.units)}</td><td>{printable(row.value,'money',currency) || '—'}</td></tr>;
     })}</tbody></table></div> : <p className="muted">No booked products in this period</p>}
@@ -239,7 +211,7 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
             <span className="attention-pill">{level === 'clear' ? 'All clear' : level === 'urgent' ? 'Act now' : 'Check'}</span></div>
             <strong>{count(item.value)}</strong>
             {item.value !== 0 && <>{item.images?.length ? <div className="overview-thumbnails">{item.images.slice(0,4).map((row,index) =>
-              <Thumbnail source={row.image} key={index}/>)}</div> : null}<p>{item.notes.map(note => <span key={note}>{note}</span>)}</p></>}
+              <ProductThumbnail source={row.image} key={index}/>)}</div> : null}<p>{item.notes.map(note => <span key={note}>{note}</span>)}</p></>}
           </>;
           return item.href ? <Link key={item.title} className={'overview-card attention-' + level} href={item.href}>{body}</Link>
             : <article key={item.title} className={'overview-card attention-' + level}>{body}</article>;

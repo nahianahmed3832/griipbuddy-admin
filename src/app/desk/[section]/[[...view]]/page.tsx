@@ -5,7 +5,7 @@ import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabl
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
-import { Reports } from '@/components/reports';
+import { Reports, reportShortcuts } from '@/components/reports';
 import { ResourceDetail, ResourcePage } from '@/components/resources';
 import { Shell } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
@@ -45,8 +45,10 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
   }
   const active = view[0] ?? tabs[0]?.[0];
+  const reportLinks = reportShortcuts(auth.staff,region);
   const destinations = [...new Map(nav.flatMap(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
+    ...(item.id === 'reports' ? reportLinks : []),
     ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
       .map(([key,res]) => ({
         label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
@@ -94,6 +96,7 @@ export default async function Desk({ params, searchParams }: {
   }
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
     regionPath={'/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
+    reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
     readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}>
     {!!tabs.length && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active ? 'page' : undefined}>{label}</Link>)}</nav>}

@@ -65,6 +65,53 @@ test('all ten reports render and export CSV and XLSX through the same staff poli
   expect(await (await page.request.get(filtered!)).text()).not.toContain('FIXTURE-BD-BLUE');
 });
 
+test('report shortcuts, period settings, location scope and server sorting match the exports', async ({page},testInfo) => {
+  await signIn(page,'1');
+  await page.goto('/desk/reports');
+  const nav = page.getByRole('navigation',{name:'Primary navigation'});
+  await nav.getByRole('link',{name:'Sales Summary',exact:true}).click();
+  await expect(page.getByRole('combobox',{name:'Period',exact:true})).toHaveValue('30');
+  await expect(page.locator('.report-metric').getByText('Previous period',{exact:false}).first()).toBeVisible();
+  await expect(page.locator('tfoot')).toContainText('Total');
+  await page.getByRole('combobox',{name:'Period',exact:true}).selectOption('7');
+  await page.getByRole('combobox',{name:'Group by'}).selectOption('week');
+  await page.getByLabel('Compare with previous period').uncheck();
+  await page.getByRole('button',{name:'Apply filters'}).click();
+  await expect(page).toHaveURL(/groupBy=week/);
+  await expect(page.locator('.report-metric').getByText('Previous period',{exact:false})).toHaveCount(0);
+  const salesCsv = new URL((await page.getByRole('link',{name:'CSV',exact:true}).getAttribute('href'))!, 'http://127.0.0.1');
+  expect(salesCsv.searchParams.get('compare')).toBe('none');
+  expect(salesCsv.searchParams.get('groupBy')).toBe('week');
+
+  await nav.getByRole('link',{name:'Stock Valuation',exact:true}).click();
+  await expect(page.getByRole('columnheader',{name:/Sort by On hand/})).toHaveAttribute('aria-sort','descending');
+  await page.getByRole('link',{name:'Sort by Avg unit cost ascending'}).click();
+  await expect(page.getByRole('columnheader',{name:/Sort by Avg unit cost/})).toHaveAttribute('aria-sort','ascending');
+  await page.locator('.overview-locations summary').click();
+  await page.getByRole('checkbox',{name:'Fixture warehouse',exact:true}).check();
+  await page.getByRole('button',{name:'Apply filters'}).click();
+  await expect(page.getByText('1 selected',{exact:true})).toBeVisible();
+  const csv = new URL((await page.getByRole('link',{name:'CSV',exact:true}).getAttribute('href'))!, 'http://127.0.0.1');
+  expect(csv.searchParams.get('locations')).toBe('000000000000000000000007');
+  expect(csv.searchParams.get('sort')).toBe('avgCost');
+  expect(csv.searchParams.get('order')).toBe('asc');
+  const refresh = await page.getByRole('link',{name:'Refresh',exact:true}).getAttribute('href');
+  expect(refresh).toContain('refresh=1');
+  expect(refresh).toContain('sort=avgCost');
+  await page.screenshot({path:testInfo.outputPath('stock-valuation.png'),fullPage:true});
+
+  await nav.getByRole('link',{name:'Low Stock & Reorder',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Low stock and reorder',level:1})).toBeVisible();
+  await page.getByRole('combobox',{name:'Show',exact:true}).selectOption('all');
+  await page.getByRole('button',{name:'Apply filters'}).click();
+  await expect(page).toHaveURL(/status=all/);
+  await expect(page.getByText('Suggested reorder covers',{exact:false})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Fixture domestic case',exact:true})).toBeVisible();
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({path:testInfo.outputPath('low-stock-mobile.png'),fullPage:true});
+});
+
 test('warehouse can inspect lots and stock, with cost, reports and international scope enforced',async ({page}) => {
   await signIn(page,'4');
   await page.goto('/desk/inventory/stock');
@@ -78,7 +125,11 @@ test('warehouse can inspect lots and stock, with cost, reports and international
   await expect(page.getByRole('heading',{name:'Access restricted'})).toBeVisible();
   await page.goto('/desk/inventory/stock?region=INTERNATIONAL');
   await expect(page.getByRole('heading',{name:'Access restricted'})).toBeVisible();
-  const csv = await page.request.get('/api/download?id=stock-valuation&format=csv');
+  await page.goto('/desk/reports/stock-valuation?sort=avgCost&order=asc');
+  await expect(page.getByRole('columnheader',{name:/Sort by On hand/})).toHaveAttribute('aria-sort','descending');
+  await expect(page.getByRole('columnheader',{name:/Avg unit cost|Value at cost|Potential margin/})).toHaveCount(0);
+  await expect(page.getByRole('navigation',{name:'Primary navigation'}).getByRole('link',{name:'Sales Summary',exact:true})).toHaveCount(0);
+  const csv = await page.request.get('/api/download?id=stock-valuation&format=csv&sort=avgCost&order=asc');
   expect(csv.status()).toBe(200);
   expect(await csv.text()).not.toMatch(/Value at cost|Avg unit cost|Potential margin/);
   expect((await page.request.get('/api/download?id=sales-summary&format=xlsx')).status()).toBe(403);

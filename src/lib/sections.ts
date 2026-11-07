@@ -171,7 +171,7 @@ export const sections = [
   { id: 'markets', label: 'Markets', group: 'Operations', icon: 'markets', description: 'Manage countries, currencies, product coverage and pricing.' },
   { id: 'shipping', label: 'Shipping', group: 'Operations', icon: 'shipping', description: 'Track fulfilment and access the Steadfast workflows.' },
   { id: 'payments', label: 'Payments', group: 'Operations', icon: 'payments', description: 'Manage checkout methods, payment review and accounting sources.' },
-  { id: 'reports', label: 'Reports', group: 'Operations', icon: 'reports', description: 'Open operational reports and download permission-scoped exports.' },
+  { id: 'reports', label: 'Reports', group: 'Workspace', icon: 'reports', description: 'Open operational reports and download permission-scoped exports.' },
   { id: 'marketing', label: 'Marketing', group: 'Storefront', icon: 'marketing', description: 'Manage discounts, promotions and campaign workflows.' },
   { id: 'content', label: 'Storefront content', group: 'Storefront', icon: 'content', description: 'Manage announcements, banners and homepage merchandising.' },
   { id: 'staff', label: 'Staff & access', group: 'Administration', icon: 'staff', description: 'Review team accounts, roles and permissions.' },

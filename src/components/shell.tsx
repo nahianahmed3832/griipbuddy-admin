@@ -17,8 +17,9 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, children }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[]; children: ReactNode;
+export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, reportLinks, activeReport, children }: {
+  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[];
+  reportLinks: (Destination & {id:string})[]; activeReport?: string; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -74,10 +75,18 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
       <nav aria-label="Primary navigation">
         {groups.map(group => nav.some(item => item.group === group) && <div className="nav-group" key={group}>
           <div className="nav-label">{group}</div>
-          {nav.filter(item => item.group === group).map(item => <Link key={item.id} href={'/desk/' + item.id + regionQuery}
-            aria-current={section.id === item.id ? 'page' : undefined} onClick={() => setOpen(false)}>
-            <SectionIcon name={item.icon}/><span>{item.label}</span>
-          </Link>)}
+          {nav.filter(item => item.group === group).map(item => <div key={item.id}>
+            <Link href={'/desk/' + item.id + regionQuery}
+              aria-current={section.id === item.id && !activeReport ? 'page' : undefined} onClick={() => setOpen(false)}>
+              <SectionIcon name={item.icon}/><span>{item.label}</span>
+            </Link>
+            {item.id === 'reports' && section.id === 'reports' && reportLinks.length > 0 &&
+              <ul className="report-sidebar-links">
+                <li><Link href={'/desk/reports' + regionQuery} onClick={() => setOpen(false)}>All Reports</Link></li>
+                {reportLinks.map(report => <li key={report.id}><Link href={report.href}
+                  aria-current={activeReport === report.id ? 'page' : undefined} onClick={() => setOpen(false)}>{report.label}</Link></li>)}
+              </ul>}
+          </div>)}
         </div>)}
       </nav>
       <div className="sidebar-foot"><span className="environment-dot" />{environment}<span className="stage-tag">DEV</span></div>
