@@ -31,7 +31,7 @@ const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), 
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
 const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
 const orders: Resource = {
-  title: 'Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
+  title: 'All Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
   legacyCreate: 'create-order', legacyDetail: 'order-details/:id',
 };
@@ -81,17 +81,17 @@ export const resources: Record<string, Record<string, Resource>> = {
     warehouses: { title: 'Locations', endpoint: '/business-location', permission: 'business_locations.view', rows: 'businessLocations', region: true,
       columns: [col('Location', 'business_location_name|name'), col('Type', 'business_location_type|type'), region, state], legacy: 'business-location/all',
       legacyCreate: 'business-location/create', legacyDetail: 'business-location/edit/:id' },
-    purchases: { title: 'Purchases', endpoint: '/purchase', permission: 'purchase.view',
-      columns: [col('Purchase', 'purchase_serial_id|purchase_id|invoice_number|reference'), col('Supplier', 'supplier.name|supplier.supplier_name'), location, state, date],
+    purchases: { title: 'Purchases', endpoint: '/purchase', permission: 'purchase.view', region: true,
+      columns: [col('Purchase', 'purchase_number|purchase_serial_id|purchase_id|invoice_number|reference'), col('Supplier', 'supplier.name|supplier.supplier_name'), location, state,
+        col('Purchase date', 'purchase_date|createdAt|created_at', 'date')],
       legacy: 'purchase/all', legacyDetail: 'purchase/edit/:id' },
     suppliers: { title: 'Suppliers', endpoint: '/supplier', permission: 'supplier.view',
       columns: [col('Supplier', 'name|supplier_name'), col('Type', 'supplier_type|type'), state, date], legacy: 'suppliers/all',
       legacyCreate: 'suppliers/create', legacyDetail: 'update-supplier/:id' },
     rates: { title: 'Purchase rates', endpoint: '/purchase/default/all', permission: 'defaults.purchase',
       columns: [col('Supplier', 'supplier.name|supplier.supplier_name'), col('Product', 'product.name'), sku, date], legacy: 'barcodes/default-rate/all', legacyCreate: 'barcodes/default-rate' },
-    barcodes: { title: 'Barcodes', endpoint: '/barcode', permission: 'barcode.view',
-      filter: { key: 'status', label: 'Barcode status', options: ['IN_STOCK','ASSIGNED','SOLD','RETURNED'] },
-      columns: [col('Barcode', 'barcode'), sku, location, state, col('Updates', 'updated_logs', 'count')], legacy: 'barcodes', legacyCreate: 'barcodes/generate' },
+    barcodes: { title: 'All Barcodes', endpoint: '/barcode', permission: 'barcode.view',
+      columns: [col('Barcode', 'barcode'), sku, state, col('Condition', 'conditions'), date], legacy: 'barcodes' },
     adjustments: { title: 'Adjustments', endpoint: '/stocks/adjustment', permission: 'stock.view',
       columns: [col('Reason', 'reason|note|adjustment_type'), location, col('Quantity', 'quantity|total_quantity'), state, date],
       legacy: 'stock-adjustment/all', legacyCreate: 'stock-adjustment/create' },
@@ -159,7 +159,7 @@ export const resources: Record<string, Record<string, Resource>> = {
 
 export const sections = [
   { id: 'overview', label: 'Overview', group: 'Workspace', icon: 'layout', description: 'Track sales, fulfilment and inventory across your store.' },
-  { id: 'orders', label: 'Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
+  { id: 'orders', label: 'Website Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
   { id: 'catalog', label: 'Catalog', group: 'Commerce', icon: 'catalog', description: 'Manage products, variants, taxonomy and product information.' },
   { id: 'inventory', label: 'Inventory', group: 'Commerce', icon: 'inventory', description: 'See stock positions, warehouse activity and purchasing.' },
   { id: 'customers', label: 'Customers', group: 'Commerce', icon: 'customers', description: 'Find accounts and review customer activity.' },
@@ -184,7 +184,7 @@ export function visibleSections(staff: Staff) {
   return sections.filter(({ id }) => {
     if (['overview', 'settings', 'workflows'].includes(id)) return true;
     if (id === 'reports') return staff.permissions.some(key => key.startsWith('report.'));
-    if (id === 'payments' && superAdmin(staff)) return true;
+    if (['payments', 'staff'].includes(id) && superAdmin(staff)) return true;
     return Object.values(resources[id] ?? {}).some(item => has(staff, item.permission));
   });
 }

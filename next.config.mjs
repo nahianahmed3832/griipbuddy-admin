@@ -1,3 +1,4 @@
+const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
 /** @type {import('next').NextConfig} */
 const config = {
   poweredByHeader: false,
@@ -13,8 +14,11 @@ const config = {
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
         { key: 'Cache-Control', value: 'private, no-store' },
-        { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" },
+        { key: 'Content-Security-Policy', value: csp },
       ],
+    }, {
+      source: '/desk/orders/:path*',
+      headers: [{ key: 'Content-Security-Policy', value: csp.replace("img-src 'self' data:;", "img-src 'self' data: https:;") }],
     }];
   },
 };

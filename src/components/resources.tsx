@@ -3,6 +3,7 @@ import { ArrowUpRight, Plus, Search } from 'lucide-react';
 import { api, ApiError, arr, canWrite, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { loadResource, param, permitted, printable, valueAt, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
+import { addressLabel } from '@/lib/website-orders';
 import { has, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
@@ -135,13 +136,20 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
     {storefrontWrites && resource.endpoint === '/review' && <ReviewModeration id={id} title={str(raw.title)}
       content={str(raw.content)} status={str(raw.status)} media={arr(raw.storefrontMediaTypes).map(str)} />}
     {resource.endpoint === '/order' && <>
+      <section className="panel"><div className="panel-header"><h2>Delivery and payment</h2></div>
+        <dl className="details-grid padded">{[
+          ['Phone', str(raw.customer_phone)], ['Delivery address', addressLabel(obj(raw.delivery_address))],
+          ['Delivery note', str(raw.order_note)], ['Order total', printable(raw.total_amount, 'money', currency)],
+          ['Total paid', printable(raw.paid_amount, 'money', currency)], ['Cash on delivery', printable(raw.COD, 'money', currency)],
+        ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>
+      </section>
       <ReadRows title="Order items" input={raw.products} columns={[
         {label:'Product',fields:'product.name|selected_variant.product_name|selected_variant.sku'},
         {label:'Quantity',fields:'total_quantity|quantity'}, {label:'SKU',fields:'selected_variant.sku|variant.sku'},
       ]}/>
       <ReadRows title="Order activity" input={raw.status_history} columns={[
-        {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'date|createdAt|updated_at',kind:'date'},
-        {label:'Note',fields:'note|remarks'},
+        {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'changed_at|date|createdAt|updated_at',kind:'date'},
+        {label:'Changed by',fields:'changed_by.full_name'},
       ]}/>
     </>}
     {resource.endpoint === '/product/admin/all' && <>

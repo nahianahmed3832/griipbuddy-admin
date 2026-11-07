@@ -29,7 +29,9 @@ export function connection() {
     return { origin: 'http://127.0.0.1:14811', name: 'Isolated frontend preview', legacy: null };
   }
   if (process.env.GRIIP_ADMIN_TARGET === 'fixture') {
-    return { origin: 'http://127.0.0.1:38100', name: 'Local fixture', legacy: null };
+    const port = process.env.GRIIP_ADMIN_FIXTURE_PORT ?? '38100';
+    if (!/^38[0-9]{3}$/.test(port)) throw new Error('Invalid local fixture port');
+    return { origin: 'http://127.0.0.1:' + port, name: 'Local fixture', legacy: null };
   }
   if (process.env.GRIIP_ADMIN_TARGET === undefined || process.env.GRIIP_ADMIN_TARGET === 'staging') {
     return { origin: 'http://127.0.0.1:14801', name: 'Isolated staging', legacy: 'http://127.0.0.1:14801/dashboard/' };
@@ -48,6 +50,11 @@ export function canWrite(staff: Staff) {
   const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
   const integration = target === 'Isolated integration staging' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
   return superAdmin(staff) && (local || stage || preview || integration);
+}
+
+// The hosted shared previews currently accept only their designated fixture login.
+export function staffEnrollmentAvailable() {
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging';
 }
 
 export function legacyUrl(path?: string) {

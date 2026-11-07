@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/manrope';
 import './workspace.css';
+import './customers.css';
+import './locations.css';
 
 export const metadata: Metadata = {
   title: { default: 'GriipBuddy Commerce Admin', template: '%s · GriipBuddy Admin' },

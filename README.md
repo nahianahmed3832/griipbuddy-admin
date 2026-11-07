@@ -18,6 +18,12 @@ Playwright starts two local admin processes and a disposable checkout simulator.
 
 The storefront simulator stores method availability, shipping rates, fallback selection and activity in its existing checkout ledger. It applies those settings to checkout and quote calculations. The admin receives only a privileged service response. Its UI exposes no provider secrets. Receipt downloads are authenticated, and approval requires matching the submitted reference and expected advance amount. The recovered MongoDB and the checkout simulator remain separately labeled in the workspace.
 
+## Website Orders
+
+Open **Website Orders → All Orders** for market-scoped filters, status counts, customer history, and Excel export. **Create Order** uses the Bangladesh catalog and the existing inventory reservation flow. Staff can record cash on delivery, an advance, or a full payment already received. New payment screenshots require an authenticated order view.
+
+This workspace needs the paired backend with the `/api/v1/order/workspace` routes. Courier sync refreshes eligible orders on the current page. Courier and SMS use the configured providers; local fixtures simulate both. The courier fraud lookup is off until the backend is configured with `GRIIP_WEBSITE_ORDER_FRAUD_LOOKUP=1`.
+
 ## Hosted sample preview
 
 The [admin](https://dev.griipbuddy.com/desk/overview) opens without a login and shows read-only sample data. The [storefront](https://frontend.griipbuddy.com/bd) uses the same isolated sample catalog with guest shopping and quote simulation. See `deploy/public-build.compose.yaml` and `deploy/public-build.nginx.conf` for the sample stack. Step 10 uses local fixtures and does not update either host.
