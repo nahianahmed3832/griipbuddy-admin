@@ -96,10 +96,11 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
 
 export const reportIds = ['sales-summary','sales-by-product','order-status','pending-fulfilment','returns-rts','stock-valuation',
   'low-stock','stock-movements','inventory-aging','data-health'];
+export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type', 'status', 'show'];
 
 export function reportQuery(q: Query, region: Region) {
   return { region, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')),
     compare: param(q, 'compare') === 'none' ? 'none' : undefined,
     locations: (param(q, 'locations') ?? '').split(',').filter(mongoId).slice(0, 20).join(',') || undefined,
-    groupBy: ['day','week','month','status','category','location'].includes(param(q, 'groupBy') ?? '') ? param(q, 'groupBy') : undefined };
+    ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])) };
 }

@@ -32,7 +32,11 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   section: Section; view: string; resource: Resource; auth: Session; q: Query; region: Region;
 }) {
   const path = '/desk/' + section.id + '/' + view;
-  const result = await loadResource(resource,auth,q,region);
+  const locationFilter = ['/stocks', '/barcode'].includes(resource.endpoint) && has(auth.staff, 'business_locations.view');
+  const [result, locations] = await Promise.all([
+    loadResource(resource,auth,q,region),
+    locationFilter ? loadLocations(auth, region).catch(() => []) : [],
+  ]);
   const writeKey = resource.legacyCreate && createPermissions[resource.legacyCreate];
   const create = writeKey && has(auth.staff, writeKey) && legacyUrl(resource.legacyCreate);
   const classic = legacyUrl(resource.legacy);
@@ -67,7 +71,10 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
       <label className="search-input"><Search size={17}/><input aria-label={resource.search ? 'Search records' : 'Search this page'} name="q" maxLength={80} placeholder={resource.search ? 'Search records…' : 'Filter visible records…'} defaultValue={result.search}/></label>
-      {resource.filter && <label className="filter-label">{resource.filter.label}<select name="filter" defaultValue={param(q,'filter') ?? ''}><option value="">Any status</option>
+      {locations.length > 0 && <label className="filter-label">Location<select name="location" defaultValue={param(q,'location') ?? ''}>
+        <option value="">All locations</option>{locations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
+      </select></label>}
+      {resource.filter && <label className="filter-label">{resource.filter.label}<select name="filter" defaultValue={param(q,'filter') || resource.params?.[resource.filter.key] || ''}><option value="">{resource.params?.[resource.filter.key] ? 'Default status' : 'Any status'}</option>
         {resource.filter.options.map(option => <option key={option} value={option}>{option === 'true' ? 'Published' : option === 'false' ? 'Unpublished' : label(option.toLowerCase())}</option>)}</select></label>}
       {resource.endpoint === '/order' && <><label className="filter-label">From<input type="date" name="from" defaultValue={param(q,'from')}/></label>
         <label className="filter-label">To<input type="date" name="to" defaultValue={param(q,'to')}/></label></>}
@@ -137,10 +144,19 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
         {label:'Note',fields:'note|remarks'},
       ]}/>
     </>}
-    {resource.endpoint === '/product/admin/all' && <ReadRows title="Product variants" input={raw.variants} columns={[
-      {label:'SKU',fields:'sku'}, {label:'Regular BDT',fields:'regular_price'}, {label:'Sale BDT',fields:'sale_price'},
-      {label:'Currency prices',fields:'prices',kind:'list'}, {label:'Barcode',fields:'barcode'},
-    ]}/>}
+    {resource.endpoint === '/product/admin/all' && <>
+      <section className="panel padded product-record-copy"><h2>Product details</h2>
+        <p>{str(raw.description).replace(/<[^>]*>/g, ' ').trim() || 'No product description.'}</p>
+        <dl className="details-grid">
+          <div><dt>Delivery estimate</dt><dd>{str(raw.approximately_delivery_time) || '—'}</dd></div>
+          <div><dt>Search tags</dt><dd>{arr(raw.search_tags).map(str).filter(Boolean).join(', ') || '—'}</dd></div>
+        </dl>
+      </section>
+      <ReadRows title="Product variants" input={raw.variants} columns={[
+        {label:'SKU',fields:'sku'}, {label:'Regular BDT',fields:'regular_price'}, {label:'Sale BDT',fields:'sale_price'},
+        {label:'Currency prices',fields:'prices',kind:'list'}, {label:'Barcode',fields:'barcode'},
+      ]}/>
+    </>}
     {resource.endpoint === '/purchase' && <>
       <section className="panel padded"><h2>Purchase notes</h2><p>{str(raw.additional_notes) || 'No notes recorded.'}</p></section>
       <ReadRows title="Purchase lines" input={raw.items} columns={[

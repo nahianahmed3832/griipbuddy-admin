@@ -64,3 +64,10 @@
 
 .review-moderation-media { display: flex; flex-wrap: wrap; gap: .75rem; }
 .review-moderation-media :is(img, video) { display: block; width: min(100%, 200px); aspect-ratio: 1; object-fit: contain; background: #f3f1f6; border-radius: 8px; }
+
+.product-record-copy { display: grid; gap: 10px; }
+.product-record-copy p { white-space: pre-line; overflow-wrap: anywhere; }
+.header-pop a[aria-current="true"] { background: var(--accent-soft); font-weight: 700; }
+.sidebar .sidebar-close { position: absolute; top: 13px; right: 10px; color: #fff; }
+body:has(.sidebar-open) { overflow: hidden; }
+.report-context { display: grid; gap: 4px; font-size: 12px; }

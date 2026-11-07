@@ -17,12 +17,14 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, environment, readOnly, international, destinations, children }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[]; children: ReactNode;
+export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, children }: {
+  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[]; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
+  const sidebar = useRef<HTMLElement>(null);
+  const menu = useRef<HTMLButtonElement>(null);
   const initials = staff.name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
   const results = destinations.filter(item => (item.label + ' ' + (item.description ?? '')).toLowerCase().includes(query.toLowerCase())).slice(0, 12);
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
@@ -44,10 +46,28 @@ export function Shell({ section, nav, staff, region, environment, readOnly, inte
     return () => window.removeEventListener('keydown', keyboard);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const trigger = menu.current;
+    sidebar.current?.querySelector<HTMLButtonElement>('.sidebar-close')?.focus();
+    const desktop = window.matchMedia('(min-width: 851px)');
+    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => { desktop.removeEventListener('change', closeOnDesktop); trigger?.focus(); };
+  }, [open]);
+
   return <div className="shell">
     <a className="skip-link" href="#main">Skip to content</a>
-    {open && <button className="nav-overlay" aria-label="Close navigation" onClick={() => setOpen(false)} />}
-    <aside className={'sidebar ' + (open ? 'sidebar-open' : '')} id="navigation">
+    {open && <div className="nav-overlay" aria-hidden="true" onClick={() => setOpen(false)} />}
+    <aside ref={sidebar} className={'sidebar ' + (open ? 'sidebar-open' : '')} id="navigation" role={open ? 'dialog' : undefined}
+      aria-modal={open || undefined} aria-label={open ? 'Navigation' : undefined} onKeyDown={event => {
+        if (!open || event.key !== 'Tab') return;
+        const nodes = event.currentTarget.querySelectorAll<HTMLElement>('button, a[href]');
+        const first = nodes[0], last = nodes[nodes.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}>
+      {open && <button className="icon-button sidebar-close" aria-label="Close navigation" onClick={() => setOpen(false)}><X size={19}/></button>}
       <Link className="brand-link" href={'/desk/overview' + regionQuery} onClick={() => setOpen(false)}><Brand /></Link>
       <nav aria-label="Primary navigation">
         {groups.map(group => nav.some(item => item.group === group) && <div className="nav-group" key={group}>
@@ -60,14 +80,16 @@ export function Shell({ section, nav, staff, region, environment, readOnly, inte
       </nav>
       <div className="sidebar-foot"><span className="environment-dot" />{environment}<span className="stage-tag">DEV</span></div>
     </aside>
-    <div className="workspace">
+    <div className="workspace" inert={open}>
       <header className="topbar">
-        <button type="button" aria-label="Open navigation" aria-expanded={open} aria-controls="navigation" className="icon-button mobile-menu" onClick={() => setOpen(!open)}><Menu size={21}/></button>
+        <button ref={menu} type="button" aria-label="Open navigation" aria-expanded={open} aria-controls="navigation" className="icon-button mobile-menu" onClick={() => setOpen(true)}><Menu size={21}/></button>
         <div className="crumb"><span>Workspace</span><span className="slash">/</span><strong>{section.label}</strong></div>
         <button className="global-search" type="button" onClick={openSearch}><Search size={17}/><span>Search workspace</span><kbd><Command size={11}/> K</kbd></button>
         <div className="header-actions">
-          {international ? <details className="header-menu"><summary><SectionIcon name="markets" size={16}/><span className="market-label">{region === 'BD' ? 'Bangladesh' : 'International'}</span><ChevronDown size={14}/></summary>
-            <div className="header-pop"><strong>Operating region</strong><Link href={'/desk/' + section.id}>Bangladesh</Link><Link href={'/desk/' + section.id + '?region=INTERNATIONAL'}>International</Link></div>
+          {international ? <details className="header-menu"><summary aria-label={'Operating region: ' + (region === 'BD' ? 'Bangladesh' : 'International')}><SectionIcon name="markets" size={16}/><span className="market-label">{region === 'BD' ? 'Bangladesh' : 'International'}</span><ChevronDown size={14}/></summary>
+            <div className="header-pop"><strong>Operating region</strong>{(['BD', 'INTERNATIONAL'] as const).map(value => <Link key={value}
+              href={regionPath + (value === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '')} aria-current={region === value ? 'true' : undefined}
+              onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{value === 'BD' ? 'Bangladesh' : 'International'}</Link>)}</div>
           </details> : <span className="market-chip"><SectionIcon name="markets" size={16}/><span className="market-label">Bangladesh</span></span>}
           <Link className="icon-button notification" aria-label="Operational alerts" href={'/desk/overview' + regionQuery + '#work-queue'}><Bell size={18}/></Link>
           <details className="header-menu account-menu"><summary aria-label="Account menu"><span className="avatar">{initials}</span><ChevronDown size={13}/></summary>
@@ -80,7 +102,7 @@ export function Shell({ section, nav, staff, region, environment, readOnly, inte
       <main id="main" className="main-content">{readOnly && <p className="notice">Public preview · Read-only sample data</p>}{children}</main>
       <footer className="workspace-footer"><span>GriipBuddy Admin</span><span>{environment} · synthetic records</span></footer>
     </div>
-    <dialog className="search-dialog" ref={dialog}>
+    <dialog className="search-dialog" ref={dialog} aria-label="Search workspace">
       <form method="dialog"><button className="icon-button search-close" aria-label="Close workspace search"><X size={19}/></button></form>
       <label htmlFor="workspace-search"><Search size={20}/> Search workspace</label>
       <input id="workspace-search" autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Find orders, warehouses, reports…" />

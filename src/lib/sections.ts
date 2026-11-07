@@ -26,7 +26,7 @@ const state = col('Status', 'status|is_active|isActive|is_published|isPublished|
 const sku = col('SKU', 'sku|variant.sku|selected_variant.sku');
 const date = col('Date', 'createdAt|created_at|date', 'date');
 const region = col('Region', 'region', 'badge');
-const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name');
+const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name|location.business_location_name');
 const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), col('Customer', 'customer_name|user.full_name'),
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
 const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
@@ -75,7 +75,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [title, col('Type', 'type'), state, date], legacy: 'return-policies', legacyCreate: 'add-new-return-policy', legacyDetail: 'update-return-policy/:id' },
   },
   inventory: {
-    stock: { title: 'Stock', endpoint: '/stocks', permission: 'stock.view', region: true,
+    stock: { title: 'Stock', endpoint: '/stocks', permission: 'stock.view', region: true, search: 'searchQuery',
       columns: [col('Product', 'product.name'), sku, location, col('On hand', 'available_quantity'), col('Location reserved', 'qty_reserved'),
         col('Units received', 'total_received'), col('Units sold', 'total_sold')], legacy: 'check-outlet-stocks' },
     warehouses: { title: 'Locations', endpoint: '/business-location', permission: 'business_locations.view', rows: 'businessLocations', region: true,

@@ -181,6 +181,21 @@ test('CMS and international catalog forms update existing records with permissio
   expect((await request.post(origin + '/api/operations', { headers: { Origin: origin }, data })).status()).toBe(401);
 
   await signIn(page);
+  await page.goto(origin + '/desk/catalog/products/' + product);
+  const details = { action: 'product-details', recordId: product, region: 'INTERNATIONAL', values: { description: 'Wrong region' } };
+  expect((await page.request.post(origin + '/api/operations', { headers: { Origin: origin }, data: details })).status()).toBe(404);
+  await page.getByRole('button', { name: 'Edit product details' }).click();
+  await page.getByLabel('Product description').fill('Updated sample case description.');
+  await page.getByLabel('Delivery estimate').fill('2–4 days');
+  await page.getByLabel('Search tags (comma separated)').fill('case, CASE, matte');
+  await confirm(page);
+  await expect(page.locator('.product-record-copy').getByText('Updated sample case description.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fixture domestic case', level: 1 })).toBeVisible();
+  await expect(page.getByRole('table').getByText('FIXTURE-BD-BLUE')).toBeVisible();
+  await fixtureDatabase(async (collection, id) => {
+    const item = await collection('products').findOne({ _id: id(product) });
+    expect(item).toMatchObject({ slug: 'fixture-bd', search_tags: ['CASE', 'matte'], is_published: true });
+  });
   expect((await page.request.post(origin + '/api/operations', { headers: { Origin: 'https://cross-site.invalid' }, data })).status()).toBe(403);
   await page.goto(origin + '/desk/content/announcements');
   await page.getByRole('button', { name: 'Add announcement' }).click();

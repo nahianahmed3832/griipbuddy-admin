@@ -8,8 +8,7 @@ import { fixturePassword } from './fixture-password';
 async function signIn(page: Page, suffix: string, root = '') {
   await page.goto(root+'/sign-in');
   await page.getByLabel('Staff email or phone number').fill('0100000000'+suffix);
-  const stagingPassword = suffix === '1' ? process.env.GRIIP_ADMIN_TEST_STAGING_PASSWORD : undefined;
-  await page.getByLabel('Password',{exact:true}).fill(stagingPassword ?? fixturePassword());
+  await page.getByLabel('Password',{exact:true}).fill(fixturePassword());
   await page.getByRole('button',{name:'Sign in'}).click();
   await expect(page).toHaveURL(/\/desk\/overview$/);
 }
@@ -17,10 +16,13 @@ async function signIn(page: Page, suffix: string, root = '') {
 test('super admin opens every registered native view and the full preserved route inventory',async ({page}) => {
   await signIn(page,'1');
   await expect(page.getByRole('heading',{name:'Commerce overview'})).toBeVisible();
+  await expect(page.getByRole('link', { name: /Orders to confirm/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Payments to verify/ })).toBeVisible();
   for (const [section, views] of Object.entries(resources)) {
     for (const [id, view] of Object.entries(views)) {
       await page.goto('/desk/'+section+'/'+id);
       await expect(page.getByRole('heading',{name:view.title,exact:true,level:1}),section+'/'+id).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), section+'/'+id).toBe(true);
     }
   }
   const keys = ['manage-permissions','overview.view','order.view','pre_order.view','product.view','faq.view','review.view','defaults.purchase',
@@ -52,13 +54,21 @@ test('all ten reports render and export CSV and XLSX through the same staff poli
       else expect((await res.body()).subarray(0,2).toString()).toBe('PK');
     }
   }
+  await page.goto('/desk/reports/stock-valuation');
+  await page.getByLabel('Search product or SKU').fill('NO-SUCH-SKU');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page.getByRole('heading', { name: 'No records in this view' })).toBeVisible();
+  const filtered = await page.getByRole('link', { name: 'CSV', exact: true }).getAttribute('href');
+  expect(filtered).toContain('search=NO-SUCH-SKU');
+  expect(await (await page.request.get(filtered!)).text()).not.toContain('FIXTURE-BD-BLUE');
 });
 
 test('warehouse can inspect lots and stock, with cost, reports and international scope enforced',async ({page}) => {
   await signIn(page,'4');
   await page.goto('/desk/inventory/stock');
   await expect(page.getByRole('heading',{name:'Stock',exact:true,level:1})).toBeVisible();
-  await page.getByRole('table').getByRole('link',{name:/Fixture domestic case/}).click();
+  await page.getByRole('table').getByRole('row').filter({hasText:'Fixture warehouse'})
+    .getByRole('link',{name:'Fixture domestic case',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Stock lots'})).toBeVisible();
   await expect(page.getByText('FIXTURE-LOT',{exact:true})).toBeVisible();
   await expect(page.getByRole('columnheader',{name:'Cost per unit'})).toHaveCount(0);
@@ -118,9 +128,12 @@ test('desktop, tablet and phone render without document overflow and support key
     await page.goto('/desk/overview');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     if (width <= 850) {
-      await page.getByRole('button',{name:'Open navigation'}).click();
+      const menu = page.getByRole('button',{name:'Open navigation'});
+      await menu.click();
+      await expect(page.getByRole('button',{name:'Close navigation'})).toBeFocused();
       await expect(page.getByRole('navigation',{name:'Primary navigation'})).toBeVisible();
       await page.keyboard.press('Escape');
+      await expect(menu).toBeFocused();
     }
     await page.keyboard.press('Control+k');
     await page.getByRole('textbox',{name:'Search workspace'}).fill('warehouse');
@@ -130,7 +143,21 @@ test('desktop, tablet and phone render without document overflow and support key
   }
   await page.setViewportSize({width:1440,height:1000});
   await page.goto('/desk/catalog/products');
+  await expect(page.getByRole('columnheader',{name:'Actions'})).toHaveCount(0);
   const { violations } = await new AxeBuilder({page}).analyze();
   expect(violations.filter(rule=>rule.impact==='serious'||rule.impact==='critical')).toEqual([]);
   await page.screenshot({path:testInfo.outputPath('catalog-desktop.png'),fullPage:true});
+  await page.goto('/desk/markets/pricing');
+  await page.getByLabel('Operating region: Bangladesh').click();
+  await page.getByRole('link', { name: 'International', exact: true }).click();
+  await expect(page).toHaveURL(/\/desk\/markets\/pricing\?region=INTERNATIONAL$/);
+  await expect(page.getByRole('heading', { name: 'Regional prices', level: 1 })).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('market-pricing-desktop.png'),fullPage:true});
+  await page.goto('/desk/inventory/stock');
+  await page.getByLabel('Search records').fill('FIXTURE-BD-BLUE');
+  await page.getByRole('combobox', { name: 'Location', exact: true }).selectOption({ label: 'Fixture warehouse' });
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('table').getByText('FIXTURE-BD-BLUE', { exact: true })).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('stock-desktop.png'),fullPage:true});
 });

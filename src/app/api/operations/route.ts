@@ -1,15 +1,17 @@
 import { ApiError, getRegion, obj, sameOrigin, session, str } from '@/lib/api';
 import { executeOperation, operationId } from '@/lib/operations';
 
+const maxBodyBytes = 20_000;
+
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return new Response('Origin denied', { status: 403 });
   const auth = await session();
   if (!auth) return new Response('Sign in required', { status: 401 });
-  if (Number(request.headers.get('content-length')) > 8192 || !request.headers.get('content-type')?.startsWith('application/json')) {
+  if (Number(request.headers.get('content-length')) > maxBodyBytes || !request.headers.get('content-type')?.startsWith('application/json')) {
     return new Response('Invalid request', { status: 400 });
   }
   const raw = await request.text();
-  if (raw.length > 8192) return new Response('Invalid request', { status: 400 });
+  if (Buffer.byteLength(raw) > maxBodyBytes) return new Response('Invalid request', { status: 400 });
   let body;
   try { body = obj(JSON.parse(raw)); }
   catch { return new Response('Invalid request', { status: 400 }); }

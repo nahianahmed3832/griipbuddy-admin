@@ -30,6 +30,7 @@ export function Table({ columns, rows, title, page, total, previous, next, empty
   const selectedRows = rows.filter(row => selected.includes(row.id));
   const all = rows.length > 0 && selectedRows.length === rows.length;
   const some = selectedRows.length > 0;
+  const workflows = rows.some(row => row.legacy);
   function toggle(id: string) { setSelected(keys => keys.includes(id) ? keys.filter(key => key !== id) : [...keys, id]); }
   function download() {
     const lines = [columns.map(col => col.label), ...(some ? selectedRows : rows).map(row => row.values)];
@@ -52,14 +53,15 @@ export function Table({ columns, rows, title, page, total, previous, next, empty
     </div>}
     {handover && <div className="bulk-bar"><Handover orderIds={selectedRows.map(row => row.id)} options={handover} clear={() => setSelected([])}/></div>}
     {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label={title + ' table'}>
-      <table><thead><tr>{exportable && <th scope="col" className="select-col"><input type="checkbox" checked={all} aria-label="Select all visible records" onChange={() => setSelected(all ? [] : rows.map(r => r.id))}/></th>}
-        {columns.map(col => <th key={col.label} scope="col">{col.label}</th>)}{rows.some(r => r.href || r.legacy) && <th scope="col">Actions</th>}</tr></thead>
+      <table><thead><tr>{exportable && <th scope="col" className="select-col"><input type="checkbox" checked={all} aria-label="Select all visible records"
+        ref={node => { if (node) node.indeterminate = some && !all; }} onChange={() => setSelected(all ? [] : rows.map(r => r.id))}/></th>}
+        {columns.map(col => <th key={col.label} scope="col">{col.label}</th>)}{workflows && <th scope="col">Workflow</th>}</tr></thead>
         <tbody>{rows.map(row => <tr key={row.id}>
           {exportable && <td className="select-col"><input type="checkbox" checked={selected.includes(row.id)} onChange={() => toggle(row.id)} aria-label={'Select ' + (row.values[0] || row.id)}/></td>}
           {row.values.map((value,i) => <td key={columns[i].label} className={i === 0 ? 'primary-cell' : ''}>
             {i === 0 && row.href ? <Link className="table-link" href={row.href}>{value || 'View record'}</Link>
               : value && columns[i].kind === 'badge' ? <Badge value={value}/> : value || <span className="dim">—</span>}</td>)}
-          {rows.some(r => r.href || r.legacy) && <td>{row.legacy && <a className="table-link inline" href={row.legacy} target="_blank" rel="noreferrer">Workflow <ArrowUpRight size={14}/></a>}</td>}
+          {workflows && <td>{row.legacy && <a className="table-link inline" href={row.legacy} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={14}/></a>}</td>}
         </tr>)}</tbody>
       </table>
     </div> : <Empty detail={empty}/>}

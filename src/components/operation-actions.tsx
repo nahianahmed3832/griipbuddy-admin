@@ -31,7 +31,7 @@ function recordOperations(endpoint: string, record: RecordData, region: Region):
     case '/product/admin/variants': return ['variant-price', 'purchase-rate'];
     case '/cms/admin/top-bar-messages': return ['announcement-edit'];
     case '/product/admin/all': return region === 'INTERNATIONAL'
-      ? ['product-publication', 'product-coverage'] : ['product-publication'];
+      ? ['product-details', 'product-publication', 'product-coverage'] : ['product-details', 'product-publication'];
     case '/coupon/admin/all': return ['coupon-status'];
     default: return [];
   }
@@ -77,6 +77,8 @@ export async function OperationActions({ endpoint, auth, region, record, id }: {
   }
 
   const initial = {
+    description: str(record?.description), delivery: str(record?.approximately_delivery_time),
+    tags: arr(record?.search_tags).map(str).filter(Boolean).join(', '),
     message: str(record?.message),
     enabled: String(endpoint === '/product/admin/all' ? record?.is_published === true
       : endpoint === '/coupon/admin/all' ? record?.isActive === true : record?.enabled !== false),

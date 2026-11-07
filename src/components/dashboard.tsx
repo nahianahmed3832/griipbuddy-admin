@@ -23,7 +23,7 @@ export function Period({ q, region, path }: { q: Query; region: Region; path: st
 export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
   const authorized = has(auth.staff, 'overview.view');
   const scope = reportQuery(q, region);
-  const names = ['sales','fulfilment','inventory','finance','actions','preorders'];
+  const names = ['sales','fulfilment','inventory','finance','actions', ...(region === 'BD' && has(auth.staff,'pre_order.view') ? ['preorders'] : [])];
   const data = authorized ? await Promise.allSettled(names.map(name => api(url('/analytics/overview/'+name, scope), auth.token))) : [];
   const sections = Object.fromEntries(names.map((name, index) => {
     const outcome = data[index];
@@ -40,13 +40,13 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
   const points = arr(obj(sales.series).points).map(obj).slice(-21).map((point,index) => {
     const metric = valueAt(point, 'deliveredValue|deliveredProductValue|revenue|delivered|bookedProductValue|bookings');
     const value = typeof metric === 'number' ? metric : obj(metric).productValue;
-    return { key: str(point.date) || str(point.label) || String(index + 1), value: typeof value === 'number' ? value : 0 };
+    return { key: str(point.key) || str(point.date) || str(point.label) || String(index + 1), value: typeof value === 'number' ? value : 0 };
   });
   const maximum = Math.max(1, ...points.map(point => point.value));
   const rq = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
   const queue = [
-    { label: 'Orders to confirm', value: valueAt(actions, 'orders.toConfirm'), href: '/desk/orders' + rq },
-    { label: 'Payments to verify', value: valueAt(actions, 'orders.paymentsToVerify'), href: '/desk/payments/transactions' + rq },
+    { label: 'Orders to confirm', value: valueAt(actions, 'orders.toConfirm.orders'), href: '/desk/orders' + rq },
+    { label: 'Payments to verify', value: valueAt(actions, 'orders.paymentsToVerify.orders'), href: '/desk/payments/transactions' + rq },
     { label: 'Low stock SKUs', value: valueAt(actions, 'stock.lowStock'), href: '/desk/inventory' + rq },
     { label: 'Pre-orders awaiting advance', value: valueAt(actions, 'preorders.awaitingAdvance'), href: '/desk/orders/preorders' + rq },
   ].filter(item => typeof item.value === 'number' && (
@@ -69,7 +69,7 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
         <section className="panel trend"><div className="panel-header"><div><h2>Sales activity</h2><p>Delivered product value over time</p></div><span className="light-tag"><span className="environment-dot"/> {currency}</span></div>
           {points.length && points.some(point => point.value > 0) ? <div className="bars" aria-label="Delivered value by date">{points.map((point,index) =>
             <div className="bar-wrap" key={point.key + index} title={point.key + ': ' + printable(point.value,'money',currency)}>
-              <span className="bar" style={{height: Math.max(3, point.value / maximum * 100) + '%'}}/><span>{index % 4 === 0 ? point.key.slice(-5) : ''}</span>
+              <span className="bar" style={{height: (point.value > 0 ? Math.max(3, point.value / maximum * 100) : 0) + '%'}}/><span>{index % 4 === 0 ? (point.key.length === 10 ? point.key.slice(5) : point.key) : ''}</span>
             </div>)}</div> : <div className="trend-empty"><div className="empty-chart" aria-hidden><i/><i/><i/><i/></div>
             <strong>No delivered sales in this period</strong><p>Adjust the date range to review earlier activity.</p></div>}
           <div className="panel-foot"><span>Source · order analytics</span>{has(auth.staff,'report.sales_summary.view') && <Link href={'/desk/reports/sales-summary'+rq}>Sales summary <ArrowRight size={15}/></Link>}</div>
@@ -84,8 +84,8 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
       <div className="overview-grid overview-secondary">
         <section className="panel"><div className="panel-header"><div><h2>Cash with courier</h2><p>Outstanding COD in the recovered order ledger</p></div></div>
           <div className="compact-value">{printable(valueAt(finance,'codWithCourier.amount'),'money',currency) || '—'}<small>{label(valueAt(finance,'codWithCourier.orders'))} orders</small></div></section>
-        <section className="panel"><div className="panel-header"><div><h2>Pre-order pipeline</h2><p>Awaiting payment and delivery</p></div></div>
-          <div className="compact-value">{label(preorders.outstandingOrders)}<small>Outstanding pre-orders</small></div></section>
+        {preorders && <section className="panel"><div className="panel-header"><div><h2>Pre-order pipeline</h2><p>Awaiting payment and delivery</p></div></div>
+          <div className="compact-value">{label(preorders.outstandingOrders)}<small>Outstanding pre-orders</small></div></section>}
       </div>
     </> : <div className="notice" id="work-queue"><CircleAlert size={17}/> Overview metrics require the Overview permission. Your available modules are below.</div>}
     <div className="section-line"><div><h2>Quick access</h2><p>Open tools available to your account.</p></div>

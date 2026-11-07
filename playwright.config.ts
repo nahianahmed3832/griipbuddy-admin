@@ -16,7 +16,7 @@ export default defineConfig({
   reporter:'list',
   use:{baseURL:base,browserName:'chromium',trace:'retain-on-failure'},
   webServer:[
-    {command:'npm run start',url:base,reuseExistingServer:false,env:{...env,GRIIP_ADMIN_TARGET:'staging'}},
+    {command:'npm run start',url:base,reuseExistingServer:false,env:{...env,GRIIP_ADMIN_TARGET:'fixture'}},
     {command:'npx next start --hostname 127.0.0.1 --port 4327',url:fixture,reuseExistingServer:false,
       env:{...env,GRIIP_ADMIN_TARGET:'fixture',GRIIP_ADMIN_FIXTURE_WRITES:'1',
         GRIIP_ADMIN_FIXTURE_PARITY_WRITES:process.env.GRIIP_ADMIN_TEST_FIXTURE_PARITY === '1' ? '1' : '',

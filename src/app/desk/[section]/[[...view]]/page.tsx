@@ -42,11 +42,11 @@ export default async function Desk({ params, searchParams }: {
     else tabs.unshift(['checkout','Checkout methods']);
   }
   const active = view[0] ?? tabs[0]?.[0];
-  const destinations = nav.flatMap(item => [
+  const destinations = [...new Map(nav.flatMap(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
       .map(([key,res]) => ({label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
-  ]);
+  ]).map(destination => [destination.label, destination])).values()];
   const resource = active && resources[sectionId]?.[active];
   let content;
   try {
@@ -82,6 +82,7 @@ export default async function Desk({ params, searchParams }: {
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
+    regionPath={'/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
     readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}>
     {!!tabs.length && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active ? 'page' : undefined}>{label}</Link>)}</nav>}

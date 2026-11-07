@@ -107,6 +107,14 @@ export const operations = {
     label: 'Edit publication', description: 'Change whether this product is published in its existing storefront region.',
     permissions: ['product.view', 'product.update'], fields: [enabled],
   },
+  'product-details': {
+    label: 'Edit product details', description: 'Update the description, delivery estimate and search tags for this product.',
+    permissions: ['product.view', 'product.update'], fields: [
+      { ...textField('description', 'Product description', 4000), type: 'textarea' },
+      textField('delivery', 'Delivery estimate', 160, true),
+      textField('tags', 'Search tags (comma separated)', 600, true),
+    ],
+  },
   'product-coverage': {
     label: 'Edit country coverage', description: 'Enter the country codes for this international product, separated by spaces or commas.',
     permissions: ['product.view', 'product.update'], fields: [{ ...textField('countries', 'Country codes', 500, true), type: 'textarea' }],
@@ -388,6 +396,17 @@ export async function executeOperation(id: OperationId, recordId: string, values
       await mutate('/product/admin/publish/' + productId, auth, 'PATCH', { is_published: input.enabled === 'true' });
       break;
     }
+    case 'product-details': {
+      const productId = checkedId(recordId, 'Product');
+      await productInRegion(productId, region, auth);
+      const tags = [...new Map(input.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        .map(tag => [tag.toLowerCase(), tag])).values()];
+      if (tags.length > 24 || tags.some(tag => tag.length > 60)) invalid('Use up to 24 search tags of 60 characters each.');
+      await mutate('/product/' + productId, auth, 'PATCH', {
+        description: input.description, approximately_delivery_time: input.delivery, search_tags: tags,
+      });
+      break;
+    }
     case 'variant-price': {
       const variantId = checkedId(recordId, 'Variant');
       const variant = obj(await api('/product/variant/single/' + variantId, auth.token));
@@ -403,7 +422,8 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const attributes = arr(variant.attributes);
       const attributeValues = obj(variant.attribute_values);
       if (!attributes.length || !Object.keys(attributeValues).length) invalid('This variant needs attribute data before using the existing variant editor.');
-      const prices = { ...obj(variant.prices), [currency]: { regular_price: regular, sale_price: sale } };
+      const currentPrices = obj(variant.prices);
+      const prices = { ...currentPrices, [currency]: { ...obj(currentPrices[currency]), regular_price: regular, sale_price: sale } };
       await mutate('/product/variant/' + productId, auth, 'PATCH', {
         attributes, variants: [{ _id: variantId, attribute_values: attributeValues, prices,
           regular_price: currency === 'BDT' ? regular : variant.regular_price,
