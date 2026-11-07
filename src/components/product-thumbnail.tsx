@@ -1,13 +1,13 @@
 import { Package } from 'lucide-react';
 
-export function ProductThumbnail({ source }: { source: unknown }) {
+export function ProductThumbnail({ source, size = 32 }: { source: unknown; size?: number }) {
   const configured = process.env.GRIIP_ADMIN_IMAGE_ORIGIN;
   if (configured && typeof source === 'string') {
     try {
       const image = new URL(source);
       if (image.protocol === 'https:' && image.origin === configured && !image.username && !image.password) {
         // eslint-disable-next-line @next/next/no-img-element
-        return <img className="overview-thumbnail" src={image.href} width={32} height={32} alt="" loading="lazy" referrerPolicy="no-referrer"/>;
+        return <img className="overview-thumbnail" src={image.href} width={size} height={size} alt="" loading="lazy" referrerPolicy="no-referrer"/>;
       }
     } catch { /* Old records can contain incomplete asset URLs. */ }
   }

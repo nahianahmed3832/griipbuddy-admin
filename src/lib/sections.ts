@@ -35,7 +35,7 @@ const orders: Resource = {
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
   legacyCreate: 'create-order', legacyDetail: 'order-details/:id',
 };
-const catalogColumns = [title, sku, col('Category', 'category.name'), region, col('Variants', 'variants', 'count'),
+const catalogColumns = [title, sku, col('Category', 'category.name_en|category.name|category.name_bn'), region, col('Variants', 'variants', 'count'),
   col('Publication', 'is_published|isPublished', 'badge')];
 const promo: Resource = {
   title: 'Coupons', endpoint: '/coupon/admin/all', permission: 'coupon.view', rows: 'coupons',
@@ -58,7 +58,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       params: { filter: 'RETURNED' }, legacyCreate: undefined },
   },
   catalog: {
-    products: { title: 'Products', endpoint: '/product/admin/all', permission: 'product.view', region: true, search: 'searchQuery',
+    products: { title: 'All Products', endpoint: '/product/admin/all', permission: 'product.view', region: true, search: 'searchQuery',
       filter: { key: 'isPublished', label: 'Publication', options: ['true','false'] }, columns: catalogColumns,
       legacy: 'products', legacyCreate: 'create-product', legacyDetail: 'product-details/:id' },
     variants: { title: 'Variants', endpoint: '/product/admin/variants', permission: 'product.view', region: true, search: 'searchQuery',

@@ -86,6 +86,8 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
   if (resource.endpoint === '/stocks' || resource.endpoint === '/barcode') {
     const loc = param(q, 'location') ?? '';
     if (mongoId(loc)) params[resource.endpoint === '/stocks' ? 'businessLocationId' : 'business_location'] = loc;
+    const product = param(q, 'product') ?? '';
+    if (resource.endpoint === '/stocks' && mongoId(product)) params.productId = product;
   }
   if (resource.legacy === 'staffs') {
     const roles = arr(obj(await api('/roles?page=1&limit=100', auth.token)).roles)

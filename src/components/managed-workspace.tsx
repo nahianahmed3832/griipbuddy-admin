@@ -236,7 +236,7 @@ async function Listings(context: Context) {
     read(context, url('/catalog/products/' + id + '/events',{after:afterId(q,'eventAfter')})),
   ]) : [];
   return <>
-    <div className="page-actions">{editor(context,'listing-new','Create product draft',[
+    <div className="page-actions" id="create-product">{editor(context,'listing-new','Create product draft',[
       text('sku','Product SKU'), ...fields(), text('category','Category ID'), text('subcategory','Subcategory ID'),
     ],{primary:true})}</div>
     {id && raw !== null && <section className="panel padded managed-record"><div><h2>{str(record.name)}</h2><p className="muted">{state.replaceAll('_',' ')} · {id}</p></div>

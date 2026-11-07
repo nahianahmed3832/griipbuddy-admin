@@ -7,6 +7,7 @@ import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sec
 import { Dashboard, PageHeading } from '@/components/dashboard';
 import { Reports, reportShortcuts } from '@/components/reports';
 import { ResourceDetail, ResourcePage } from '@/components/resources';
+import { ProductCatalog } from '@/components/product-catalog';
 import { Shell } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
 import { CheckoutPanel } from '@/components/checkout-panel';
@@ -86,7 +87,8 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
     else if (sectionId === 'orders' && active === 'orders' && view.length <= 1) content = await WebsiteOrdersPage({ auth, q, region });
     else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region });
-    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
+    else if (sectionId === 'catalog' && active === 'products' && view.length <= 1) content = await ProductCatalog({ auth, q, region });
+    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region,q})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);
     else throw new ApiError(404);

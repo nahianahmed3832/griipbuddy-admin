@@ -3,6 +3,7 @@ import { ArrowUpRight, Plus, Search } from 'lucide-react';
 import { api, ApiError, arr, canWrite, integratedCheckoutEnabled, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { columnText, loadResource, numericCells, param, permitted, printable, valueAt, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
+import { catalogFilters, catalogParams } from '@/lib/catalog-list';
 import { addressLabel } from '@/lib/website-orders';
 import { has, superAdmin, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
@@ -44,7 +45,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   const create = writeKey && has(auth.staff, writeKey) && legacyUrl(resource.legacyCreate);
   const classic = legacyUrl(resource.legacy);
   const searchBy = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : undefined;
-  const query = { region, q: result.search, searchBy, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
+  const product = resource.endpoint === '/stocks' && mongoId(param(q,'product') ?? '') ? param(q,'product') : undefined;
+  const query = { region, product, q: result.search, searchBy, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
   const handover = section.id === 'shipping' && advancedEnabled() && canWrite(auth.staff)
     && has(auth.staff, 'courier.update') && has(auth.staff, 'business_locations.view')
     ? { locations: await loadLocations(auth, region), region } : undefined;
@@ -73,8 +75,11 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
       <span><strong>Regional catalog</strong><small>Visibility and variant price overrides</small></span>
       <span><strong>Shipping and fallback</strong><small>Storefront runtime settings</small></span></div>}
     {section.id === 'shipping' && <div className="notice">Open an order to see its tracking record and available courier actions.</div>}
+    {product && <div className="notice"><span>Showing stock for the selected product.</span>
+      <Link className="table-link" href={url(path,{...query,product:undefined})}>Show all products</Link></div>}
     <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
+      {product && <input type="hidden" name="product" value={product}/>}
       <label className="search-input"><Search size={17}/><input aria-label={resource.search ? 'Search records' : 'Search this page'} name="q" maxLength={80} placeholder={resource.search ? 'Search records…' : 'Filter visible records…'} defaultValue={result.search}/></label>
       {resource.endpoint === '/product/admin/all' && <label className="filter-label">Search by
         <select name="searchBy" defaultValue={searchBy ?? 'text'}><option value="text">Name or description</option><option value="sku">Product SKU</option></select>
@@ -95,8 +100,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   </>;
 }
 
-export async function ResourceDetail({ section, view, resource, id, auth, region }: {
-  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region;
+export async function ResourceDetail({ section, view, resource, id, auth, region, q }: {
+  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region; q: Query;
 }) {
   const prefix = detailPath[resource.endpoint];
   if (!permitted(resource,auth)) throw new ApiError(403);
@@ -122,7 +127,11 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const href = classic && !classic.endsWith('/') ? legacyUrl(classic) : legacyUrl(resource.legacy);
   const heading = resource.endpoint === '/stocks' ? str(obj(raw.variant).sku) : printable(valueAt(raw,columns[0].fields), columns[0].kind);
   const currency = str(raw.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
-  const back = url('/desk/'+section.id+'/'+view,{region});
+  const isCatalogProduct = section.id === 'catalog' && view === 'products';
+  const canViewStock = has(auth.staff, 'stock.view');
+  const canViewLocations = canViewStock && has(auth.staff, 'business_locations.view');
+  const catalog = isCatalogProduct ? catalogFilters(q, canViewStock, canViewLocations) : undefined;
+  const back = url('/desk/'+section.id+'/'+view, catalog ? catalogParams(catalog, region) : {region});
   const storefrontWrites = process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff);
   const checkout = resource.endpoint === '/order' && integratedCheckoutEnabled() && superAdmin(auth.staff)
     ? obj(await api('/commerce/admin/orders/' + id, auth.token).catch(error => {
@@ -139,6 +148,8 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
         <Link className="button secondary" href={url('/desk/payments/payment-desk',{region,order:id})}>Manage payments</Link>
       </>}
       {checkout?.hasReceipt === true && <Link className="button secondary" href={url('/desk/payments/checkout',{region,receipt:id})}>Review checkout receipt</Link>}
+      {isCatalogProduct && canViewStock && <Link className="button secondary"
+        href={url('/desk/inventory/stock', {region, product:id, location:catalog?.location})}>View stock</Link>}
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')

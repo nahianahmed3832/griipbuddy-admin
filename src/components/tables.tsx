@@ -6,12 +6,9 @@ import { ArrowDownToLine, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown
 import type { Column } from '@/lib/sections';
 import type { ViewRow } from '@/lib/data';
 import { Handover, type HandoverOptions } from './handover';
+import { downloadCsv } from '@/lib/csv';
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-const csvCell = (value: string) => {
-  const escaped = /^[\s\u200B\uFEFF]*[=+@-]|^[\r\n\t]/.test(value) ? "'" + value : value;
-  return '"' + escaped.replaceAll('"', '""') + '"';
-};
 export function Badge({ value }: { value: string }) {
   const state = value.toUpperCase().replaceAll(' ','_');
   const tone = /^(ACTIVE|PUBLISHED|DELIVERED|IN_STOCK|PAID|APPROVED|ENABLED)$/.test(state) ? 'green'
@@ -48,12 +45,7 @@ export function Table({ columns, rows, title, page, total, previous, next, empty
   function toggle(id: string) { setSelected(keys => keys.includes(id) ? keys.filter(key => key !== id) : [...keys, id]); }
   function download() {
     const lines = [columns.map(col => col.label), ...(some ? selectedRows : visible).map(row => row.values)];
-    const href = URL.createObjectURL(new Blob(['\uFEFF'+lines.map(row => row.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = href;
-    link.download = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + (some ? '-selected.csv' : '-page.csv');
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    downloadCsv(title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + (some ? '-selected.csv' : '-page.csv'), lines);
   }
   return <section className="panel data-panel" aria-label={title}>
     <div className="panel-header"><div><h2>{title}</h2><p>{total !== undefined ? total + ' matching records' : rows.length + ' records on this page'}</p></div>
