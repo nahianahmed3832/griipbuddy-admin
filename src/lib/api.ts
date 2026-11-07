@@ -57,6 +57,11 @@ export function canWrite(staff: Staff) {
   return superAdmin(staff) && (local || stage || preview || integration);
 }
 
+// The hosted shared previews currently accept only their designated fixture login.
+export function staffEnrollmentAvailable() {
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging';
+}
+
 export function legacyUrl(path?: string) {
   const base = connection().legacy;
   if (!base || !path || !/^[a-zA-Z0-9_/-]+$/.test(path)) return undefined;

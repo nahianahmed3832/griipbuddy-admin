@@ -21,7 +21,8 @@ test('super admin opens every registered native view and the full preserved rout
   for (const [section, views] of Object.entries(resources)) {
     for (const [id, view] of Object.entries(views)) {
       await page.goto('/desk/'+section+'/'+id);
-      await expect(page.getByRole('heading',{name:view.title,exact:true,level:1}),section+'/'+id).toBeVisible();
+      const title = id === 'barcodes' ? /^All Barcodes \([\d,]+\)$/ : view.title;
+      await expect(page.getByRole('heading',{name:title,exact:true,level:1}),section+'/'+id).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), section+'/'+id).toBe(true);
     }
   }

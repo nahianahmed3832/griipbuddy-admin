@@ -85,18 +85,17 @@ export const resources: Record<string, Record<string, Resource>> = {
     warehouses: { title: 'Locations', endpoint: '/business-location', permission: 'business_locations.view', rows: 'businessLocations', region: true,
       columns: [col('Location', 'business_location_name|name'), col('Type', 'business_location_type|type'), region, state], legacy: 'business-location/all',
       legacyCreate: 'business-location/create', legacyDetail: 'business-location/edit/:id' },
-    purchases: { title: 'All Purchases', endpoint: '/purchase', permission: 'purchase.view',
+    purchases: { title: 'All Purchases', endpoint: '/purchase', permission: 'purchase.view', region: true,
       columns: [col('Purchase', 'purchase_number|purchase_serial_id|purchase_id|invoice_number|reference'), col('Supplier', 'supplier.name|supplier.supplier_name'), location, state,
-        col('Date', 'purchase_date|createdAt', 'date')],
+        col('Purchase date', 'purchase_date|createdAt|created_at', 'date')],
       legacy: 'purchase/all', legacyDetail: 'purchase/edit/:id' },
     suppliers: { title: 'Suppliers', endpoint: '/supplier', permission: 'supplier.view',
       columns: [col('Supplier', 'name|supplier_name'), col('Type', 'supplier_type|type'), state, date], legacy: 'suppliers/all',
       legacyCreate: 'suppliers/create', legacyDetail: 'update-supplier/:id' },
     rates: { title: 'Default Purchase List', endpoint: '/purchase/default/all', permission: 'defaults.purchase',
       columns: [col('Supplier', 'supplier.name|supplier.supplier_name'), col('Product', 'product.name'), sku, date], legacy: 'barcodes/default-rate/all', legacyCreate: 'barcodes/default-rate' },
-    barcodes: { title: 'Barcodes', endpoint: '/barcode', permission: 'barcode.view',
-      filter: { key: 'status', label: 'Barcode status', options: ['IN_STOCK','ASSIGNED','SOLD','RETURNED'] },
-      columns: [col('Barcode', 'barcode'), sku, location, state, col('Updates', 'updated_logs', 'count')], legacy: 'barcodes', legacyCreate: 'barcodes/generate' },
+    barcodes: { title: 'All Barcodes', endpoint: '/barcode', permission: 'barcode.view',
+      columns: [col('Barcode', 'barcode'), sku, state, col('Condition', 'conditions'), date], legacy: 'barcodes' },
     adjustments: { title: 'Adjustments', endpoint: '/stocks/adjustment', permission: 'stock.view',
       columns: [col('Reason', 'reason|note|adjustment_type'), location, col('Quantity', 'quantity|total_quantity'), state, date],
       legacy: 'stock-adjustment/all', legacyCreate: 'stock-adjustment/create' },
@@ -189,7 +188,7 @@ export function visibleSections(staff: Staff) {
   return sections.filter(({ id }) => {
     if (['overview', 'settings', 'workflows'].includes(id)) return true;
     if (id === 'reports') return staff.permissions.some(key => key.startsWith('report.'));
-    if (id === 'payments' && superAdmin(staff)) return true;
+    if (['payments', 'staff'].includes(id) && superAdmin(staff)) return true;
     return Object.values(resources[id] ?? {}).some(item => has(staff, item.permission));
   });
 }

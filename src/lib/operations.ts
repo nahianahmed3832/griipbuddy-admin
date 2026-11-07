@@ -1,4 +1,5 @@
-import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from './api';
+import { api, ApiError, arr, canWrite, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
+import { barcodePattern, receiptLimit } from './barcode-data';
 import { has, type Region, type Staff } from './sections';
 
 export type Choice = { value: string; label: string };
@@ -45,7 +46,8 @@ export const operations = {
   'barcode-receive': {
     label: 'Receive barcodes', description: 'Enter one code per line. Each variant needs a default purchase rate and supplier.',
     permissions: ['barcode.view', 'barcode.assign.stock', 'business_locations.view'],
-    fields: [location('location', 'Receiving location'), codes, note],
+    fields: [location('location', 'Receiving location'), { ...codes, limit: receiptLimit * 61 },
+      { name: 'purchaseDate', label: 'Purchase date', type: 'date', optional: true }, note],
   },
   'order-note': {
     label: 'Add staff note', description: 'Record an internal note on this order. The order API records the staff member and time.',
@@ -169,11 +171,10 @@ function checkedId(value: string, label: string) {
 }
 
 const refId = (record: unknown) => str(obj(record)._id) || str(record);
-const barcodesPattern = /^[a-z\d-]{1,60}$/i;
 function barcodeList(value: string) {
   const list = value.split(/[\s,]+/).filter(Boolean);
-  if (!list.length || list.length > 50 || list.some(code => !barcodesPattern.test(code))) {
-    invalid('Enter between 1 and 50 valid barcode labels.');
+  if (!list.length || list.length > receiptLimit || list.some(code => !barcodePattern.test(code))) {
+    invalid(`Enter between 1 and ${receiptLimit} valid barcode labels.`);
   }
   if (new Set(list).size !== list.length) invalid('Remove duplicate barcodes before continuing.');
   return list;
@@ -288,10 +289,17 @@ export async function executeOperation(id: OperationId, recordId: string, values
         products.add(refId(unit.product));
       }
       for (const product of products) await productInRegion(product, region, auth);
-      await mutate('/barcode/create-purchase-from-barcodes', auth, 'POST', {
-        barcodes, business_location: refId(receiving), admin_note: input.note,
+      const response = await requestApi(url('/barcode/create-purchase-from-barcodes', { region }), auth.token, {
+        method: 'POST', body: JSON.stringify({
+          barcodes, business_location: refId(receiving), admin_note: input.note,
+          purchase_date: input.purchaseDate ? utcDate(input.purchaseDate).toISOString() : undefined,
+        }),
       });
-      break;
+      const result = obj(await response.json().catch(() => null));
+      if (!response.ok) throw new ApiError(response.status, str(result.message).slice(0, 320) || undefined);
+      if (result.success !== true) throw new ApiError(502);
+      const purchase = obj(obj(result.data).purchase);
+      return { purchaseId: refId(purchase), purchaseNumber: purchase.purchase_number };
     }
     case 'courier-dispatch':
     case 'order-note':

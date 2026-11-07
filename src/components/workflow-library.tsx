@@ -10,8 +10,8 @@ import { PageHeading } from './dashboard';
 import { Empty } from './tables';
 
 const nativeWorkflows: Record<string, { action: OperationId; href: string }> = {
-  'barcodes/generate': { action: 'barcode-generate', href: '/desk/inventory/barcodes' },
-  'barcodes/receive': { action: 'barcode-receive', href: '/desk/inventory/barcodes' },
+  'barcodes/generate': { action: 'barcode-generate', href: '/desk/inventory/generate-barcodes' },
+  'barcodes/receive': { action: 'barcode-receive', href: '/desk/inventory/scan-to-receive' },
   'barcodes/default-rate': { action: 'purchase-rate', href: '/desk/catalog/variants' },
   'suppliers/create': { action: 'supplier-create', href: '/desk/inventory/suppliers' },
   'stock-adjustment/create': { action: 'stock-adjust', href: '/desk/inventory/stock' },

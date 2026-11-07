@@ -1,0 +1,79 @@
+.crm-metric:hover, .crm-metric:focus-visible {
+  border-color: #b49ccf;
+  background: #fcfaff;
+}
+.crm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+}
+.crm-search { flex: 1 1 230px; }
+.crm-filters select { width: 100%; }
+.crm-filter-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.crm-filter-actions .button { min-height: 39px; }
+.crm-table { min-width: 660px; }
+.crm-table th:first-child { width: 38%; }
+.crm-table :is(th, td):last-child { width: 54px; min-width: 54px; }
+.crm-identity { display: flex; gap: 10px; align-items: center; }
+.crm-identity small { display: block; color: var(--muted); }
+.crm-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+  font-size: 12px;
+}
+.crm-tags { display: flex; flex-wrap: wrap; list-style: none; padding: 0; margin: 4px 0 0; gap: 4px; }
+.crm-tags li { border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.crm-verified { display: inline-flex; align-items: center; gap: 5px; color: #205d43; font-weight: 650; }
+.crm-pagination { flex-wrap: wrap; }
+.crm-pagination > div { margin-left: auto; }
+.crm-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.crm-back { margin-left: -12px; min-height: 30px; }
+.crm-profile-layout, .crm-create-layout { display: grid; grid-template-columns: minmax(225px, 1fr) minmax(0, 2.25fr); gap: 15px; align-items: start; }
+.crm-profile-main { display: grid; gap: 15px; min-width: 0; }
+.crm-profile-main section { scroll-margin-top: 85px; }
+.crm-contact .panel-header { justify-content: flex-start; }
+.crm-contact-list { display: grid; gap: 13px; margin: 0; }
+.crm-contact-list dt, .crm-order-metrics dt { color: var(--muted); font-size: 11px; font-weight: 650; }
+.crm-contact-list dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.crm-contact-list dd small { margin-left: 4px; }
+.crm-id { font-family: monospace; font-size: 12px; }
+.crm-order-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 13px 18px; margin: 0; }
+.crm-order-metrics dd { margin: 4px 0 0; font-size: 15px; font-weight: 750; }
+.crm-note { border-bottom: 1px solid var(--line); }
+.crm-note > button { justify-self: start; }
+.crm-timeline { list-style: none; margin: 0; padding: 14px 18px; }
+.crm-timeline li { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 9px; }
+.crm-timeline li + li { margin-top: 12px; }
+.crm-timeline li > div { padding-bottom: 11px; border-bottom: 1px solid var(--line); }
+.crm-timeline li:last-child > div { padding-bottom: 0; border: 0; }
+.crm-timeline-dot { width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.crm-timeline p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 3px 0; }
+.crm-event { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
+.crm-event time { color: var(--muted); font-size: 11px; }
+.crm-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.crm-create-layout { grid-template-columns: minmax(0, 2fr) minmax(215px, 1fr); max-width: 1000px; }
+.crm-create-form { gap: 16px; }
+.crm-create-guide { display: grid; gap: 10px; }
+.crm-create-guide p { color: var(--muted); font-size: 13px; }
+@media (max-width: 760px) {
+  .crm-profile-layout, .crm-create-layout { grid-template-columns: minmax(0, 1fr); }
+  .crm-table { min-width: 0; }
+  .crm-table :is(th, td):nth-child(n+3):not(:last-child) { display: none; }
+  .crm-table th:first-child { width: auto; }
+  .crm-table :is(th, td):last-child { width: 48px; min-width: 48px; padding-inline: 6px; }
+}
+@media (max-width: 510px) {
+  .crm-filters { padding-inline: 12px; }
+  .crm-filters > label { flex: 1 1 135px; }
+  .crm-filters > .crm-search, .crm-filter-actions { flex-basis: 100%; }
+  .crm-order-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

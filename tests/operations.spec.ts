@@ -96,7 +96,7 @@ test('native stock actions reconcile the physical and global counts and reject c
   await expect.poll(quantities).toEqual([9, 2, 11]);
 });
 
-test('native receiving creates a purchase and supports a partial scanned return', async ({ page }) => {
+test('Smart Inventory prints labels, receives a dated purchase, and supports a partial scanned return', async ({ page }) => {
   await signIn(page);
   await page.goto(origin + '/desk/inventory/suppliers');
   await page.getByRole('button', { name: 'Add supplier' }).click();
@@ -111,29 +111,69 @@ test('native receiving creates a purchase and supports a partial scanned return'
   await page.getByLabel('Unit cost').fill('300');
   await confirm(page);
   await page.goto(origin + '/desk/inventory/barcodes');
-  await page.getByRole('button', { name: 'Generate barcodes' }).click();
-  await page.getByLabel('Variant SKU').fill('FIXTURE-BD-BLUE');
+  await page.getByRole('link', { name: 'Generate Barcodes', exact: true }).click();
+  await page.getByLabel('Product name or SKU').fill('FIXTURE-BD-BLUE');
+  await page.getByRole('button', { name: 'Find variants' }).click();
+  await page.getByRole('list', { name: 'Matching variants' }).getByRole('button', { name: /FIXTURE-BD-BLUE/ }).click();
   await page.getByLabel('Quantity').fill('2');
-  await confirm(page);
-  const codes = (await page.getByLabel('Generated barcodes').inputValue()).split('\n');
-  expect(codes).toHaveLength(2);
-  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Generate labels' }).click();
+  await page.getByRole('button', { name: 'Preview labels' }).click();
+  const preview = page.getByRole('dialog', { name: 'Print 2 labels' });
+  const codes = await preview.locator('.barcode-label .sr-only').allTextContents();
+  expect(new Set(codes).size).toBe(2);
+  expect(codes.every(code => /^\d{13}$/.test(code))).toBe(true);
+  expect(await preview.locator('.barcode-label svg').evaluateAll(images => images.map(image => image.textContent))).toEqual(codes);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('.barcode-print-sheet[open] .barcode-label')).toHaveCount(2);
+  await expect(page.locator('.shell')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await preview.getByRole('button', { name: 'Close' }).click();
 
-  await page.getByRole('button', { name: 'Receive barcodes' }).click();
-  await page.getByLabel('Receiving location').selectOption(warehouse);
-  await page.getByLabel('Scanned barcodes').fill(codes.join('\n'));
-  await confirm(page);
-  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByRole('link', { name: 'All Barcodes', exact: true }).click();
+  await page.getByLabel('SKU', { exact: true }).fill('FIXTURE-BD-BLUE');
+  await page.getByRole('combobox', { name: 'Used barcode' }).selectOption('false');
+  await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('QC_PENDING');
+  await page.getByRole('combobox', { name: 'Condition', exact: true }).selectOption('NEW');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page.getByRole('heading', { name: 'All Barcodes (2)' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Select all barcodes on this page' }).check();
+  await page.getByRole('button', { name: 'Print selected (2)' }).click();
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'Close' }).click();
+
+  await page.getByRole('link', { name: 'Scan to Receive', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Business location' }).selectOption(warehouse);
+  await page.getByLabel('Purchase date (optional)').fill('2026-10-31');
+  await page.getByLabel('Note (optional)', { exact: true }).fill('Fixture delivery');
+  const scanner = page.getByLabel('Scan or type a barcode');
+  const inventoryAlert = page.getByRole('main').getByRole('alert');
+  for (const code of codes) {
+    await scanner.fill(code);
+    await scanner.press('Enter');
+    await expect(page.getByRole('list', { name: 'Scanned units' }).getByText(code)).toBeVisible();
+  }
+  await scanner.fill(codes[0]);
+  await scanner.press('Enter');
+  await expect(inventoryAlert).toContainText('already in the receiving list');
+  const beforeReceiving = await quantities();
+  await page.getByRole('button', { name: 'Receive 2 units' }).click();
+  await expect(page.getByText(/Received 2 units on purchase/)).toBeVisible();
   const afterReceiving = await quantities();
-  await page.getByRole('button', { name: 'Receive barcodes' }).click();
-  await page.getByLabel('Receiving location').selectOption(warehouse);
-  await page.getByLabel('Scanned barcodes').fill(codes[0]);
-  await confirm(page, 409);
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('already been received');
+  expect(afterReceiving).toEqual([Number(beforeReceiving[0]) + 2, beforeReceiving[1], Number(beforeReceiving[2]) + 2]);
+  await scanner.fill(codes[0]);
+  await scanner.press('Enter');
+  await expect(inventoryAlert).toContainText('already received');
   expect(await quantities()).toEqual(afterReceiving);
-
-  await page.goto(origin + '/desk/inventory/purchases');
-  await page.getByRole('table').getByRole('link').first().click();
+  const purchase = await page.getByRole('link', { name: 'View purchase' }).getAttribute('href');
+  await page.getByRole('link', { name: 'Barcode Logs', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Barcode Logs', exact: true })).toBeVisible();
+  await page.getByLabel('Scan or type a barcode').fill(codes[0]);
+  await page.getByRole('button', { name: 'Load history' }).click();
+  await expect(page.getByRole('list', { name: 'Barcode history' }).getByText('Fixture delivery')).toBeVisible();
+  await page.goto(origin + '/desk/inventory/barcode-logs?region=INTERNATIONAL&barcode=' + codes[0]);
+  await expect(inventoryAlert).toContainText('No unit matches that barcode');
+  await page.goto(origin + purchase);
+  await expect(page.getByText('2026-10-31', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit purchase notes' }).click();
   await page.getByRole('dialog').getByLabel('Purchase notes', { exact: true }).fill('Checked during receipt acceptance');
   await confirm(page);

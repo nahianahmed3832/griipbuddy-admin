@@ -6,6 +6,8 @@ import './workspace.css';
 import './catalog.css';
 import './purchases.css';
 import './categories.css';
+import './customers.css';
+import './locations.css';
 
 export const metadata: Metadata = {
   title: { default: 'GriipBuddy Commerce Admin', template: '%s · GriipBuddy Admin' },

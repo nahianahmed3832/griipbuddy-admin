@@ -35,7 +35,7 @@ export function SignInForm({ action, error }: { action: string; error?: string }
         <label htmlFor="staff-password">Password</label>
         <div className="sign-in-password">
           <input id="staff-password" name="password" type={visible ? 'text' : 'password'}
-            autoComplete="current-password" maxLength={200} required placeholder="Enter your password" />
+            autoComplete="current-password" maxLength={256} required placeholder="Enter your password" />
           <button className="sign-in-reveal" type="button" aria-label={visible ? 'Hide password' : 'Show password'}
             onClick={() => setVisible(!visible)}>
             {visible ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
