@@ -29,6 +29,8 @@ import { AccountingPage } from '@/components/accounting-page';
 import { financeRead, financeWrite } from '@/lib/accounting';
 import { LocationsPage } from '@/components/locations-page';
 import { StaffWorkspace } from '@/components/staff-workspace';
+import { TransactionPage } from '@/components/transactions';
+import { canReadTransactions } from '@/lib/transactions';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +54,9 @@ export default async function Desk({ params, searchParams }: {
   const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
   const integrated = integratedCheckoutEnabled();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
+  const transactions = canReadTransactions(auth);
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
-  const tabs = [...sectionResources.map(([key,res]) => [key, key === 'barcodes' && sectionId === 'inventory' ? 'Smart Inventory' : res.title]), ...managed];
+  const tabs = [...sectionResources.filter(([key]) => !(sectionId === 'payments' && key === 'transactions' && transactions)).map(([key,res]) => [key, key === 'barcodes' && sectionId === 'inventory' ? 'Smart Inventory' : res.title]), ...managed];
   if (sectionId === 'staff' && superAdmin(auth.staff)) tabs.splice(0, tabs.length,
     ['staff', 'Staff directory'], ['roles', 'Roles and permissions'], ['activity', 'Access activity']);
   const inventoryTabs = smartInventoryTabs(auth);
@@ -62,8 +65,9 @@ export default async function Desk({ params, searchParams }: {
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout',integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
-    else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
+    else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Checkout receipts' : 'Checkout methods']);
   }
+  if (sectionId === 'payments' && transactions) tabs.unshift(['transactions', 'Transactions']);
   const accounting = financeRead(auth.staff) || (financeWrite() && has(auth.staff, 'expense.view') && has(auth.staff, 'expense.create'));
   if (sectionId === 'payments' && accounting) tabs.push(['accounting', 'Accounting']);
   const active = unifiedCategory ? 'categories' : view[0] ?? tabs[0]?.[0];
@@ -82,9 +86,10 @@ export default async function Desk({ params, searchParams }: {
     ...(item.id === 'reports' ? reportLinks : []),
     ...Object.entries(resources[item.id] ?? {}).filter(([key,res]) => permitted(res,auth) && !(item.id === 'catalog' && key === 'subcategories'))
       .map(([key,res]) => ({
-        label:res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
+        label:item.id === 'payments' && key === 'transactions' && transactions ? 'Transactions' : res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
         skuSearch: item.id === 'catalog' && key === 'products',
-        recordSearch: Boolean(res.search) && ['orders/orders','catalog/products','inventory/stock','pos/sales'].includes(item.id+'/'+key),
+        recordSearch: Boolean(res.search) && ['orders/orders','catalog/products','inventory/stock','pos/sales'].includes(item.id+'/'+key) ||
+          (transactions && item.id === 'payments' && key === 'transactions'),
       })),
     ...managedViewsFor(auth.staff,item.id)
       .map(([key,label]) => ({label,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
@@ -113,6 +118,7 @@ export default async function Desk({ params, searchParams }: {
     }
     else if (active && managed.has(active) && view.length < 2)
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
+    else if (sectionId === 'payments' && active === 'transactions' && transactions) content = await TransactionPage({ auth, q, region, id: view[1] });
     else if (sectionId === 'payments' && active === 'accounting' && view.length <= 1) content = await AccountingPage({ auth, q, region });
     else if (allowCheckout && active === 'checkout' && view.length < 2) {
       if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});

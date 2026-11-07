@@ -66,6 +66,15 @@ test('managed policy, storefront order, Overview and private receipt share one S
     const replay = await place();
     expect(replay.status()).toBe(200);
     expect((await replay.json()).order.id).toBe(order.id);
+    await page.goto(admin + '/desk/payments/transactions?source=attempts&q=' + order.id);
+    await expect(page.getByRole('heading', { name:'Transactions',exact:true })).toBeVisible();
+    const attempts = page.getByRole('region', { name:'Payment attempts table',exact:true });
+    await expect(attempts.getByRole('cell', { name:'Pending',exact:true })).toBeVisible();
+    await attempts.getByRole('link', { name:order.id,exact:true }).click();
+    await expect(page.getByRole('heading', { name:'Payment attempt',exact:true })).toBeVisible();
+    await expect(page.getByRole('link', { name:'Review checkout receipt',exact:true })).toBeVisible();
+    await expect(page.getByRole('link', { name:'Open order',exact:true })).toHaveAttribute('href', new RegExp(order.id));
+
     const cod = await customer.request.post(storefront + '/api/checkout/place',{ data:{
       key:randomUUID(), market:'BD', method:'cod', lines, review, delivery:payload.delivery,
     }});
@@ -131,6 +140,20 @@ test('managed policy, storefront order, Overview and private receipt share one S
     await expect(page.getByRole('status')).toHaveText('Advance verified.');
     const buyerOrder = await customer.request.get(storefront + '/api/checkout/order?id=' + order.id);
     expect((await buyerOrder.json()).order.payment).toBe('advance-verified');
+    await page.goto(admin + '/desk/payments/transactions');
+    await page.getByRole('searchbox', { name:'Search',exact:true }).fill(reference);
+    await page.getByRole('button', { name:'Apply filters',exact:true }).click();
+    const ledger = page.getByRole('region', { name:'Recorded transactions table',exact:true });
+    await expect(ledger.getByRole('cell', { name:'Successful',exact:true })).toBeVisible();
+    if (evidence) await page.screenshot({path:join(evidence,'transactions-desktop.png')});
+    await page.setViewportSize({width:390,height:844});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    await page.getByRole('link', { name:reference.toUpperCase(),exact:true }).click();
+    await expect(page.getByRole('heading', { name:'Transaction detail',exact:true })).toBeVisible();
+    await expect(page.getByText('External gateway reference', {exact:true})).toBeVisible();
+    if (evidence) await page.screenshot({path:join(evidence,'transaction-mobile.png')});
+    await page.setViewportSize({width:1280,height:900});
+
     await page.goto(admin + '/desk/overview?period=7&refresh=1');
     await page.getByRole('link',{name:/Payments to verify/}).click();
     await expect(page.locator('a[href$="/' + order.id + '?region=BD"]')).toHaveCount(0);

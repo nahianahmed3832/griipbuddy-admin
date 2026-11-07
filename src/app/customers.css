@@ -77,3 +77,9 @@
   .crm-filters > .crm-search, .crm-filter-actions { flex-basis: 100%; }
   .crm-order-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.crm-spending { margin: 0 16px 16px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.crm-spending p { margin-top: 3px; }
+.crm-spending dl { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 0; }
+.crm-spending dl > div { display: flex; gap: 7px; }
+.crm-spending dd { font-weight: 750; margin: 0; font-variant-numeric: tabular-nums; }

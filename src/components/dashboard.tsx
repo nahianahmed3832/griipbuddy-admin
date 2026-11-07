@@ -9,6 +9,7 @@ import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
 import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
+import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
 
 export function PageHeading({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) {
   return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{children && <div className="page-actions">{children}</div>}</div>;
@@ -109,10 +110,27 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
   const authorized = grant('overview.view');
   const { period, scope, refresh } = overviewQuery(q,region);
   const names = ['actions','sales','fulfilment','inventory','finance', ...(region === 'BD' && grant('pre_order.view') ? ['preorders'] : [])];
-  const [results, locations] = authorized ? await Promise.all([
+  const paymentScope = { region, from: scope.from, to: scope.to, currency: scope.currency };
+  const showPayments = authorized && !scope.locations && canReadTransactions(auth);
+  const [results, locations, payments] = authorized ? await Promise.all([
     Promise.allSettled(names.map(name => api(url('/analytics/overview/' + name,{ ...scope, refresh }),auth.token))),
     grant('business_locations.view') ? loadLocations(auth,region).catch(() => []) : [],
-  ]) : [[],[]] as const;
+    showPayments ? Promise.allSettled([
+      readTransactions(auth, paymentScope),
+      readTransactions(auth, { ...paymentScope, source: 'attempts' }),
+    ]) : undefined,
+  ]) : [[],[],undefined] as const;
+  const paymentCount = (source: number, state: string) => {
+    const result = payments?.[source];
+    return result?.status === 'fulfilled'
+      ? result.value.summary.filter(entry => entry.state === state).reduce((sum, entry) => sum + entry.count, 0)
+      : undefined;
+  };
+  const amountByCurrency = (state: string) => {
+    const result = payments?.[0];
+    return result?.status === 'fulfilled' ? result.value.summary.filter(entry => entry.state === state && entry.currency && entry.amount !== null)
+      .map(entry => printable(entry.amount, 'money', entry.currency) + ' ' + entry.currency).join(' · ') : undefined;
+  };
   const payload = Object.fromEntries(names.map((name,index) => {
     const entry = results[index];
     return [name, entry?.status === 'fulfilled' && entry.value ? obj(entry.value) : null];
@@ -268,6 +286,15 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
           suffix:grant('purchase.price.view') ? cost(obj(arr(aging.buckets)[index]).value) : undefined}))}/>
         {link('inventory-aging','inventory_aging','Inventory aging report',{show:'dead'}) && <Link className="table-link" href={link('inventory-aging','inventory_aging','Inventory aging report',{show:'dead'})!.href}>Inventory aging report</Link>}
         <Quality data={inventory.quality}/>
+      </Panel>}
+      {showPayments && <Panel title="Payment activity" detail="Recorded transactions and payment attempts for the selected period. Includes dev simulations."
+        tone="money" icon={<Wallet size={23}/>} link={{href:url(transactionsPath, paymentScope),label:'Open transactions'}}>
+        <div className="overview-metrics">
+          <Metric title="Successful transactions" value={count(paymentCount(0, 'success'))} detail={amountByCurrency('success')}/>
+          <Metric title="Refunds posted" value={count(paymentCount(0, 'refunded'))} detail={amountByCurrency('refunded')}/>
+          <Metric title="Pending attempts" value={count(paymentCount(1, 'pending'))} detail="Awaiting provider action or receipt review"/>
+          <Metric title="Failed attempts" value={count(paymentCount(1, 'failed'))} detail="Declined or rejected attempts"/>
+        </div>
       </Panel>}
       {finance && <Panel title="Money" detail="Operating expenses, cash still with the courier and stock received." tone="money" icon={<Wallet size={23}/>}>
         <div className="overview-split">

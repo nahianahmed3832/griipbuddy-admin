@@ -17,7 +17,7 @@ const filters = (q: Query) => Object.fromEntries(customerFilters.map(key => [key
 type Page = { total: number; page: number; size: number };
 type Listing = Page & { rows: Customer[]; summary: { all: number; active: number; inactive: number; unverified: number } };
 type Profile = Page & { customer: Customer; activity: CustomerActivity[] };
-type Orders = Page & { orders: CustomerOrder[]; delivered: number; cancelled: number; lastOrder?: string };
+type Orders = Page & { orders: CustomerOrder[]; delivered: number; cancelled: number; lastOrder?: string; spending?: { _id: string; net: number; count: number }[] | null };
 
 export function canCreateCustomer(auth: Session) {
   return canWrite(auth.staff) && ['user.view', 'user.create'].every(key => has(auth.staff, key));
@@ -166,6 +166,13 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
               <div><dt>Orders</dt><dd>{number(orders.total)}</dd></div><div><dt>Delivered</dt><dd>{number(orders.delivered)}</dd></div>
               <div><dt>Cancelled</dt><dd>{number(orders.cancelled)}</dd></div><div><dt>Last order</dt><dd>{customerDate(orders.lastOrder)}</dd></div>
             </dl>
+            {orders.spending !== undefined && <div className="crm-spending">
+              <strong>Recorded customer spending</strong>
+              <p className="muted">Posted payments less posted refunds on linked website orders.</p>
+              {orders.spending === null ? <p>Payment records are temporarily unavailable.</p> : orders.spending.length ? <dl>{orders.spending.map(item => <div key={item._id}>
+                <dt>{item._id}</dt><dd>{printable(item.net, 'money', item._id)}</dd>
+              </div>)}</dl> : <p>No posted payments or refunds in this region.</p>}
+            </div>}
             {orders.orders.length > 0 ? <div className="table-scroll"><table aria-label="Linked website orders">
               <thead><tr><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Status</th><th scope="col">Order total</th></tr></thead>
               <tbody>{orders.orders.map(order => <tr key={order._id}>

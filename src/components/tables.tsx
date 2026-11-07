@@ -11,9 +11,9 @@ import { downloadCsv } from '@/lib/csv';
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 export function Badge({ value }: { value: string }) {
   const state = value.toUpperCase().replaceAll(' ','_');
-  const tone = /^(ACTIVE|PUBLISHED|DELIVERED|IN_STOCK|PAID|APPROVED|ENABLED)$/.test(state) ? 'green'
-    : /^(CANCELLED|CANCELED|INACTIVE|FAILED|DISABLED|REJECTED)$/.test(state) ? 'red'
-      : /PENDING|REVIEW|AWAITING|TRANSIT|ASSIGNED/.test(state) ? 'amber' : 'purple';
+  const tone = /^(ACTIVE|PUBLISHED|DELIVERED|IN_STOCK|PAID|SUCCESS|SUCCESSFUL|CAPTURED|APPROVED|ENABLED)$/.test(state) ? 'green'
+    : /^(CANCELLED|CANCELED|INACTIVE|EXPIRED|FAILED|DISABLED|REJECTED)$/.test(state) ? 'red'
+      : /PENDING|AUTHORIZED|REVIEW|AWAITING|TRANSIT|ASSIGNED/.test(state) ? 'amber' : 'purple';
   return <span className={'badge '+tone}><span/>{value.toLowerCase().replaceAll('_',' ').replace(/^./, v => v.toUpperCase())}</span>;
 }
 export function Empty({ title = 'No records in this view', detail = 'Try another filter or operating region.' }: { title?: string; detail?: string }) {

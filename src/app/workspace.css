@@ -92,7 +92,7 @@ body:has(.sidebar-open) { overflow: hidden; }
 
 .overview-heading {
   padding: clamp(17px, 2vw, 27px);
-  background: radial-gradient(ellipse at 100% 0, #e8dcf9 0, transparent 65%), #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -272,12 +272,12 @@ tbody tr[data-selected] td { background: #f5effb; }
 .attention-metrics { grid-template-columns: repeat(4,minmax(0,1fr)); }
 .overview-metrics-three { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .overview-metrics-two { grid-template-columns: repeat(2,minmax(0,1fr)); }
-.overview-card { --card-color:var(--section-color); display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 1px solid var(--line); border-left: 3px solid var(--card-color); border-radius: 10px; background: var(--surface); padding: 14px; overflow-wrap: anywhere; }
+.overview-card { --card-color:var(--section-color); display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 14px; overflow-wrap: anywhere; }
 .overview-card h3 { font-size: 13px; line-height: 1.4; letter-spacing: 0; }
 .overview-card strong { font-size: 24px; font-family: 'Manrope Variable', system-ui, sans-serif; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .overview-card p { color: var(--muted); font-size: 12px; }
 .overview-card p span { display: block; }
-.overview-card.attention-clear { --card-color:#007059; background:#eaf8f2; }
+.overview-card.attention-clear { --card-color:#43635a; background:var(--surface); }
 .overview-card.attention-check { --card-color:#8f4900; background:#fff8e7; }
 .overview-card.attention-urgent { --card-color:#b61830; background:#fff0f2; }
 .attention-card-heading,.overview-value { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
@@ -517,4 +517,48 @@ a.overview-card:hover { box-shadow: 0 3px 12px #29183820; }
   .barcode-label-grid{display:block}
   .barcode-label{display:inline-grid;vertical-align:top;width:58mm;margin:0 2mm 2mm 0;break-inside:avoid;border-color:#ccc}
   .barcode-label .barcode-image{width:50mm;max-width:100%}
+}
+
+.transactions-workspace { display: grid; gap: 16px; }
+.transactions-workspace .page-heading, .transaction-tabs { margin-bottom: 0; }
+.transaction-tabs { padding-inline: 16px; }
+.transaction-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.transaction-filters label { display: grid; gap: 5px; font-weight: 600; }
+.transaction-filters label:first-of-type { grid-column: span 2; }
+.transaction-filters input, .transaction-filters select { min-width: 0; width: 100%; }
+.transaction-filters .page-actions { grid-column: 1 / -1; }
+.transaction-summary h2 { margin-bottom: 4px; }
+.transaction-summary ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.transaction-summary li { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.transaction-summary li strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.transaction-summary li small { color: var(--muted); }
+.transactions-workspace .primary-cell { overflow-wrap: anywhere; }
+@media (max-width: 380px) {
+  .transaction-filters label:first-of-type { grid-column: 1 / -1; }
+}
+
+.managed-inputs { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workspace-toast:not(:empty) {
+  position: fixed; right: 18px; bottom: 18px; z-index: 20;
+  max-width: calc(100% - 36px); display: flex; align-items: center; gap: 10px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px 8px 14px; box-shadow: 0 6px 22px #24143124; font-weight: 650;
+}
+.workspace-toast > svg { color: #007059; flex: none; }
+.workspace-toast .icon-button { margin-left: 5px; width: 30px; height: 30px; }
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-toast:not(:empty) { animation: workspace-reveal 140ms ease-out; }
+  @keyframes workspace-reveal { from { opacity: 0; transform: translateY(5px); } }
 }

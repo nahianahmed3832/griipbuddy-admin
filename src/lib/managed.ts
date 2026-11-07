@@ -72,6 +72,7 @@ const writeActions = {
   'source-map': { method: 'POST', path: () => '/global/admin/sources', permission: 'supplier.update' },
   'shipment-new': { method: 'POST', path: () => '/global/admin/shipments', permission: 'order.update' },
   'shipment-action': { method: 'POST', path: (_: string, id: string, step: string) => '/global/admin/shipments/' + id + '/' + step, permission: 'order.update' },
+  'refund-reconcile': { method: 'POST', path: (_: string, id: string, step: string) => '/global/admin/payments/' + id + '/refunds/' + step + '/reconcile', permission: 'order.update' },
   'payment-action': { method: 'POST', path: (_: string, id: string, step: string) => '/global/admin/payments/' + id + '/' + step, permission: 'order.update' },
   'listing-coverage': { method: 'PUT', path: (_: string, id: string) => '/catalog/products/' + id + '/markets', permission: 'product.update' },
   'listing-transition': { method: 'POST', path: (_: string, id: string, step: string) => '/catalog/products/' + id + '/transitions/' + step, permission: 'product.update' },
@@ -87,7 +88,7 @@ export const marketCode = (value: string) => /^[A-Z]{2}$/.test(value);
 export const managedSlug = (value: string) => value.length <= 160 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 const recordActions: ManagedAction[] = ['list-update', 'price-versions', 'campaign-update', 'group-update', 'listing-edit',
   'listing-variant', 'listing-price', 'listing-coverage', 'listing-transition', 'import-retry', 'bin-new', 'lot-bin',
-  'purchase-receive', 'purchase-cancel', 'shipment-action', 'payment-action', 'taxonomy-edit'];
+  'purchase-receive', 'purchase-cancel', 'shipment-action', 'payment-action', 'refund-reconcile', 'taxonomy-edit'];
 const keyedActions: ManagedAction[] = ['purchase-new','purchase-receive'];
 const shipSteps = ['pick','pack','cancel','dispatch','tracking','sync','return'];
 const paymentSteps = ['review','collect','reconcile','refunds','disputes/notes'];
@@ -123,6 +124,7 @@ export async function writeManaged(action: ManagedAction, market: string, id: st
     || ((action === 'taxonomy-new' || action === 'taxonomy-edit') && !/^[0-3]$/.test(step))
     || (action === 'shipment-action' && !shipSteps.includes(step))
     || (action === 'payment-action' && !paymentSteps.includes(step))
+    || (action === 'refund-reconcile' && !mongoId(step))
     || (keyedActions.includes(action) && !/^[a-zA-Z0-9._-]{8,80}$/.test(key))) {
     throw new ApiError(400, 'Choose a valid market, record and operation.');
   }
@@ -137,18 +139,6 @@ export async function writeManaged(action: ManagedAction, market: string, id: st
     delete body.currency;
   }
   if (action === 'lot-bin' && !body.bin) body.bin = null;
-  if (action === 'payment-action' && step === 'review') {
-    if (body.decision === 'approve') {
-      const details = obj(await api('/global/admin/payments/' + id, auth.token));
-      const payment = obj(details.payment);
-      if (payment.provider === 'manual' && (payment.evidenceSubmitted !== true || body.verifiedAmount !== payment.amount
-        || !str(body.verifiedReference) || str(body.verifiedReference).toUpperCase() !== str(obj(details.evidence).reference).toUpperCase())) {
-        throw new ApiError(422, 'Enter the matching receipt reference and exact amount.');
-      }
-    }
-    delete body.verifiedReference;
-    delete body.verifiedAmount;
-  }
   if (action === 'shipment-new' || action === 'shipment-action' && step === 'return' || action === 'payment-action' && step === 'refunds') {
     if (!/^[a-f0-9-]{36}$/i.test(key)) throw new ApiError(400, 'A retry reference is required.');
     body.key = key;

@@ -65,6 +65,7 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
       await response.json();
       key.current = '';
       dialog.current?.close();
+      window.dispatchEvent(new CustomEvent('griip-admin-saved', { detail: 'Operation completed.' }));
       router.refresh();
     } catch {
       setError('The request could not be confirmed. Check the record before retrying.');
@@ -83,9 +84,9 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
     <dialog ref={dialog} className="form-dialog managed-dialog" aria-labelledby={heading} onCancel={event => {
       if (busy.current) event.preventDefault();
     }}>
-      <form className="stack-form" onSubmit={submit} onChange={() => { key.current = ''; }}>
+      <form className="stack-form" aria-busy={saving} onSubmit={submit} onChange={() => { key.current = ''; }}>
         <div><h2 id={heading}>{label}</h2><p>{description || 'Confirm the change in the ' + market + ' workspace.'}</p></div>
-        <div className="managed-fields">{fields.map(field => {
+        <fieldset className="managed-fields managed-inputs" disabled={saving}>{fields.map(field => {
           const value = String(field.value ?? '');
           const required = !field.optional;
           return <label key={field.name}>
@@ -99,7 +100,7 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
                 type={field.type === 'datetime' ? 'datetime-local' : field.type === 'decimal' ? 'number' : field.type ?? 'text'} maxLength={240} step={field.type === 'number' ? '1' : field.type === 'datetime' ? '0.001' : field.type === 'decimal' ? '0.01' : undefined} required={required}/>}
             {field.hint && <small>{field.hint}</small>}
           </label>;
-        })}</div>
+        })}</fieldset>
         {error && <p className="notice warn" role="alert">{error}</p>}
         <div className="page-actions">
           <button type="button" className="button secondary" disabled={saving} onClick={() => dialog.current?.close()}>Cancel</button>

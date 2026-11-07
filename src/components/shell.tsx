@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import icon from '@/app/icon.png';
-import { ArrowRight, Bell, ChevronDown, Command, LogOut, Menu, Search, ShoppingCart, X } from 'lucide-react';
+import { ArrowRight, Bell, Check, ChevronDown, Command, LogOut, Menu, Search, ShoppingCart, X } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import type { Region, Section, Staff } from '@/lib/sections';
 import { SectionIcon } from './icons';
@@ -24,6 +24,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [notice, setNotice] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
   const sidebar = useRef<HTMLElement>(null);
   const menu = useRef<HTMLButtonElement>(null);
@@ -59,6 +60,18 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
     desktop.addEventListener('change', closeOnDesktop);
     return () => { desktop.removeEventListener('change', closeOnDesktop); trigger?.focus(); };
   }, [open]);
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    function saved(event: Event) {
+      if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+      setNotice(event.detail);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setNotice(''), 5000);
+    }
+    window.addEventListener('griip-admin-saved', saved);
+    return () => { window.removeEventListener('griip-admin-saved', saved); clearTimeout(timeout); };
+  }, []);
 
   return <div className="shell">
     <a className="skip-link" href="#main">Skip to content</a>
@@ -118,9 +131,11 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
           </details>
         </div>
       </header>
-      <main id="main" className="main-content">{readOnly && <p className="notice">Public preview · Read-only sample data</p>}{children}</main>
+      <main id="main" className="main-content" tabIndex={-1}>{readOnly && <p className="notice">Public preview · Read-only sample data</p>}{children}</main>
       <footer className="workspace-footer"><span>GriipBuddy Admin</span><span>{environment} · synthetic records</span></footer>
     </div>
+    <div aria-live="polite" aria-atomic="true" className="workspace-toast">{notice && <><Check size={17} aria-hidden/><span>{notice}</span>
+      <button type="button" className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={15} aria-hidden/></button></>}</div>
     <dialog className="search-dialog" ref={dialog} aria-label="Search workspace">
       <form method="dialog"><button className="icon-button search-close" aria-label="Close workspace search"><X size={19}/></button></form>
       <label htmlFor="workspace-search"><Search size={20}/> Search workspace</label>

@@ -147,7 +147,13 @@ export async function ManagedPayments(context: Context) {
       <Grid title="Payment activity" data={{items:details.events}} columns={[col('Event','kind'),col('Staff ID','actor'),
         col('Recorded','createdAt'),col('Decision','details.decision'),col('Reason','details.reason')]}
         next={details.next ? url(path,{...base,record:requested,after:str(details.next)}) : undefined}/>
-      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),status,col('Reason','reason')]}/>
+      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),col('Currency','currency'),col('State','state','badge'),col('Provider reference','providerId'),col('Updated','updatedAt','date'),col('Reason','reason')]}/>
+      {!offline && <div className="page-actions">
+        {arr(details.refunds).map(obj).filter(row => row.state === 'pending' && str(row.id)).map(row =>
+          editor(context, 'refund-reconcile', 'Reconcile refund ' + str(row.id).slice(-8), [
+            text('reference', 'Provider refund reference', row.providerId),
+          ], { id: requested, step: str(row.id), description: 'Look up this refund with the payment provider and apply its verified outcome.' }))}
+      </div>}
     </>}
   </>;
 }
