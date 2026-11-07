@@ -174,16 +174,18 @@ test('catalog drafts and supplier jobs use the catalog API and existing inventor
   await expect(page.getByText('published · ' + id,{exact:true})).toBeVisible();
 
   await page.goto(desk + '/desk/catalog/taxonomy');
-  const taxonomy = await edit(page,'New category');
-  await taxonomy.getByLabel('Category slug').fill('fixture-admin-category');
+  await expect(page).toHaveURL(/\/desk\/catalog\/categories\?/);
+  const taxonomy = await edit(page,'Add top level category');
   await taxonomy.getByLabel('English name').fill('Fixture admin category');
   await taxonomy.getByLabel('Bangla name').fill('নমুনা বিভাগ');
   await taxonomy.getByLabel('English description').fill('Synthetic English label');
   await taxonomy.getByLabel('Bangla description').fill('নমুনা বর্ণনা');
-  await confirm(page,taxonomy);
-  await page.getByRole('link',{name:'Fixture admin category'}).click();
-  await page.getByRole('link',{name:'Open child categories'}).click();
-  await expect(page.getByRole('heading',{name:'Child categories · level 1'})).toBeVisible();
+  await expect(taxonomy.getByLabel('Storefront slug')).toHaveValue('fixture-admin-category');
+  await taxonomy.getByRole('button',{name:'Create category'}).click();
+  await expect(page.getByRole('status')).toHaveText('Category created.');
+  const child = await edit(page,'Add child category');
+  await expect(child.getByText('Under Fixture admin category')).toBeVisible();
+  await child.getByRole('button',{name:'Cancel'}).click();
 
   const login = await page.request.post(api + '/user/admin/login',{data:{phone_number:'01000000001',password:fixturePassword()}});
   expect(login.status()).toBe(200);

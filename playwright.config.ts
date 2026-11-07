@@ -24,7 +24,7 @@ export default defineConfig({
         GRIIP_ADMIN_FIXTURE_PARITY_WRITES:process.env.GRIIP_ADMIN_TEST_FIXTURE_PARITY === '1' ? '1' : '',
         GRIIP_ADMIN_FIXTURE_WORKSPACE:process.env.GRIIP_ADMIN_TEST_WORKSPACE === '1' ? '1' : ''}},
     {command:'npm run start -- --port 4326',cwd:storefrontDir,url:checkout,reuseExistingServer:false,env:{
-      GRIIPBUDDY_CHECKOUT:'synthetic',GRIIPBUDDY_CHECKOUT_ADMIN_ENABLED:'1',GRIIPBUDDY_CHECKOUT_OPERATOR_SECRET:key,
+      GRIIPBUDDY_CHECKOUT:'synthetic',GRIIPBUDDY_FIXTURES:'1',GRIIPBUDDY_CHECKOUT_ADMIN_ENABLED:'1',GRIIPBUDDY_CHECKOUT_OPERATOR_SECRET:key,
       GRIIPBUDDY_STRIPE_SIM_SECRET:randomBytes(32).toString('hex'),GRIIPBUDDY_PAYPAL_SIM_SECRET:randomBytes(32).toString('hex'),
       GRIIPBUDDY_CHECKOUT_DIR:mkdtempSync(join(tmpdir(),'griipbuddy-step8-test-')), GRIIPBUDDY_CATALOG_API:'',
     }},

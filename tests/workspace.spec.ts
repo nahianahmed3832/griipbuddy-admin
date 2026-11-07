@@ -13,6 +13,15 @@ async function signIn(page: Page, suffix: string, root = '') {
   await expect(page).toHaveURL(/\/desk\/overview$/);
 }
 
+const nativeHeadings: Record<string, string | RegExp> = {
+  'catalog/subcategories': 'Categories',
+  'inventory/barcodes': /^All Barcodes \([\d,]+\)$/,
+  'inventory/purchases': /^All Purchases \([\d,]+\)$/,
+  'inventory/rates': 'Default Purchase Rates',
+  'orders/orders': /^All Orders \([\d,]+\)$/,
+  'staff/staff': 'Staff directory',
+};
+
 test('super admin opens every registered native view and the full preserved route inventory',async ({page}) => {
   await signIn(page,'1');
   await expect(page.getByRole('heading',{name:'Commerce overview'})).toBeVisible();
@@ -21,7 +30,8 @@ test('super admin opens every registered native view and the full preserved rout
   for (const [section, views] of Object.entries(resources)) {
     for (const [id, view] of Object.entries(views)) {
       await page.goto('/desk/'+section+'/'+id);
-      const title = id === 'barcodes' ? /^All Barcodes \([\d,]+\)$/ : view.title;
+      const title = nativeHeadings[section + '/' + id] ?? view.title;
+      if (section === 'catalog' && id === 'subcategories') await expect(page).toHaveURL(/\/desk\/catalog\/categories\?/);
       await expect(page.getByRole('heading',{name:title,exact:true,level:1}),section+'/'+id).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), section+'/'+id).toBe(true);
     }
