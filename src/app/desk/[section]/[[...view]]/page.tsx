@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { api, ApiError, connection, getRegion, session, url } from '@/lib/api';
+import { api, ApiError, connection, getRegion, publicSandbox, session, url } from '@/lib/api';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
@@ -20,7 +20,11 @@ export default async function Desk({ params, searchParams }: {
   params: Promise<{ section:string;view?:string[] }>; searchParams: Promise<Query>;
 }) {
   const auth = await session();
-  if (!auth) redirect('/sign-in');
+  if (!auth) {
+    if (publicSandbox()) return <main className="main-content"><PageHeading eyebrow="DEV PREVIEW" title="Sample workspace unavailable"
+      description="Refresh to try loading the read-only dashboard again." /></main>;
+    redirect('/sign-in');
+  }
   const {section:sectionId,view=[]} = await params;
   const q = await searchParams;
   const section = sections.find(item => item.id === sectionId);
@@ -78,7 +82,7 @@ export default async function Desk({ params, searchParams }: {
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
-    environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}>
+    readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}>
     {!!tabs.length && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active ? 'page' : undefined}>{label}</Link>)}</nav>}
     {content}

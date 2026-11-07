@@ -6,6 +6,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY recovery ./recovery
-RUN mkdir -p /var/lib/griipbuddy/receipts && chown node:node /var/lib/griipbuddy/receipts
+RUN install -d -o node -g node -m 0700 /var/lib/griipbuddy/preview-session \
+    && install -d -o node -g node /var/lib/griipbuddy/receipts
 USER node
 CMD ["node", "recovery/hostinger/api.cjs"]

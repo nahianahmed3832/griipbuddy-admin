@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Package, ShieldCheck, ShoppingBag, Warehouse } from 'lucide-react';
 import icon from '@/app/icon.png';
-import { hosted } from '@/lib/api';
+import { redirect } from 'next/navigation';
+import { hosted, publicSandbox } from '@/lib/api';
 import { adminPath } from '@/lib/paths';
 import { SignInForm } from './sign-in-form';
 import './sign-in.css';
@@ -10,6 +11,7 @@ import './sign-in.css';
 export const metadata: Metadata = { title: 'Staff sign in' };
 
 export default async function SignIn({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  if (publicSandbox()) redirect('/desk/overview');
   const { error } = await searchParams;
   const message = error === 'unavailable'
     ? 'Sign-in is temporarily unavailable. Please try again shortly.'

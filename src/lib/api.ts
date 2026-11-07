@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { has, superAdmin, type Region, type Staff } from './sections';
@@ -15,7 +16,12 @@ export class ApiError extends Error {
   }
 }
 
+export function publicSandbox() {
+  return process.env.GRIIP_ADMIN_TARGET === 'sandbox';
+}
+
 export function connection() {
+  if (publicSandbox()) return { origin: 'http://127.0.0.1:14829', name: 'Read-only sample workspace', legacy: null };
   if (process.env.GRIIP_ADMIN_TARGET === 'integration') {
     return { origin: 'http://127.0.0.1:14819', name: 'Isolated integration staging', legacy: null };
   }
@@ -51,6 +57,7 @@ export function legacyUrl(path?: string) {
 }
 
 export async function requestApi(path: string, token?: string, init?: RequestInit) {
+  if (publicSandbox() && (init?.method ?? 'GET') !== 'GET') throw new ApiError(403);
   if (!/^\/[a-z0-9/-]+(?:\?[^#]*)?$/i.test(path) || path.includes('//')) throw new Error('Invalid recovery API path');
   try {
     return await fetch(connection().origin + '/api/v1' + path, {
@@ -81,6 +88,7 @@ export async function who(token: string): Promise<Staff | null> {
     const user = obj(await api('/user', token));
     if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
     if (['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') && str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE) return null;
+    if (publicSandbox() && (user._id !== '00000000000000000000e001' || user.role !== 'Sandbox Viewer')) return null;
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
       permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };
   } catch (error) {
@@ -92,7 +100,8 @@ export async function who(token: string): Promise<Staff | null> {
 }
 
 export const session = cache(async () => {
-  const token = (await cookies()).get(sessionCookie)?.value;
+  const token = publicSandbox() ? await readFile('/var/lib/griipbuddy/preview-session/token', 'utf8').catch(() => undefined)
+    : (await cookies()).get(sessionCookie)?.value;
   if (!token) return null;
   const staff = await who(token);
   return staff ? { token, staff } : null;

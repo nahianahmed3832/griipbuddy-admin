@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { session } from '@/lib/api';
+import { publicSandbox, session } from '@/lib/api';
 
 export default async function Index() {
-  redirect(await session() ? '/desk/overview' : '/sign-in');
+  redirect(publicSandbox() || await session() ? '/desk/overview' : '/sign-in');
 }

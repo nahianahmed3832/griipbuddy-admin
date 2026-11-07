@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminPath, prefix } from '@/lib/paths';
-import { api, ApiError, hosted, obj, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { api, ApiError, hosted, obj, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
 
 export async function POST(req: NextRequest) {
+  if (publicSandbox()) return new Response('This preview uses read-only sample data.', { status: 405 });
   if (!sameOrigin(req)) return new Response('Origin denied', { status: 403 });
   if (Number(req.headers.get('content-length')) > 4096 || !req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) {
     return new Response('Invalid form', { status: 400 });

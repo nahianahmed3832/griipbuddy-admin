@@ -17,8 +17,8 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, environment, international, destinations, children }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; environment: string; international: boolean; destinations: Destination[]; children: ReactNode;
+export function Shell({ section, nav, staff, region, environment, readOnly, international, destinations, children }: {
+  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[]; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -72,12 +72,12 @@ export function Shell({ section, nav, staff, region, environment, international,
           <Link className="icon-button notification" aria-label="Operational alerts" href={'/desk/overview' + regionQuery + '#work-queue'}><Bell size={18}/></Link>
           <details className="header-menu account-menu"><summary aria-label="Account menu"><span className="avatar">{initials}</span><ChevronDown size={13}/></summary>
             <div className="header-pop"><strong>{staff.name}</strong><small>{staff.role.replaceAll('_',' ')}</small>
-              <form method="post" action={adminPath('/api/session')}><button className="button subtle" name="action" value="signout"><LogOut size={15}/> Sign out</button></form>
+              {!readOnly && <form method="post" action={adminPath('/api/session')}><button className="button subtle" name="action" value="signout"><LogOut size={15}/> Sign out</button></form>}
             </div>
           </details>
         </div>
       </header>
-      <main id="main" className="main-content">{children}</main>
+      <main id="main" className="main-content">{readOnly && <p className="notice">Public preview · Read-only sample data</p>}{children}</main>
       <footer className="workspace-footer"><span>GriipBuddy Admin</span><span>{environment} · synthetic records</span></footer>
     </div>
     <dialog className="search-dialog" ref={dialog}>
