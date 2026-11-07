@@ -4,6 +4,7 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/manrope';
 import './workspace.css';
 import './catalog.css';
+import './purchases.css';
 
 export const metadata: Metadata = {
   title: { default: 'GriipBuddy Commerce Admin', template: '%s · GriipBuddy Admin' },

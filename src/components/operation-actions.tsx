@@ -42,13 +42,14 @@ function locationChoices(records: unknown[], region: Region): Choice[] {
     .map(row => ({ value: str(row._id), label: str(row.business_location_name) || str(row.name) || str(row._id) }));
 }
 
-export async function OperationActions({ endpoint, auth, region, record, id, managedOrder }: {
+export async function OperationActions({ endpoint, auth, region, record, id, managedOrder, openPurchaseEditor }: {
   endpoint: string;
   auth: Session;
   region: Region;
   record?: RecordData;
   id?: string;
   managedOrder?: boolean;
+  openPurchaseEditor?: boolean;
 }) {
   const candidates = managedOrder ? ['order-note' as const]
     : record && id ? recordOperations(endpoint, record, region) : listOperations[endpoint] ?? [];
@@ -108,6 +109,6 @@ export async function OperationActions({ endpoint, auth, region, record, id, man
     });
     if (readyFields.some(field => field.type === 'select' && !field.choices?.length)) return null;
     return <OperationForm key={action} action={action} label={label} description={description}
-      fields={readyFields} region={region} recordId={id} initial={initial}/>;
+      fields={readyFields} region={region} recordId={id} initial={initial} openOnLoad={action === 'purchase-notes' && openPurchaseEditor}/>;
   });
 }

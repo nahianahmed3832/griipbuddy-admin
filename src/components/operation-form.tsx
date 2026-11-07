@@ -1,12 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Field, OperationId } from '@/lib/operations';
 import type { Region } from '@/lib/sections';
 
-export function OperationForm({ action, label, description, fields, region, recordId, initial }: {
+export function OperationForm({ action, label, description, fields, region, recordId, initial, openOnLoad }: {
   action: OperationId;
   label: string;
   description: string;
@@ -14,6 +14,7 @@ export function OperationForm({ action, label, description, fields, region, reco
   region: Region;
   recordId?: string;
   initial: Record<string, string>;
+  openOnLoad?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const sending = useRef(false);
@@ -22,6 +23,9 @@ export function OperationForm({ action, label, description, fields, region, reco
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [barcodes, setBarcodes] = useState<string[]>([]);
+  useEffect(() => {
+    if (openOnLoad && !dialog.current?.open) dialog.current?.showModal();
+  }, [openOnLoad, recordId]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

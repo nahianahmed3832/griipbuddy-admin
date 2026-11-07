@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import icon from '@/app/icon.png';
-import { ArrowRight, Bell, ChevronDown, Command, LogOut, Menu, Search, X } from 'lucide-react';
+import { ArrowRight, Bell, ChevronDown, Command, LogOut, Menu, Search, ShoppingCart, X } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import type { Region, Section, Staff } from '@/lib/sections';
 import { SectionIcon } from './icons';
@@ -17,9 +17,10 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, reportLinks, activeReport, children }: {
+export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, reportLinks, activeReport, purchaseLinks, activePurchase, children }: {
   section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[];
-  reportLinks: (Destination & {id:string})[]; activeReport?: string; children: ReactNode;
+  reportLinks: (Destination & {id:string})[]; activeReport?: string;
+  purchaseLinks: (Destination & {id:string})[]; activePurchase?: string; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -65,7 +66,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
     <aside ref={sidebar} className={'sidebar ' + (open ? 'sidebar-open' : '')} id="navigation" role={open ? 'dialog' : undefined}
       aria-modal={open || undefined} aria-label={open ? 'Navigation' : undefined} onKeyDown={event => {
         if (!open || event.key !== 'Tab') return;
-        const nodes = event.currentTarget.querySelectorAll<HTMLElement>('button, a[href]');
+        const nodes = event.currentTarget.querySelectorAll<HTMLElement>('button, a[href], summary');
         const first = nodes[0], last = nodes[nodes.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -77,9 +78,16 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
           <div className="nav-label">{group}</div>
           {nav.filter(item => item.group === group).map(item => <div key={item.id}>
             <Link href={'/desk/' + item.id + regionQuery}
-              aria-current={section.id === item.id && !activeReport ? 'page' : undefined} onClick={() => setOpen(false)}>
+              aria-current={section.id === item.id && !activeReport && !activePurchase ? 'page' : undefined} onClick={() => setOpen(false)}>
               <SectionIcon name={item.icon}/><span>{item.label}</span>
             </Link>
+            {item.id === 'inventory' && purchaseLinks.length > 0 && <details className="purchase-nav" open={Boolean(activePurchase)}>
+              <summary><ShoppingCart size={17}/><span>Purchases</span><ChevronDown size={15}/></summary>
+              <ul className="report-sidebar-links">
+                {purchaseLinks.map(link => <li key={link.id}><Link href={link.href}
+                  aria-current={activePurchase === link.id ? 'page' : undefined} onClick={() => setOpen(false)}>{link.label}</Link></li>)}
+              </ul>
+            </details>}
             {item.id === 'reports' && section.id === 'reports' && reportLinks.length > 0 &&
               <ul className="report-sidebar-links">
                 <li><Link href={'/desk/reports' + regionQuery} onClick={() => setOpen(false)}>All Reports</Link></li>
@@ -94,7 +102,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
     <div className="workspace" inert={open}>
       <header className="topbar">
         <button ref={menu} type="button" aria-label="Open navigation" aria-expanded={open} aria-controls="navigation" className="icon-button mobile-menu" onClick={() => setOpen(true)}><Menu size={21}/></button>
-        <div className="crumb"><span>Workspace</span><span className="slash">/</span><strong>{section.label}</strong></div>
+        <div className="crumb"><span>Workspace</span><span className="slash">/</span><strong>{activePurchase ? 'Purchases' : section.label}</strong></div>
         <button className="global-search" type="button" aria-label="Search workspace" onClick={openSearch}><Search size={17}/><span>Search workspace</span><kbd><Command size={11}/> K</kbd></button>
         <div className="header-actions">
           {international ? <details className="header-menu"><summary aria-label={'Operating region: ' + (region === 'BD' ? 'Bangladesh' : 'International')}><SectionIcon name="markets" size={16}/><span className="market-label">{region === 'BD' ? 'Bangladesh' : 'International'}</span><ChevronDown size={14}/></summary>
