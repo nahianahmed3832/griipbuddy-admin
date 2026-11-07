@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowDownToLine, ArrowRight, History, RefreshCw } from 'lucide-react';
-import { arr, ApiError, canWrite, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
+import { arr, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { canManageAction, managedSlug, marketCode } from '@/lib/managed';
 import { adminPath } from '@/lib/paths';
@@ -127,6 +127,9 @@ async function Policies(context: Context, view: string) {
     json('fees','Estimated payment fees',settings.fees,'Optional fixedMinor and bps for each payment method.'),
   ];
   return <>
+    {coverage && integratedCheckoutEnabled() && <div className="notice">
+      Cart checkout coverage is read-only in this workspace. Use <Link className="table-link" href={url('/desk/markets/checkout',{region})}>Step 9 storefront controls</Link> for Step 9 markets.
+    </div>}
     <section className="panel padded managed-record">
       <div><h2>{str(policy.currency) ? market + ' · ' + str(policy.currency) : market}</h2>
         <p className="muted">{raw ? 'Revision ' + revision(policy) + ' · Updated ' + (str(policy.updatedAt).slice(0, 10) || '—')

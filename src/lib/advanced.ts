@@ -12,7 +12,7 @@ const invalid = (message: string) => new ApiError(400, message);
 
 export async function loadLocations(auth: Session, region: Region) {
   const data = obj(await api(url('/business-location', { limit: '250', region }), auth.token));
-  return arr(data.businessLocations).map(obj).filter(row => row.region === region && row.is_deleted !== true && row.is_active !== false)
+  return arr(data.businessLocations).map(obj).filter(row => (str(row.region) || 'BD') === region && mongoId(reference(row)) && row.is_deleted !== true && row.is_active !== false)
     .map(row => ({ value: reference(row), label: str(row.name) || str(row.business_location_name) }));
 }
 

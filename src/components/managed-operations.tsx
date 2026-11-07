@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowDownToLine, ArrowRight } from 'lucide-react';
-import { api, arr, obj, str, url } from '@/lib/api';
+import { api, ApiError, arr, integratedCheckoutEnabled, obj, str, url } from '@/lib/api';
 import { adminPath } from '@/lib/paths';
 import { afterId, col, date, editor, Grid, json, number, read, ReportValues, status, text, type Context } from './managed-common';
 
@@ -11,6 +11,22 @@ function OrderSearch({ context, order }: { context: Context; order?: string }) {
     <button className="button secondary">Open order</button>
     <Link className="button subtle" href={url('/desk/orders',{region:context.region})}>Find an order <ArrowRight size={15}/></Link>
   </form>;
+}
+
+async function orderDeskHandoff(context: Context, order?: string) {
+  if (!order || !integratedCheckoutEnabled()) return null;
+  const checkout = obj(await api('/commerce/admin/orders/' + order, context.auth.token).catch(error => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }));
+  if (!['step9','legacy'].includes(str(checkout.kind))) return null;
+  const { region } = context;
+  return <div className="notice">
+    <Link className="table-link" href={url('/desk/orders/orders/' + order,{region})}>Open order operations</Link>
+    {checkout.hasReceipt === true && <Link className="table-link" href={url('/desk/payments/checkout',{region,receipt:order})}>
+      Review checkout receipt
+    </Link>}
+  </div>;
 }
 
 export async function ManagedSourcing(context: Context) {
@@ -30,6 +46,8 @@ export async function ManagedSourcing(context: Context) {
 export async function ManagedFulfillment(context: Context) {
   const { path, region, q, auth } = context;
   const order = afterId(q,'order');
+  const handoff = await orderDeskHandoff(context, order);
+  if (handoff) return <><OrderSearch context={context} order={order}/>{handoff}</>;
   const shipmentId = afterId(q,'record');
   const base = { region, order };
   const [data, rawOrder] = order ? await Promise.all([
@@ -86,6 +104,8 @@ export async function ManagedPayments(context: Context) {
   const { q, path, region } = context;
   const order = afterId(q,'order');
   const base = { region, order };
+  const handoff = await orderDeskHandoff(context, order);
+  if (handoff) return <><OrderSearch context={context} order={order}/>{handoff}</>;
   const requested = afterId(q,'record');
   const orderData = order ? obj(await read(context,'/global/admin/orders/' + order)) : null;
   const selected = arr(orderData?.payments).map(obj).find(row => row.id === requested);

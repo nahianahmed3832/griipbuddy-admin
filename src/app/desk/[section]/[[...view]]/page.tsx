@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { api, ApiError, connection, getRegion, publicSandbox, session, url } from '@/lib/api';
+import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, publicSandbox, session, url } from '@/lib/api';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
@@ -35,14 +35,14 @@ export default async function Desk({ params, searchParams }: {
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
   const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
-  const integrated = process.env.GRIIP_ADMIN_INTEGRATED === '1';
-  const allowCheckout = !managedProfile() && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
+  const integrated = integratedCheckoutEnabled();
+  const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
   const tabs = [...sectionResources.map(([key,res]) => [key,res.title]), ...managed];
   if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
   if (allowCheckout) {
-    if (sectionId === 'markets') tabs.push(['checkout','Storefront controls']);
-    else if (sectionId === 'payments') tabs.unshift(['checkout','Checkout methods']);
+    if (sectionId === 'markets') tabs.push(['checkout',integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
+    else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
   }
   const active = view[0] ?? tabs[0]?.[0];
   const destinations = [...new Map(nav.flatMap(item => [
@@ -71,11 +71,11 @@ export default async function Desk({ params, searchParams }: {
       if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
       else if (sectionId === 'markets') content = <>
         <PageHeading eyebrow="COMMERCE / MARKETS" title="Storefront controls" description="Edit shipping and payment availability for each market."/>
-        <CommerceMarkets markets={await api('/commerce/admin/markets', auth.token) as CommerceMarket[]}/>
+        <CommerceMarkets writable={canWrite(auth.staff)} markets={await api('/commerce/admin/markets', auth.token) as CommerceMarket[]}/>
       </>;
       else content = <>
         <PageHeading eyebrow="COMMERCE / PAYMENTS" title="Checkout receipts" description="Review private evidence submitted with integrated orders."/>
-        <CommerceReceipts initial={param(q, 'receipt')}/>
+        <CommerceReceipts key={param(q, 'receipt')} writable={canWrite(auth.staff)} initial={param(q, 'receipt')}/>
       </>;
     }
     else if (sectionId === 'content' && active === 'workspace' && view.length <= 1) content = await ContentWorkspace({ auth });

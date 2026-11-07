@@ -36,7 +36,19 @@ export GRIIPBUDDY_TEST_FIXTURE_PASSWORD="$(node -p 'require(process.env.GRIIP_AD
 GRIIP_ADMIN_MANAGED=1 npm test -- tests/managed.spec.ts --workers=1
 ```
 
-Run the managed suite on a fresh fixture. The profile uses the same backend origin and staff identity for the recovered and managed routes. It switches off the standalone checkout simulator controls. The later integration backend has a separate checkout contract and continues using its existing configuration. See [Step 8 acceptance](STEP8_ACCEPTANCE.md) for coverage and release blockers. For a local-only commit on a machine with the dev release hook installed, set `GRIIPBUDDY_SKIP_DEV_DEPLOY=1` when committing.
+Run the managed suite on a fresh fixture. The profile uses the same backend origin and staff identity for the recovered and managed routes. It switches off the standalone checkout simulator controls. See [Step 8 acceptance](STEP8_ACCEPTANCE.md) for coverage and release blockers. For a local-only commit on a machine with the dev release hook installed, set `GRIIPBUDDY_SKIP_DEV_DEPLOY=1` when committing.
+
+### Managed admin with Step 9 checkout
+
+Use the current `feature/step8-growth-operator` backend and a built Step 9 storefront. With the fixture environment above, run the combined profile test against a fresh replica.
+
+```sh
+GRIIP_ADMIN_MANAGED=1 GRIIP_ADMIN_INTEGRATED=1 npm test -- tests/step9-overview.spec.ts --workers=1
+```
+
+The test starts a Step 9 storefront on port 4328 against the same API as the admin. Managed pricing applies to Step 9 quotes. Step 9 settings and receipt review are separate views within the admin, and the cart coverage editor is read-only in this profile because creating cart coverage switches the market's checkout contract. Cart orders continue to use the managed payment and shipment desks. Overview links open the correct order or report with the current region and filters.
+
+To capture full-page desktop and mobile screenshots, set `GRIIP_ADMIN_TEST_EVIDENCE` to an output directory when running the combined profile test. An optional `GRIIP_ADMIN_IMAGE_ORIGIN` permits dashboard thumbnails from one trusted HTTPS origin. Set it for the build and runtime.
 
 The storefront simulator stores method availability, shipping rates, fallback selection and activity in its existing checkout ledger. It applies those settings to checkout and quote calculations. The admin receives only a privileged service response. Its UI exposes no provider secrets. Receipt downloads are authenticated, and approval requires matching the submitted reference and expected advance amount. The recovered MongoDB and the checkout simulator remain separately labeled in the workspace.
 

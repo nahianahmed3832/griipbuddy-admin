@@ -1,15 +1,16 @@
 import { NextRequest } from 'next/server';
-import { ApiError, requestApi, sameOrigin, session } from '@/lib/api';
+import { ApiError, canWrite, integratedCheckoutEnabled, requestApi, sameOrigin, session } from '@/lib/api';
 import { superAdmin } from '@/lib/sections';
 
 const orderId = /^[0-9a-f]{24}$/;
 const marketCode = /^[A-Z]{2}$/;
 const headers = { 'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff' };
 
-async function access() {
-  if (process.env.GRIIP_ADMIN_INTEGRATED !== '1') throw new ApiError(404);
+async function access(write = false) {
+  if (!integratedCheckoutEnabled()) throw new ApiError(404);
   const auth = await session();
   if (!auth || !superAdmin(auth.staff)) throw new ApiError(auth ? 403 : 401);
+  if (write && !canWrite(auth.staff)) throw new ApiError(403);
   return auth.token;
 }
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return new Response('Origin denied', { status:403, headers });
   try {
-    const token = await access();
+    const token = await access(true);
     if (Number(req.headers.get('content-length')) > 3000 || !req.headers.get('content-type')?.startsWith('application/json')) {
       throw new ApiError(400);
     }

@@ -15,7 +15,7 @@ async function save(kind: 'market' | 'receipt', id: string, values: object) {
   if (!response.ok) throw new Error(result.error || 'The change could not be saved.');
 }
 
-function MarketForm({ market }: { market:CommerceMarket }) {
+function MarketForm({ market, writable }: { market:CommerceMarket; writable:boolean }) {
   const [note,setNote] = useState('');
   const [saving,setSaving] = useState(false);
   const router = useRouter();
@@ -24,7 +24,7 @@ function MarketForm({ market }: { market:CommerceMarket }) {
   const labels: Record<string,string> = { cod:'Cash on delivery', manual:'Advance receipt', paypal:'PayPal simulation', stripe:'Stripe simulation' };
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (!writable || saving) return;
     const form = new FormData(event.currentTarget);
     setSaving(true);
     setNote('');
@@ -38,22 +38,22 @@ function MarketForm({ market }: { market:CommerceMarket }) {
   }
   return <form className="panel padded stack-form" onSubmit={submit}>
     <h2>{market.name} · {market.currency}{!market.is_active && ' · Inactive'}</h2>
-    <div className="editor-grid" key={market.checkout?.revision}>
+    <fieldset className="editor-grid commerce-fields" disabled={!writable || saving} key={market.checkout?.revision}>
       <label>Shipping in minor units<input type="number" name="shipping" min="0" max="1000000" required defaultValue={policy?.shippingMinor ?? 0}/></label>
       <label>Advance percent<input type="number" name="advance" min="1" max="100" required defaultValue={policy?.advancePercent ?? 25}/></label>
       {methods.map(method => <label key={method}><span><input type="checkbox" name="methods" value={method}
         defaultChecked={policy?.methods.includes(method)}/> {labels[method]}</span></label>)}
-    </div>
-    <div className="page-actions"><button className="button primary" disabled={saving}>Save market checkout</button></div>
+    </fieldset>
+    {writable && <div className="page-actions"><button className="button primary" disabled={saving}>Save market checkout</button></div>}
     {note && <p role="status">{note}</p>}
   </form>;
 }
 
-export function CommerceMarkets({ markets }: { markets:CommerceMarket[] }) {
-  return <div className="stack-form">{markets.map(market => <MarketForm key={market.code} market={market}/>)}</div>;
+export function CommerceMarkets({ markets, writable }: { markets:CommerceMarket[]; writable:boolean }) {
+  return <div className="stack-form">{markets.map(market => <MarketForm key={market.code} market={market} writable={writable}/>)}</div>;
 }
 
-export function CommerceReceipts({ initial = '' }: { initial?: string }) {
+export function CommerceReceipts({ initial = '', writable }: { initial?: string; writable:boolean }) {
   const [id,setId] = useState(initial);
   const [receipt,setReceipt] = useState<{ id:string; details:Evidence } | null>(null);
   const [note,setNote] = useState('');
@@ -73,7 +73,7 @@ export function CommerceReceipts({ initial = '' }: { initial?: string }) {
   }
   async function decide(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!receipt || busy) return;
+    if (!writable || !receipt || busy) return;
     const form = new FormData(event.currentTarget);
     const button = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     setBusy(true);
@@ -88,13 +88,15 @@ export function CommerceReceipts({ initial = '' }: { initial?: string }) {
   }
   return <section className="panel padded stack-form">
     <form className="stack-form" onSubmit={lookup}>
-      <label>Order record ID<input required pattern="[a-f0-9]{24}" value={id} onChange={event => { setId(event.target.value); setLoaded(false); }}/></label>
+      <label>Order record ID<input required pattern="[a-f0-9]{24}" value={id} disabled={busy} onChange={event => {
+        setId(event.target.value); setReceipt(null); setLoaded(false); setNote('');
+      }}/></label>
       <div className="page-actions"><button className="button secondary" disabled={busy}>Find receipt</button></div>
     </form>
     {receipt && <>
       <p>Submitted reference {receipt.details.reference} · {receipt.details.phone}. Expected advance {receipt.details.amount} minor units ({receipt.details.currency}).</p>
       <div className="page-actions"><a className="button secondary" href={path + '?receipt=' + receipt.id}>Download private receipt</a></div>
-      {receipt.details.status === 'INCOMPLETE' && !loaded && <form className="stack-form" onSubmit={decide}>
+      {writable && receipt.details.status === 'INCOMPLETE' && !loaded && <form className="stack-form" onSubmit={decide}>
         <div className="editor-grid">
           <label>Verified transaction reference<input name="reference" required maxLength={64}/></label>
           <label>Verified advance in minor units<input name="amount" type="number" min="1" required/></label>

@@ -39,7 +39,7 @@ export function printable(value: unknown, kind?: Column['kind'], currency = 'BDT
   return '';
 }
 
-export type ViewRow = { id: string; values: string[]; numeric?: (number | null)[]; href?: string; legacy?: string };
+export type ViewRow = { id: string; values: string[]; numeric?: (number | null)[]; href?: string; cellLinks?: (string | undefined)[]; legacy?: string };
 
 export function numericCells(record: RecordData, columns: Column[]) {
   return columns.map(column => {
@@ -79,7 +79,7 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
     params[searchKey] = search;
   }
   if (resource.filter && filter && resource.filter.options.includes(filter)) params[resource.filter.key] = filter;
-  if (resource.endpoint === '/order') {
+  if (['/order','/pre-order'].includes(resource.endpoint)) {
     params.startDate = dateParam(param(q, 'from'));
     params.endDate = dateParam(param(q, 'to'));
   }
@@ -116,7 +116,8 @@ export const reportIds = ['sales-summary','sales-by-product','order-status','pen
 export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type', 'status', 'show'];
 
 export function reportQuery(q: Query, region: Region) {
-  return { region, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')),
+  const currency = param(q, 'currency');
+  return { region, currency: region === 'INTERNATIONAL' && ['USD','EUR','AUD','BDT'].includes(currency ?? '') ? currency : undefined, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')),
     compare: param(q, 'compare') === 'none' ? 'none' : undefined,
     locations: (param(q, 'locations') ?? '').split(',').filter(mongoId).slice(0, 20).join(',') || undefined,
     ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])) };

@@ -100,7 +100,7 @@ test('customer service works with orders, status filters and exports while check
   await page.goto('/desk/orders/orders');
   await page.getByLabel('Order status').selectOption('IN_TRANSIT');
   await page.getByRole('button',{name:'Apply filters'}).click();
-  await expect(page.getByRole('table').getByText('In transit',{exact:true})).toBeVisible();
+  await expect(page.getByRole('table').getByText('In transit',{exact:true}).first()).toBeVisible();
   await page.getByRole('checkbox',{name:'Select all visible records'}).check();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button',{name:'Export selected'}).click();

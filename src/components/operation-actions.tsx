@@ -42,14 +42,16 @@ function locationChoices(records: unknown[], region: Region): Choice[] {
     .map(row => ({ value: str(row._id), label: str(row.business_location_name) || str(row.name) || str(row._id) }));
 }
 
-export async function OperationActions({ endpoint, auth, region, record, id }: {
+export async function OperationActions({ endpoint, auth, region, record, id, managedOrder }: {
   endpoint: string;
   auth: Session;
   region: Region;
   record?: RecordData;
   id?: string;
+  managedOrder?: boolean;
 }) {
-  const candidates = record && id ? recordOperations(endpoint, record, region) : listOperations[endpoint] ?? [];
+  const candidates = managedOrder ? ['order-note' as const]
+    : record && id ? recordOperations(endpoint, record, region) : listOperations[endpoint] ?? [];
   const actions = candidates.filter(action => canOperate(auth.staff, action) && (action !== 'pos-cash-sale' || region === 'BD'));
   if (!actions.length) return null;
 

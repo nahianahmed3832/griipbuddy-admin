@@ -144,7 +144,7 @@ export const operations = {
 } satisfies Record<string, { label: string; description: string; permissions: string[]; fields: Field[] }>;
 
 export type OperationId = keyof typeof operations;
-export const pickStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT'];
+export const pickStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW'];
 export const returnStatuses = ['DELIVERED', 'PENDING_RETURN', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'PARTIAL'];
 export function operationId(value: string): value is OperationId {
   return Object.hasOwn(operations, value);

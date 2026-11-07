@@ -1,5 +1,18 @@
 # Step 8 admin reconstruction acceptance
 
+## Operational Overview and Step 9 checkout
+
+The five operational screenshots cover one Overview workflow. The modernized dashboard uses the existing analytics and report APIs for action queues, sales, fulfilment, stock and aging, money, and pre-orders. Filters cover the operating region, Dhaka business dates, comparison, location and currency where applicable. Queue and report links open native order or product records. The pre-order queue and list share the same backend age thresholds, and the native pre-order detail shows items, balances, batch and status history.
+
+The combined profile uses backend `bec7899` and Step 9 storefront `45a94fc2` on isolated loopback staging. The browser suite changed shipping and managed pricing, placed COD and manual advance orders through the storefront, replayed placement, reviewed the private receipt from the Overview queue, and verified the payment on the buyer's original order. It also verified that a restricted role could not download the receipt. Step 9 orders link to their order and receipt operations. Cart orders use their managed payment and shipment records. Cart coverage writes are disabled in the combined profile to preserve the Step 9 checkout contract.
+
+The admin passed lint, TypeScript and a production build. The 20 browser scenarios covered 14 recovered-admin cases, four managed commerce cases and two combined-profile cases. The recovered-admin suite included five fixture roles, all registered native views and CSV and XLSX exports for all ten reports. The isolated backend restore rehearsal covered 23 baseline cases and the commerce suites.
+
+- [Desktop Overview](evidence/step8-overview/overview-desktop.png) and [mobile Overview](evidence/step8-overview/overview-mobile.png)
+- [Combined profile browser test](tests/step9-overview.spec.ts)
+
+Full operational parity still requires acceptance of the remaining legacy mutations, including pre-order quotes, advances and courier handoff, staff and role edits, specialized accounting and support, and the provider-backed fraud checker. Historical data, real payment and courier sandbox credentials, and private object storage controls remain outside the loopback rehearsal.
+
 ## November 7 modernization candidate
 
 The admin branch `feature/step8-admin-modernization` starts from the Step 10 admin so existing native screens, POS, CMS, reports and checkout integration remain available. The three supplied mockups guided the light sidebar, plum accents, dashboard cards and operational tables. The application uses the recovered analytics response for bookings, delivered value, delivery outcomes and work queues. The search palette opens permission-scoped record searches, and tables can sort the visible page and export the current or selected rows.

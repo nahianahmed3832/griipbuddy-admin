@@ -81,9 +81,12 @@ export function Table({ columns, rows, title, page, total, previous, next, empty
         })}{workflows && <th scope="col">Workflow</th>}</tr></thead>
         <tbody>{visible.map(row => <tr key={row.id} data-selected={selected.includes(row.id) || undefined}>
           {exportable && <td className="select-col"><input type="checkbox" disabled={!interactive} checked={selected.includes(row.id)} onChange={() => toggle(row.id)} aria-label={'Select ' + (row.values[0] || row.id)}/></td>}
-          {row.values.map((value,i) => <td key={columns[i].label} className={i === 0 ? 'primary-cell' : ''}>
-            {i === 0 && row.href ? <Link className="table-link" href={row.href}>{value || 'View record'}</Link>
-              : value && columns[i].kind === 'badge' ? <Badge value={value}/> : value || <span className="dim">—</span>}</td>)}
+          {row.values.map((value,i) => {
+            const href = row.cellLinks?.[i] ?? (i === 0 ? row.href : undefined);
+            return <td key={columns[i].label} className={i === 0 ? 'primary-cell' : ''}>
+            {href ? <Link className="table-link" href={href}>{value || 'View record'}</Link>
+              : value && columns[i].kind === 'badge' ? <Badge value={value}/> : value || <span className="dim">—</span>}</td>;
+          })}
           {workflows && <td>{row.legacy && <a className="table-link inline" href={row.legacy} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={14}/></a>}</td>}
         </tr>)}</tbody>
       </table>

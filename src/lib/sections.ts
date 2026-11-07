@@ -29,7 +29,7 @@ const region = col('Region', 'region', 'badge');
 const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name|location.business_location_name');
 const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), col('Customer', 'customer_name|user.full_name'),
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
-const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
+const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'INCOMPLETE', 'NO_RESPONSE', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
 const orders: Resource = {
   title: 'Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
@@ -46,8 +46,11 @@ const promo: Resource = {
 export const resources: Record<string, Record<string, Resource>> = {
   orders: {
     orders,
-    preorders: { title: 'Pre-orders', endpoint: '/pre-order', permission: 'pre_order.view', search: 'search',
-      columns: [col('Pre-order', 'serial|serial_id|invoice_number'), col('Customer', 'customer_name'), state, col('Tracking', 'tracking_code'), date],
+    preorders: { title: 'Pre-orders', endpoint: '/pre-order', permission: 'pre_order.view', search: 'searchQuery',
+      filter: {key:'status', label:'Pre-order status', options:['ACTION_REQUIRED','REQUESTED','QUOTED','CONFIRMED','PURCHASED','SHIPPED_TO_BD',
+        'ARRIVED_IN_BD','READY_FOR_DELIVERY','HANDED_OVER_TO_COURIER','IN_TRANSIT','DELIVERED','CANCELLED','RETURNED','ON_HOLD']},
+
+      columns: [col('Pre-order', 'invoice_number|pre_order_serial_id'), col('Customer', 'customer_name'), state, col('Tracking', 'tracking_code'), date],
       legacy: 'pre-orders', legacyCreate: 'pre-orders/create', legacyDetail: 'pre-orders/:id' },
     assigned: { title: 'Assigned orders', endpoint: '/assigned-orders', permission: 'order.view', rows: 'assignedOrders',
       columns: [...orderColumns, location], legacy: 'assigned-orders' },

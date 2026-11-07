@@ -37,6 +37,11 @@ export function connection() {
   throw new Error('Invalid admin target');
 }
 
+export function integratedCheckoutEnabled() {
+  return process.env.GRIIP_ADMIN_INTEGRATED === '1' &&
+    ['integration','fixture'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
+}
+
 export function hosted() {
   return ['https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
 }

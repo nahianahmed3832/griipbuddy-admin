@@ -150,11 +150,6 @@ test('native receiving creates a purchase and supports a partial scanned return'
   } });
   expect(placed.status(), await placed.text()).toBe(201);
   const order = (await placed.json()).data._id;
-  await fixtureDatabase(async (collection, id) => {
-    await collection('orders').updateOne({ _id: id(order) }, { $set: {
-      transfer_to_courier: true, tracking_code: 'FIXTURE-TRACKING', status: 'IN_TRANSIT',
-    } });
-  });
   await page.goto(origin + '/desk/orders/orders/' + order);
   await page.getByRole('button', { name: 'Add staff note' }).click();
   await page.getByRole('dialog').getByLabel('Staff note').fill('Confirmed delivery details during acceptance');
@@ -164,6 +159,13 @@ test('native receiving creates a purchase and supports a partial scanned return'
   await page.getByRole('dialog').getByLabel('Scanned barcodes').fill(codes.join('\n'));
   await confirm(page);
   await expect(page.getByRole('dialog')).not.toBeVisible();
+  await fixtureDatabase(async (collection, id) => {
+    await collection('orders').updateOne({ _id: id(order) }, { $set: {
+      transfer_to_courier: true, tracking_code: 'FIXTURE-TRACKING', status: 'IN_TRANSIT',
+    } });
+  });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Assign order barcodes' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Refresh simulated tracking' }).click();
   await confirm(page);
   await expect(page.getByText('Delivered', { exact: true }).first()).toBeVisible();

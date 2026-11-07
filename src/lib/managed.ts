@@ -1,4 +1,4 @@
-import { api, ApiError, mongoId, obj, requestApi, str, type Session } from './api';
+import { api, ApiError, integratedCheckoutEnabled, mongoId, obj, requestApi, str, type Session } from './api';
 import { has, superAdmin, type Staff } from './sections';
 
 const managedViews = {
@@ -12,7 +12,7 @@ const managedViews = {
 } as const;
 
 export function managedProfile() {
-  return process.env.GRIIP_ADMIN_MANAGED === '1' && ['fixture', 'staging'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
+  return process.env.GRIIP_ADMIN_MANAGED === '1' && ['fixture', 'staging', 'integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
 }
 
 export function canManage(staff: Staff) {
@@ -96,6 +96,7 @@ const paymentSteps = ['review','collect','reconcile','refunds','disputes/notes']
 export function canManageAction(auth: Session, action: ManagedAction) {
   const required = writeActions[action].permission;
   return canManage(auth.staff) && has(auth.staff, required)
+    && !(action === 'coverage' && integratedCheckoutEnabled())
     && (required !== 'order.update' || has(auth.staff, 'order.view'));
 }
 

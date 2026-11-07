@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { ArrowUpRight, Plus, Search } from 'lucide-react';
-import { api, ApiError, arr, canWrite, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
+import { api, ApiError, arr, canWrite, integratedCheckoutEnabled, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { columnText, loadResource, numericCells, param, permitted, printable, valueAt, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
-import { has, type Column, type Region, type Resource, type Section } from '@/lib/sections';
+import { has, superAdmin, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
 import { ReviewModeration, StorefrontEditor, type StorefrontSettings } from './storefront-editor';
@@ -23,7 +23,7 @@ const createPermissions: Record<string,string> = {
 };
 
 const detailPath: Record<string,string> = {
-  '/order': '/order/', '/product/admin/all': '/product/admin/products/',
+  '/order': '/order/', '/pre-order': '/pre-order/', '/product/admin/all': '/product/admin/products/',
   '/country/admin/all': '/country/', '/stocks': '/stocks/variant/', '/product/admin/variants': '/product/variant/single/',
   '/review': '/review/', '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
 };
@@ -83,7 +83,7 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
       </select></label>}
       {resource.filter && <label className="filter-label">{resource.filter.label}<select name="filter" defaultValue={param(q,'filter') || resource.params?.[resource.filter.key] || ''}><option value="">{resource.params?.[resource.filter.key] ? 'Default status' : 'Any status'}</option>
         {resource.filter.options.map(option => <option key={option} value={option}>{option === 'true' ? 'Published' : option === 'false' ? 'Unpublished' : label(option.toLowerCase())}</option>)}</select></label>}
-      {resource.endpoint === '/order' && <><label className="filter-label">From<input type="date" name="from" defaultValue={param(q,'from')}/></label>
+      {['/order','/pre-order'].includes(resource.endpoint) && <><label className="filter-label">From<input type="date" name="from" defaultValue={param(q,'from')}/></label>
         <label className="filter-label">To<input type="date" name="to" defaultValue={param(q,'to')}/></label></>}
       <button className="button primary">Apply filters</button><Link href={url(path,{region})} className="button subtle">Reset</Link>
     </form>
@@ -123,20 +123,26 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const currency = str(raw.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
   const back = url('/desk/'+section.id+'/'+view,{region});
   const storefrontWrites = process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff);
+  const checkout = resource.endpoint === '/order' && integratedCheckoutEnabled() && superAdmin(auth.staff)
+    ? obj(await api('/commerce/admin/orders/' + id, auth.token).catch(error => {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    })) : undefined;
   const storefrontSettings = storefrontWrites && resource.endpoint === '/product/admin/all' && has(auth.staff, 'product.update')
     ? await api('/storefront/admin/product/' + id, auth.token) as StorefrontSettings : undefined;
   return <>
     <PageHeading eyebrow={section.label.toUpperCase()+' / RECORD'} title={heading || resource.title} description="Record details from the recovery API.">
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
-      {resource.endpoint === '/order' && canManage(auth.staff) && <>
+      {resource.endpoint === '/order' && canManage(auth.staff) && (!checkout || checkout.kind === 'cart') && <>
         <Link className="button secondary" href={url('/desk/shipping/shipment-desk',{region,order:id})}>Manage shipments</Link>
         <Link className="button secondary" href={url('/desk/payments/payment-desk',{region,order:id})}>Manage payments</Link>
       </>}
+      {checkout?.hasReceipt === true && <Link className="button secondary" href={url('/desk/payments/checkout',{region,receipt:id})}>Review checkout receipt</Link>}
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')
         && <Link className="button primary" href={'/desk/pos/editor/' + id}>Edit sale</Link>}
-      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}/>
+      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id} managedOrder={checkout?.kind === 'cart'}/>
     </PageHeading>
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>
       <dl className="details-grid padded">{columns.map(col => {
@@ -146,6 +152,24 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
     {storefrontSettings && <StorefrontEditor id={id} settings={storefrontSettings} />}
     {storefrontWrites && resource.endpoint === '/review' && <ReviewModeration id={id} title={str(raw.title)}
       content={str(raw.content)} status={str(raw.status)} media={arr(raw.storefrontMediaTypes).map(str)} />}
+    {resource.endpoint === '/pre-order' && <>
+      <section className="panel"><div className="panel-header"><div><h2>Quote and delivery</h2><p>Amounts in BDT</p></div></div>
+        <dl className="details-grid padded">{[
+          ['Quoted total','quoted_total'], ['Delivery charge','delivery_charge'], ['Advance required','advance_amount'],
+          ['Paid to date','paid_amount'], ['Balance due','due_amount'],
+        ].map(([label,key]) => <div key={key}><dt>{label}</dt><dd>{printable(raw[key],'money','BDT') || '—'}</dd></div>)}
+          <div><dt>Batch</dt><dd>{str(raw.batch) || '—'}</dd></div>
+          <div><dt>Delivery estimate</dt><dd>{str(raw.estimated_delivery_time) || '—'}</dd></div>
+        </dl>
+      </section>
+      <ReadRows title="Pre-order items" input={arr(raw.items).length ? raw.items : [raw]} columns={[
+        {label:'Product',fields:'product.name|product_name|reference.product_name'},
+        {label:'Quantity',fields:'quantity'}, {label:'SKU',fields:'variant.sku'},
+      ]}/>
+      <ReadRows title="Pre-order activity" input={raw.status_history} columns={[
+        {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'changed_at',kind:'date'}, {label:'Note',fields:'note|remarks'},
+      ]}/>
+    </>}
     {resource.endpoint === '/order' && <>
       <ReadRows title="Order items" input={raw.products} columns={[
         {label:'Product',fields:'product.name|selected_variant.product_name|selected_variant.sku'},

@@ -1,11 +1,19 @@
 import Link from 'next/link';
 import { ArrowDownToLine, ArrowRight, ChartNoAxesCombined, FileText } from 'lucide-react';
-import { api, ApiError, arr, obj, str, url, type Session } from '@/lib/api';
+import { api, ApiError, arr, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { param, printable, reportFilterKeys, reportIds, reportQuery, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
-import type { Region } from '@/lib/sections';
+import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Empty, Table } from './tables';
+
+function recordLink(key: string, raw: unknown, auth: Session, region: Region) {
+  const parts = str(raw).split('/');
+  const id = parts[3];
+  if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'dashboard' || !mongoId(id ?? '')) return undefined;
+  if (key === 'order' && parts[2] === 'order-details' && has(auth.staff, 'order.view')) return url('/desk/orders/orders/' + id, {region});
+  if (key === 'product' && parts[2] === 'product-details' && has(auth.staff, 'product.view')) return url('/desk/catalog/products/' + id, {region});
+}
 
 export async function Reports({ auth, id, q, region }: { auth: Session; id?: string; q: Query; region: Region }) {
   const scope = reportQuery(q,region);
@@ -38,6 +46,7 @@ export async function Reports({ auth, id, q, region }: { auth: Session; id?: str
     </PageHeading>
     {(period || filters.length > 0) && <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
+      {scope.currency && <input type="hidden" name="currency" value={scope.currency}/>}
       {scope.locations && <input type="hidden" name="locations" value={scope.locations}/>}
       {period && <><label className="filter-label">From<input type="date" name="from" defaultValue={scope.from}/></label>
         <label className="filter-label">To<input type="date" name="to" defaultValue={scope.to}/></label></>}
@@ -74,7 +83,7 @@ export async function Reports({ auth, id, q, region }: { auth: Session; id?: str
         previous={total !== undefined && page > 1 ? url(path,{...scope,page:String(page-1)}) : undefined}
         next={next ? url(path,{...scope,page:String(page+1)}) : undefined}
         columns={columns.map(col => ({label:str(col.label),fields:str(col.key)}))}
-        rows={arr(table.rows).map(obj).map((row,index) => ({ id: String(index), values: columns.map(col =>
+        rows={arr(table.rows).map(obj).map((row,index) => ({ id: String(index), cellLinks:columns.map(col => recordLink(str(col.key), obj(row._links)[str(col.key)], auth, region)), values: columns.map(col =>
           printable(row[str(col.key)], col.type === 'money' || col.type === 'currency' ? 'money' : undefined, currency)) }))}/>;
     })}
     <Link className="button secondary" href={url('/desk/reports',{region})}>Back to reports</Link>
