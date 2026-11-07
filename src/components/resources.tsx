@@ -95,8 +95,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   </>;
 }
 
-export async function ResourceDetail({ section, view, resource, id, auth, region }: {
-  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region;
+export async function ResourceDetail({ section, view, resource, id, auth, region, openPurchaseEditor }: {
+  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region; openPurchaseEditor?: boolean;
 }) {
   const prefix = detailPath[resource.endpoint];
   if (!permitted(resource,auth)) throw new ApiError(403);
@@ -143,7 +143,8 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')
         && <Link className="button primary" href={'/desk/pos/editor/' + id}>Edit sale</Link>}
-      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id} managedOrder={checkout?.kind === 'cart'}/>
+      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}
+        managedOrder={checkout?.kind === 'cart'} openPurchaseEditor={openPurchaseEditor}/>
     </PageHeading>
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>
       <dl className="details-grid padded">{columns.map(col => {

@@ -7,7 +7,7 @@ import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sec
 import { Dashboard, PageHeading } from '@/components/dashboard';
 import { Reports, reportShortcuts } from '@/components/reports';
 import { ResourceDetail, ResourcePage } from '@/components/resources';
-import { Shell } from '@/components/shell';
+import { Shell, type Destination } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
 import { CheckoutPanel } from '@/components/checkout-panel';
 import { ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
@@ -16,6 +16,9 @@ import { advancedEnabled } from '@/lib/advanced';
 import { managedProfile, managedViewsFor } from '@/lib/managed';
 import { ManagedWorkspace } from '@/components/managed-workspace';
 import { WebsiteOrderCreatePage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
+import { AllPurchases, DefaultRateCreatePage, DefaultRatePage, PurchaseInvoice } from '@/components/purchases';
+import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
+import { canOperate } from '@/lib/operations';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +50,16 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
   }
   const active = view[0] ?? tabs[0]?.[0];
+  const purchaseLinks = [
+    ...(has(auth.staff, 'purchase.view') ? [{ id: 'all', label: 'All Purchases', href: url(purchasePath, { region }) }] : []),
+    ...(canOperate(auth.staff, 'purchase-rate') ? [{ id: 'new', label: 'Default Purchase Rate', href: url(rateFormPath, { region }) }] : []),
+    ...(has(auth.staff, 'defaults.purchase') ? [{ id: 'rates', label: 'Default Purchase List', href: url(ratesPath, { region }) }] : []),
+  ];
+  const activePurchase = sectionId === 'inventory'
+    ? active === 'purchases' ? 'all' : active === 'rates' ? view[1] === 'new' ? 'new' : 'rates' : undefined
+    : undefined;
   const reportLinks = reportShortcuts(auth.staff,region);
-  const destinations = [...new Map(nav.flatMap(item => [
+  const destinations = [...new Map(nav.flatMap<Destination>(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...(item.id === 'reports' ? reportLinks : []),
     ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
@@ -59,7 +70,8 @@ export default async function Desk({ params, searchParams }: {
       })),
     ...managedViewsFor(auth.staff,item.id)
       .map(([key,label]) => ({label,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
-  ]).map(destination => [destination.href, destination])).values()];
+  ]).concat(purchaseLinks.map(link => ({ ...link, description: 'Purchases' })))
+    .map(destination => [destination.href, destination])).values()];
   const resource = active && resources[sectionId]?.[active];
   let content;
   try {
@@ -86,7 +98,12 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
     else if (sectionId === 'orders' && active === 'orders' && view.length <= 1) content = await WebsiteOrdersPage({ auth, q, region });
     else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region });
-    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
+    else if (activePurchase === 'all' && !view[1]) content = await AllPurchases({ auth, q, region });
+    else if (activePurchase === 'all' && view[1] && param(q, 'invoice') === '1') content = await PurchaseInvoice({ auth, region, id: view[1] });
+    else if (activePurchase === 'rates' && !view[1]) content = await DefaultRatePage({ auth, q, region });
+    else if (activePurchase === 'new') content = await DefaultRateCreatePage({ auth, region });
+    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region,
+      openPurchaseEditor: activePurchase === 'all' && param(q, 'edit') === '1'})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);
     else throw new ApiError(404);
@@ -99,10 +116,11 @@ export default async function Desk({ params, searchParams }: {
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
-    regionPath={'/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
+    regionPath={activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
-    readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}>
-    {!!tabs.length && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
+    readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}
+    purchaseLinks={purchaseLinks} activePurchase={activePurchase}>
+    {!!tabs.length && !activePurchase && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active ? 'page' : undefined}>{label}</Link>)}</nav>}
     {content}
   </Shell>;
