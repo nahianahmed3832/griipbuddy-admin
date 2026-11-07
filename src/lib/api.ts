@@ -29,7 +29,9 @@ export function connection() {
     return { origin: 'http://127.0.0.1:14811', name: 'Isolated frontend preview', legacy: null };
   }
   if (process.env.GRIIP_ADMIN_TARGET === 'fixture') {
-    return { origin: 'http://127.0.0.1:38100', name: 'Local fixture', legacy: null };
+    const port = process.env.GRIIP_ADMIN_FIXTURE_PORT ?? '38100';
+    if (!/^38[0-9]{3}$/.test(port)) throw new Error('Invalid local fixture port');
+    return { origin: 'http://127.0.0.1:' + port, name: 'Local fixture', legacy: null };
   }
   if (process.env.GRIIP_ADMIN_TARGET === undefined || process.env.GRIIP_ADMIN_TARGET === 'staging') {
     return { origin: 'http://127.0.0.1:14801', name: 'Isolated staging', legacy: 'http://127.0.0.1:14801/dashboard/' };

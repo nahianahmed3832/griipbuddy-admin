@@ -31,7 +31,7 @@ const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), 
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
 const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'INCOMPLETE', 'NO_RESPONSE', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
 const orders: Resource = {
-  title: 'Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
+  title: 'All Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
   legacyCreate: 'create-order', legacyDetail: 'order-details/:id',
 };
@@ -163,7 +163,7 @@ export const resources: Record<string, Record<string, Resource>> = {
 
 export const sections = [
   { id: 'overview', label: 'Overview', group: 'Workspace', icon: 'layout', description: 'Track sales, fulfilment and inventory across your store.' },
-  { id: 'orders', label: 'Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
+  { id: 'orders', label: 'Website Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
   { id: 'catalog', label: 'Catalog', group: 'Commerce', icon: 'catalog', description: 'Manage products, variants, taxonomy and product information.' },
   { id: 'inventory', label: 'Inventory', group: 'Commerce', icon: 'inventory', description: 'See stock positions, warehouse activity and purchasing.' },
   { id: 'customers', label: 'Customers', group: 'Commerce', icon: 'customers', description: 'Find accounts and review customer activity.' },

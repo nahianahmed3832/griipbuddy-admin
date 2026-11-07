@@ -15,6 +15,7 @@ import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/compon
 import { advancedEnabled } from '@/lib/advanced';
 import { managedProfile, managedViewsFor } from '@/lib/managed';
 import { ManagedWorkspace } from '@/components/managed-workspace';
+import { WebsiteOrderCreatePage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,7 @@ export default async function Desk({ params, searchParams }: {
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
   const tabs = [...sectionResources.map(([key,res]) => [key,res.title]), ...managed];
   if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
+  if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout',integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
     else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Step 9 receipt review' : 'Checkout methods']);
@@ -82,6 +84,8 @@ export default async function Desk({ params, searchParams }: {
     }
     else if (sectionId === 'content' && active === 'workspace' && view.length <= 1) content = await ContentWorkspace({ auth });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
+    else if (sectionId === 'orders' && active === 'orders' && view.length <= 1) content = await WebsiteOrdersPage({ auth, q, region });
+    else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region });
     else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);
