@@ -94,8 +94,9 @@ test('managed policy, storefront order, Overview and private receipt share one S
       await page.screenshot({path:join(evidence,'overview-mobile.png'),fullPage:true});
       await page.setViewportSize({width:1280,height:900});
     }
-    await page.goto(admin + '/desk/reports/sales-summary?refresh=1');
+    const salesPage = await page.goto(admin + '/desk/reports/sales-summary?refresh=1');
     await expect(page.getByRole('img',{name:/Booked value, delivered sales and net sales/})).toBeVisible();
+    expect(await salesPage?.text()).toMatch(/<title>[^<]+ · Booked value · [^<]+<\/title>/);
     await expect(page.locator('tfoot')).toContainText('Total');
     await expect(page.locator('tfoot')).toContainText('800');
     await page.screenshot({path:testInfo.outputPath('sales-summary.png'),fullPage:true});

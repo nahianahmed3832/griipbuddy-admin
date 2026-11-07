@@ -34,7 +34,7 @@ export function TrendChart({ points, lines, label, format }: {
             {points.map((point,index) => {
               const value = point.values[series];
               return value !== null && <circle key={point.key} cx={x(index)} cy={y(value)} r={points.length > 32 ? 1.5 : 3}>
-                <title>{point.label} · {line} · {format(value)}</title>
+                <title>{`${point.label} · ${line} · ${format(value)}`}</title>
               </circle>;
             })}
           </g>;
