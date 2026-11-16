@@ -58,18 +58,31 @@ export function hosted() {
   return ['https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
 }
 
+function protectedIntegration() {
+  return process.env.GRIIP_ADMIN_TARGET === 'integration' &&
+    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
+}
+
+function integrationStaffEnrollment() {
+  return protectedIntegration() && process.env.GRIIP_ADMIN_INTEGRATION_STAFF_ENROLLMENT === '1';
+}
+
 export function canWrite(staff: Staff) {
   const target = connection().name;
   const local = target === 'Local fixture' && process.env.GRIIP_ADMIN_FIXTURE_WRITES === '1';
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
   const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
-  const integration = target === 'Isolated integration staging' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
-  return superAdmin(staff) && (local || stage || preview || integration || operationsOnly());
+  return superAdmin(staff) && (local || stage || preview || protectedIntegration() || operationsOnly());
 }
 
-// The hosted shared previews currently accept only their designated fixture login.
 export function staffEnrollmentAvailable() {
-  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging' || operationsOnly();
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging' ||
+    operationsOnly() || integrationStaffEnrollment();
+}
+
+export function fixtureStaffLoginOnly() {
+  return process.env.GRIIP_ADMIN_TARGET === 'preview' ||
+    (process.env.GRIIP_ADMIN_TARGET === 'integration' && !integrationStaffEnrollment());
 }
 
 export function legacyUrl(path?: string) {
@@ -110,7 +123,8 @@ export async function who(token: string): Promise<Staff | null> {
   try {
     const user = obj(await api('/user', token));
     if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
-    if (['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') && str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE) return null;
+    if (str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE &&
+      (fixtureStaffLoginOnly() || (integrationStaffEnrollment() && user.staffEnrollmentCompleted !== true))) return null;
     if (publicSandbox() && (user._id !== '00000000000000000000e001' || user.role !== 'Sandbox Viewer')) return null;
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
       permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };

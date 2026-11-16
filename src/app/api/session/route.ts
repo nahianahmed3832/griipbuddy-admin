@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminPath, prefix } from '@/lib/paths';
-import { api, ApiError, hosted, obj, operationsEnabled, operationsOnly, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { api, ApiError, fixtureStaffLoginOnly, hosted, obj, operationsEnabled, operationsOnly, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
 import { hasOperations, superAdmin } from '@/lib/sections';
 
 export async function POST(req: NextRequest) {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     : identifier;
   const password = form.get('password') ?? '';
   if (!/^\+?\d{8,16}$/.test(phone_number) || password.length < 6 || password.length > 256) return redirect('/sign-in?error=credentials');
-  if (['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') && phone_number !== staffPhone) return redirect('/sign-in?error=credentials');
+  if (fixtureStaffLoginOnly() && phone_number !== staffPhone) return redirect('/sign-in?error=credentials');
   try {
     const result = obj(await api('/user/admin/login', undefined, { method: 'POST', body: JSON.stringify({ phone_number, password }) }));
     const token = str(result.access_token);
