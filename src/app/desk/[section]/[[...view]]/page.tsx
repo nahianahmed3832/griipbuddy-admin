@@ -60,7 +60,9 @@ export default async function Desk({ params, searchParams }: {
     ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
-  const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
+  const categoryView = sectionId === 'catalog' && ['categories', 'subcategories', 'taxonomy'].includes(view[0] ?? '');
+  const sectionResources = Object.entries(resources[sectionId] ?? {})
+    .filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
   const integrated = integratedCheckoutEnabled();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const transactions = canReadTransactions(auth);
@@ -87,7 +89,7 @@ export default async function Desk({ params, searchParams }: {
   if (sectionId === 'payments' && region === 'BD' && has(auth.staff,'expense.view')) tabs.push(['expense-report', 'Expense report']);
   if (sectionId === 'orders' && has(auth.staff, 'order.view')) tabs.push(['sales-executive', 'Sales Executive']);
   if (sectionId === 'payments' && accounting) tabs.push(['accounting', 'Accounting']);
-  const active = view[0] ?? tabs[0]?.[0];
+  const active = categoryView ? 'categories' : view[0] ?? tabs[0]?.[0];
   const inSmartInventory = sectionId === 'inventory' && inventoryTabs.some(([key]) => key === active);
   const purchaseLinks = [
     ...(has(auth.staff, 'purchase.view') ? [{ id: 'all', label: 'All Purchases', href: url(purchasePath, { region }) }] : []),
@@ -101,7 +103,8 @@ export default async function Desk({ params, searchParams }: {
   const destinations = [...new Map(nav.flatMap<Destination>(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...(item.id === 'reports' ? reportLinks : []),
-    ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
+    ...Object.entries(resources[item.id] ?? {})
+      .filter(([key,res]) => permitted(res,auth) && !(item.id === 'catalog' && key === 'subcategories'))
       .map(([key,res]) => ({
         label:item.id === 'payments' && key === 'transactions' && transactions ? 'Transactions' : res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
         skuSearch: item.id === 'catalog' && key === 'products',
@@ -155,7 +158,13 @@ export default async function Desk({ params, searchParams }: {
     else if (sectionId === 'content' && region !== 'BD') throw new ApiError(403);
     else if (sectionId === 'catalog' && active === 'products') content = await ProductWorkspace({ auth, q, region, id: view[1] });
     else if (sectionId === 'catalog' && active === 'taxonomy') redirect(url('/desk/catalog/categories', {region, record:view[1] ?? param(q,'record')}));
-    else if (sectionId === 'catalog' && (active === 'categories' || active === 'subcategories')) content = await CategoryWorkspace({ auth, q, region, id: view[1] });
+    else if (sectionId === 'catalog' && active === 'categories') {
+      if (!has(auth.staff, 'product.view')) throw new ApiError(403);
+      if (categoryView && (view[0] !== 'categories' || view[1])) {
+        redirect(url('/desk/catalog/categories', { region, record: view[1] ?? param(q, 'record'), mode: param(q, 'mode') }));
+      }
+      content = await CategoryWorkspace({ auth, q, region });
+    }
     else if (sectionId === 'catalog' && (active === 'brands' || active === 'faqs' || active === 'reviews' || active === 'policies')) {
       content = await CatalogRegistry({ auth, q, region, id: view[1], kind: active });
     }

@@ -29,9 +29,9 @@ const asLines = (value: unknown) => arr(value).map(str).join('\n');
 const storeProduct = '/desk/catalog/products';
 const columns = (data: Record<string,string>) => Object.entries(data).map(([label, fields]) => ({ label, fields }));
 
-export async function CategoryWorkspace({ auth, q, id }: Props) {
+export async function CategoryWorkspace({ auth, q }: Props) {
   const data = await loadCategories(auth);
-  const ref = id ?? param(q, 'record');
+  const ref = param(q, 'record');
   const initial = ref && data.nodes.find(row => row.id === ref || row.slug === ref)?.id;
   const mode = param(q, 'mode');
   return <>

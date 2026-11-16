@@ -19,9 +19,14 @@ test('create, find and edit categories in one tree on desktop and mobile', async
   const name = 'Travel essentials ' + suffix;
   const banglaName = 'অ্যাডাপ্টার ' + suffix;
   await signIn(page,'01000000001');
+  await page.goto(origin + '/desk/catalog/taxonomy/fixture-category?mode=edit');
+  await expect(page).toHaveURL(origin + categories + '?region=BD&record=fixture-category&mode=edit');
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('English name')).toHaveValue('Fixture category');
+  await dialog.getByRole('button', { name:'Close editor' }).click();
   await page.goto(origin + '/desk/catalog/subcategories');
   await expect(page).toHaveURL(new RegExp(categories + '\\?'));
-  const dialog = page.getByRole('dialog');
+  await expect(page.getByRole('navigation', { name:'Catalog views' }).getByRole('link', { name:'Subcategories' })).toHaveCount(0);
   await page.getByRole('button', { name:/^Tech accessories/ }).click();
   await page.getByRole('button', { name:'Edit category' }).click();
   await dialog.getByLabel('English description').fill('Browse cables, cases and chargers.');
