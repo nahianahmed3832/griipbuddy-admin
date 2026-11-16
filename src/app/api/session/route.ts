@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminPath, prefix } from '@/lib/paths';
-import { api, ApiError, hosted, obj, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { api, ApiError, hosted, obj, operationsEnabled, operationsOnly, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { hasOperations, superAdmin } from '@/lib/sections';
 
 export async function POST(req: NextRequest) {
   if (publicSandbox()) return new Response('This preview uses read-only sample data.', { status: 405 });
@@ -29,8 +30,10 @@ export async function POST(req: NextRequest) {
   try {
     const result = obj(await api('/user/admin/login', undefined, { method: 'POST', body: JSON.stringify({ phone_number, password }) }));
     const token = str(result.access_token);
-    if (!token || !await who(token)) return redirect('/sign-in?error=credentials');
-    const response = redirect('/desk/overview');
+    const staff = token ? await who(token) : null;
+    if (!staff || (operationsOnly() && !hasOperations(staff))) return redirect('/sign-in?error=credentials');
+    const response = redirect(operationsEnabled() && hasOperations(staff) && (operationsOnly() || !superAdmin(staff))
+      ? '/desk/operations' : '/desk/overview');
     response.cookies.set(sessionCookie, token, { httpOnly: true, sameSite: 'strict', path: prefix || '/', secure: hosted(), maxAge: 3600 });
     return response;
   } catch (error) {

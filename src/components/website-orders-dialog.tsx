@@ -1,30 +1,41 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, ExternalLink, Package, UserRound, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Barcode, Check, ClipboardList, ExternalLink, FileText, Flag, MessageSquare, Package, Pencil, RotateCcw,
+  Truck, UserRound, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
-import { currencyFor, manualStatuses, money, orderDate, orderNumber, orderRequest, ordersApi, ordersPath,
-  statusLabel, type CustomerHistory, type Order } from '@/lib/website-orders';
+import { addressLabel, currencyFor, manualStatuses, money, orderDate, orderNumber, orderRequest, ordersApi, ordersPath,
+  statusLabel, type CustomerHistory, type Order, type OrderAction, type OrderLocation, type OrderMutation, type OrderNote } from '@/lib/website-orders';
 import { Badge } from './tables';
 
 type ReadKind = 'history' | 'payment' | 'status' | 'tracking';
-export type OrderDialogKind = ReadKind | 'actions' | 'track' | 'fraud' | 'edit' | 'update-status' | 'note' | 'sms'
-  | 'delivered' | 'return' | 'pending-return' | 'cancel' | 'called';
+export type OrderDialogKind = ReadKind | 'actions' | 'track' | 'fraud' | OrderMutation;
 export type DialogState = { kind: 'sync'; ids: string[] } |
-  { kind: OrderDialogKind; order: Order; href?: string; actions?: [OrderDialogKind, string][] };
+  { kind: OrderDialogKind; order: Order; href?: string; actions?: OrderAction[] };
 const titles: Record<DialogState['kind'], string> = {
   actions: 'Order Actions', history: 'Customer Details', payment: 'Payment Information', status: 'Status Logs', tracking: 'Tracking Logs',
   track: 'Track Order', fraud: 'Fraud Check', edit: 'Edit Order', 'update-status': 'Update Status', note: 'Update Note',
   sms: 'Send SMS', delivered: 'Mark as Delivered', return: 'Return Order', 'pending-return': 'Mark as Pending Return',
   cancel: 'Cancel Order', called: 'Record Customer Call', sync: 'Sync with Courier',
+  dispatch: 'Send to Courier', handover: 'Mark as Handed Over', pick: 'Assign Barcodes',
+};
+const actionIcons: Record<OrderMutation, typeof Pencil> = {
+  edit: Pencil, 'update-status': ClipboardList, note: FileText, sms: MessageSquare, dispatch: Truck, handover: Truck,
+  delivered: Check, return: RotateCcw, 'pending-return': Flag, cancel: X, called: Check, pick: Barcode,
+};
+const buttonLabels: Partial<Record<DialogState['kind'], string>> = {
+  note: 'Add note', 'update-status': 'Save status', edit: 'Save changes', sms: 'Send SMS', dispatch: 'Send to Steadfast',
+  handover: 'Confirm handover', pick: 'Assign barcodes', cancel: 'Cancel order', delivered: 'Confirm delivery',
+  'pending-return': 'Confirm pending return', return: 'Confirm return', fraud: 'Run Fraud Check', sync: 'Sync orders',
 };
 const readKinds = ['history', 'payment', 'status', 'tracking'];
 const mutationMessage: Partial<Record<DialogState['kind'], string>> = {
   edit: 'Order details updated.', 'update-status': 'Order status updated.', note: 'Staff note added.', sms: 'SMS sent.',
   delivered: 'Order marked as delivered.', return: 'Scanned items returned.', 'pending-return': 'Order marked as pending return.',
   cancel: 'Order cancelled.', called: 'Customer call recorded.',
+  dispatch: 'Order sent to Steadfast.', handover: 'Courier handover recorded.', pick: 'Barcodes assigned to the order.',
 };
 const targets: Partial<Record<DialogState['kind'], string>> = { delivered: 'DELIVERED', 'pending-return': 'PENDING_RETURN', cancel: 'CANCELLED' };
 
@@ -42,6 +53,12 @@ type Tracking = {
 };
 type StatusLog = { _id?: string; status?: string; changed_at?: string; changed_by?: { full_name?: string } };
 type Fraud = { status_tag?: string; success_rate?: number; required_delivery_charge?: boolean };
+
+export function OrderNotes({ notes, region }: { notes: OrderNote[]; region: Region }) {
+  return notes.length ? <ul className="website-note-list">{notes.map((note, index) => <li key={index}>
+    <p>{note.text || '—'}</p><small>{note.by || 'Staff'} · {orderDate(note.at, region)}</small>
+  </li>)}</ul> : <p className="muted">No staff notes yet.</p>;
+}
 
 function Customer({ data, region, onPage }: { data: CustomerHistory; region: Region; onPage: (page: number) => void }) {
   return <>
@@ -121,8 +138,8 @@ function TrackingDetails({ data, region }: { data: Tracking; region: Region }) {
   </>;
 }
 
-export function OrderDialog({ state, region, close, change, saved }: {
-  state: DialogState; region: Region; close: () => void; change: (kind: OrderDialogKind) => void; saved: (message: string) => void;
+export function OrderDialog({ state, region, locations = [], close, change, saved }: {
+  state: DialogState; region: Region; locations?: OrderLocation[]; close: () => void; change: (kind: OrderDialogKind) => void; saved: (message: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const busyRef = useRef(false);
@@ -135,17 +152,20 @@ export function OrderDialog({ state, region, close, change, saved }: {
   const order = 'order' in state ? state.order : undefined;
   const id = order?._id;
   const read = readKinds.includes(kind);
+  const readAction = kind === 'note' ? 'notes' : read ? kind : undefined;
+  const dispatchLocations = order?.assigned_business_location?._id
+    ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
   }, []);
   useEffect(() => {
-    if (!read || !id) return;
+    if (!readAction || !id) return;
     const controller = new AbortController();
-    orderRequest(kind, region, { query: { id, page: String(page) }, signal: controller.signal })
+    orderRequest(readAction, region, { query: { id, page: String(page) }, signal: controller.signal })
       .then(data => setLoad({ page, data }))
       .catch(error => { if (!controller.signal.aborted) setLoad({ page, error: String(error.message) }); });
     return () => controller.abort();
-  }, [id, kind, page, read, region]);
+  }, [id, page, readAction, region]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -160,11 +180,11 @@ export function OrderDialog({ state, region, close, change, saved }: {
       } else if (kind === 'return' && !order?.scanReturn) {
         await orderRequest('return-untracked', region, { query: { id }, values: {} });
         saved('Order returned.');
-      } else if (kind === 'return') {
+      } else if (kind === 'return' || kind === 'pick') {
         const response = await fetch(adminPath('/api/operations'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'order-return', recordId: id, region, values: { barcodes: fields.barcodes } }) });
+          body: JSON.stringify({ action: kind === 'pick' ? 'order-pick' : 'order-return', recordId: id, region, values: { barcodes: fields.barcodes } }) });
         if (!response.ok) throw new Error((await response.text()).slice(0, 320));
-        saved(mutationMessage.return!);
+        saved(mutationMessage[kind]!);
       } else if (kind === 'fraud') {
         const data = await orderRequest<Fraud>(kind, region, { query: { id }, values: {} });
         setLoad({ page, data });
@@ -178,14 +198,15 @@ export function OrderDialog({ state, region, close, change, saved }: {
         saved(mutationMessage[kind]!);
       }
     } catch (error) {
-      setError(error instanceof Error && error.message ? error.message : 'The request failed. Check the order before retrying.');
+      const message = error instanceof Error && error.message ? error.message : 'The request failed. Check the order before retrying.';
+      setError(kind === 'dispatch' ? `${message} If the result is uncertain, check Steadfast for the consignment before retrying.` : message);
     } finally {
       busyRef.current = false; setBusy(false);
     }
   }
   const readData = load?.page === page ? load.data : undefined;
   const readError = load?.page === page ? load.error : undefined;
-  const fraud = load?.data as Fraud | undefined;
+  const fraud = kind === 'fraud' ? load?.data as Fraud | undefined : undefined;
   const actionForm = kind !== 'actions' && kind !== 'track' && !read;
   return <dialog className={`form-dialog website-dialog${kind === 'history' ? ' website-history-dialog' : ''}`} ref={dialog}
     aria-labelledby={heading} onCancel={event => { event.preventDefault(); if (!busyRef.current) close(); }}>
@@ -205,11 +226,20 @@ export function OrderDialog({ state, region, close, change, saved }: {
         Open Steadfast tracking <ExternalLink size={14}/></a>}
       <button className="button secondary" onClick={() => change('tracking')}>View Tracking Logs</button>
     </div>}
-    {state.kind === 'actions' && <div className="website-action-list">
-      <Link className="button secondary" href={state.href || ordersPath} onClick={close}>View Details</Link>
-      {state.actions?.map(([action, label]) => <button key={action} type="button"
-        className={'button secondary' + (['cancel', 'return'].includes(action) ? ' website-danger' : '')} onClick={() => change(action)}>{label}</button>)}
-    </div>}
+    {state.kind === 'actions' && <>
+      <div className="website-action-context"><span>{order?.customer_name || 'Customer'}</span><Badge value={order?.status || 'Unknown'}/></div>
+      {(['Order', 'Fulfillment', 'Exceptions'] as const).map(group => {
+        const actions = state.actions?.filter(action => action.group === group) || [];
+        const details = group === 'Order' && state.href;
+        return (details || actions.length > 0) && <section key={group} className="website-action-group" aria-label={group}>
+          <h3>{group}</h3><div className="website-action-list">
+            {details && <Link className="button secondary" href={details} onClick={close}><FileText size={16}/> View Details</Link>}
+            {actions.map(({ kind, label }) => { const Icon = actionIcons[kind]; return <button key={kind} type="button"
+              className={'button secondary' + (['cancel', 'return'].includes(kind) ? ' website-danger' : '')} onClick={() => change(kind)}><Icon size={16}/> {label}</button>; })}
+          </div>
+        </section>;
+      })}
+    </>}
     {actionForm && <form className="stack-form" onSubmit={submit}>
       {state.kind === 'sync' && <p>Refresh tracking for {state.ids.length} eligible orders on this page.</p>}
       {kind === 'called' && <p>Record that you called {order?.customer_name || 'this customer'}.</p>}
@@ -229,12 +259,36 @@ export function OrderDialog({ state, region, close, change, saved }: {
         </div>
         <label>Delivery notes<textarea name="order_note" defaultValue={order?.order_note} maxLength={1000}/></label>
       </>}
-      {kind === 'note' && <label>Staff note<textarea name="note" rows={4} maxLength={1000} required/></label>}
+      {kind === 'note' && <>
+        <label>Staff note<textarea name="note" rows={4} maxLength={1000} required placeholder="Add an update for your team"/></label>
+        <p className="muted">Only staff can see these notes.</p>
+        <section className="website-note-history" aria-label="Previous staff notes">
+          <h3>Previous notes</h3>
+          {readData ? <OrderNotes notes={readData as OrderNote[]} region={region}/>
+            : <p role={readError ? 'alert' : 'status'} className={readError ? 'notice warn' : 'muted'}>{readError || 'Loading notes…'}</p>}
+        </section>
+      </>}
       {kind === 'sms' && <><p>Send an SMS to <strong>{order?.customer_phone}</strong>.</p>
         <label>Message<textarea name="message" rows={4} maxLength={480} required/></label></>}
       {kind === 'return' && (order?.scanReturn ? <><p>Scan only the returned items. Eligible units will be restored to stock.</p>
         <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label></>
         : <p>Confirm all items in this order were returned. Eligible units will be restored to stock.</p>)}
+      {kind === 'pick' && <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label>}
+      {kind === 'dispatch' && <>
+        <p>Create a Steadfast consignment. Record handover once the parcel physically leaves your warehouse.</p>
+        <dl className="website-data-list website-dispatch-summary">
+          <div><dt>Recipient</dt><dd>{order?.customer_name || '—'} · {order?.customer_phone || '—'}</dd></div>
+          <div><dt>Cash on delivery</dt><dd>{money(order?.COD, currencyFor(order?.currency, region))}</dd></div>
+          <div><dt>Delivery address</dt><dd>{addressLabel(order?.delivery_address) || '—'}</dd></div>
+        </dl>
+        <label>Dispatch warehouse<select name="location" required defaultValue={dispatchLocations.length === 1 ? dispatchLocations[0].value : ''}>
+          <option value="" disabled>Select warehouse</option>{dispatchLocations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
+        </select></label>
+        {!dispatchLocations.length && <p className="notice warn">The dispatch warehouse is unavailable. Check the assigned location before retrying.</p>}
+        <label>Courier note (optional)<textarea name="note" rows={2} maxLength={240}/></label>
+      </>}
+      {kind === 'handover' && <p>Confirm that parcel {order?.consignment_id} physically left the warehouse with the courier.</p>}
+      {kind === 'update-status' && <p>Current status: <Badge value={order?.status || 'Unknown'}/></p>}
       {kind === 'update-status' && <label>New status<select name="status" defaultValue="" required>
         <option value="" disabled>Select status</option>{manualStatuses.filter(status => status !== order?.status).map(status =>
           <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
@@ -246,8 +300,8 @@ export function OrderDialog({ state, region, close, change, saved }: {
       {error && <p role="alert" className="notice warn">{error}</p>}
       <div className="page-actions website-dialog-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={close}>{fraud ? 'Done' : 'Close'}</button>
-        {!fraud && <button className="button primary" disabled={busy}>{busy ? 'Working…' : kind === 'fraud' ? 'Run Fraud Check'
-          : kind === 'sms' ? 'Send SMS' : kind === 'cancel' ? 'Cancel Order' : kind === 'sync' ? 'Sync orders' : 'Confirm'}</button>}
+        {!fraud && <button className={'button primary' + (kind === 'cancel' ? ' website-destructive' : '')}
+          disabled={busy || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>}
       </div>
     </form>}
   </dialog>;

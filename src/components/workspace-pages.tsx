@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { api, ApiError, arr, canWrite, mongoId, obj, str, type Session } from '@/lib/api';
+import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type Session } from '@/lib/api';
+import { loadCategoryTree } from '@/lib/catalog-list';
 import { advancedEnabled, loadLocations, paymentAccounts, reference } from '@/lib/advanced';
 import { has, type Region } from '@/lib/sections';
 import { ContentEditor } from './content-editor';
@@ -34,12 +35,25 @@ export async function SaleWorkspace({ auth, id, region }: { auth: Session; id?: 
   </>;
 }
 
-export async function ContentWorkspace({ auth }: { auth: Session }) {
-  if (!advancedEnabled() || !has(auth.staff, 'cms.view')) throw new ApiError(403);
-  const doc = obj(await api('/cms/admin/workspace', auth.token));
+export async function ContentWorkspace({ auth, section, region }: { auth: Session; section?: string; region: Region }) {
+  if (region !== 'BD' || !has(auth.staff, 'cms.view')) throw new ApiError(403);
+  const [doc, categories] = await Promise.all([
+    api('/cms/admin/workspace', auth.token).then(obj),
+    !section || section === 'homepage.shop_by_category' ? loadCategoryTree(auth).catch(() => []) : [],
+  ]);
+  const carouselEnabled = process.env.GRIIP_ADMIN_TARGET === 'integration';
   return <>
-    <PageHeading eyebrow="STOREFRONT / CONTENT" title="Content and SEO"
-      description="Edit the shared storefront content, homepage merchandising and page metadata."/>
-    <ContentEditor key={str(doc.updatedAt)} doc={doc} writable={canWrite(auth.staff) && has(auth.staff, 'cms.update')}/>
+    <PageHeading eyebrow="STOREFRONT / CONTENT" title={section ? ({hero_section:carouselEnabled ? 'Homepage carousel' : 'Hero section', 'homepage.shop_by_category':'Shop by category', 'homepage.best_selling':'Best selling', 'homepage.new_arrivals':'New arrivals', 'homepage.leather_section':'Leather section', banners:'Banners', featured_products:'Featured products'}[section] ?? 'Storefront content') : 'Content and SEO'}
+      description="Edit store content and homepage merchandising.">
+      <Link className="button secondary" prefetch={false} href={url("/desk/content/" + (section ? (Object.entries(contentViews).find(([, key]) => key === section)?.[0] ?? "workspace") : "workspace"), {region, refresh: String(Date.now())})}>Refresh</Link>
+    </PageHeading>
+    <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories} carouselEnabled={carouselEnabled}
+      allowProductSearch={has(auth.staff, 'product.view')} allowUploads={carouselEnabled && Boolean(process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR)} writable={advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'cms.update')}/>
   </>;
 }
+
+export const contentViews: Record<string, string> = {
+  hero: 'hero_section', 'shop-by-category': 'homepage.shop_by_category', 'best-selling': 'homepage.best_selling',
+  'new-arrivals': 'homepage.new_arrivals', 'leather-section': 'homepage.leather_section',
+  banners: 'banners', 'featured-products': 'featured_products',
+};

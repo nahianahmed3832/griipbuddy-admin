@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
 import { ArrowRight, CircleAlert, ClipboardList, Package, RefreshCw, ShoppingBag, Truck, Wallet } from 'lucide-react';
-import { api, arr, legacyUrl, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
+import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
@@ -9,7 +10,6 @@ import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
 import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
-import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
 
 export function PageHeading({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) {
   return <div className="page-heading"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{children && <div className="page-actions">{children}</div>}</div>;
@@ -148,7 +148,8 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
     ? new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')) : '';
   const previous = str(comparison.from) ? [reportDate(comparison.from), ...(comparison.from !== comparison.to ? [reportDate(comparison.to)] : [])].join(' – ') : '';
   const current = [reportDate(meta.from || scope.from), ...(scope.from !== scope.to ? [reportDate(meta.to || scope.to)] : [])].join(' – ');
-  const quick = visibleSections(auth.staff).filter(item => !['overview','workflows','settings'].includes(item.id));
+  const quick = visibleSections(auth.staff).filter(item => !['overview','workflows','settings'].includes(item.id) &&
+    (item.id !== 'operations' || operationsEnabled()));
   const points = arr(obj(sales?.series).points).map(obj).flatMap(row => {
     const booked = number(row.bookedValue);
     const delivered = number(row.deliveredValue);
@@ -178,14 +179,14 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
     ? link('pending-fulfilment','pending_fulfilment','Open queue',{type})?.href
       ?? (filter ? url('/desk/orders/orders',{region,filter}) : undefined) : undefined;
   const queue = [
-    { title:'Orders to confirm', value:confirm.orders, level:'urgent', href:orderQueue('to_confirm'), notes:[money(confirm.value), 'Oldest waiting ' + hours(confirm.oldestHours), count(confirm.over48h) + ' waiting over 48 h'] },
+    { title:'Orders to confirm', value:confirm.orders, level:'urgent', href:orderQueue('to_confirm','PLACED,ACCEPTED,PROCESSING'), notes:[money(confirm.value), 'Oldest waiting ' + hours(confirm.oldestHours), count(confirm.over48h) + ' waiting over 48 h'] },
     { title:'Awaiting stock', value:waiting.orders, level:'check', href:orderQueue('awaiting_stock','AWAITING_STOCK'), images:needed,
       notes:[money(waiting.value), ...(needed[0] ? ['Most needed: ' + str(needed[0].sku) + ' (' + count(needed[0].units) + ' units)'] : [])] },
     { title:'Payments to verify', value:verify.orders, level:'check', href:orderQueue('payment_proof','INCOMPLETE'), notes:[money(verify.claimedAmount) + ' claimed'] },
     { title:'Customer not reachable', value:response.orders, level:'check', href:orderQueue('no_response','NO_RESPONSE'), notes:['Oldest waiting ' + hours(response.oldestHours)] },
-    { title:'Overdue with courier', value:courier.overdue, level:'urgent', href:orderQueue('courier_overdue'), notes:[money(courier.overdueCod) + ' COD at risk', count(courier.inTransit) + ' parcels with the courier'] },
+    { title:'Overdue with courier', value:courier.overdue, level:'urgent', href:orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'), notes:[money(courier.overdueCod) + ' COD at risk', count(courier.inTransit) + ' parcels with the courier'] },
     { title:'Returns to handle', value:number(courier.returnRequested) !== undefined && number(courier.pendingReturn) !== undefined ? Number(courier.returnRequested) + Number(courier.pendingReturn) : undefined,
-      level:'check', href:orderQueue('returns','PENDING_RETURN'), notes:[count(courier.returnRequested) + ' requested by customers',count(courier.pendingReturn) + ' on the way back'] },
+      level:'check', href:orderQueue('returns','RETURN_REQUESTED,PENDING_RETURN'), notes:[count(courier.returnRequested) + ' requested by customers',count(courier.pendingReturn) + ' on the way back'] },
     { title:'Out of stock', value:stock.outOfStock, level:'urgent', href:link('low-stock','low_stock','Stock alerts',{status:'out'})?.href, images:depleted,
       notes:[count(stock.outOfStockWithDemand) + ' with orders waiting',count(stock.lowStock) + ' running low',...(depleted[0] ? ['Example: ' + str(depleted[0].sku)] : [])] },
     { title:'Pre-orders to act on', value:preActions.total, level:'check', href:grant('pre_order.view') ? '/desk/orders/preorders?filter=ACTION_REQUIRED' : undefined,
@@ -209,11 +210,10 @@ export async function Dashboard({ auth, q, region }: { auth: Session; q: Query; 
       return amount === undefined ? [] : [{name:str(row[name]),value:amount,formatted:moneyFormat ? moneyFormat(amount) : count(amount),
         suffix:suffix && number(row[suffix]) !== undefined ? count(row[suffix]) + ' units' : undefined}];
     });
-  const legacy = legacyUrl('overview');
   return <>
     <PageHeading eyebrow="WORKSPACE / OPERATIONS" title="Commerce overview"
       description={[region === 'BD' ? 'Bangladesh' : 'International',currency,current,previous && 'compared with ' + previous].filter(Boolean).join(' · ')}>
-      {legacy && authorized && <a className="button subtle" href={legacy} target="_blank" rel="noreferrer">Previous overview</a>}
+      {authorized && <Link className="button subtle" href={url("/desk/overview/classic", { ...scope, period })}>Previous overview</Link>}
       {authorized && asOf && Number.isFinite(Date.parse(asOf)) && <time className="muted" dateTime={asOf}>Data as of {new Intl.DateTimeFormat('en-GB',{timeStyle:'short',timeZone:'Asia/Dhaka'}).format(new Date(asOf))} Dhaka</time>}
       {authorized && <Link prefetch={false} className="button secondary" href={url('/desk/overview',{...scope,period,refresh:'1'})}><RefreshCw size={15}/> Refresh</Link>}
     </PageHeading>

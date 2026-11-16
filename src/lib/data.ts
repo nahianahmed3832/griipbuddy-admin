@@ -60,7 +60,7 @@ export function permitted(resource: Resource, auth: Session) {
 const regexCharacters = /[.*+?^${}()|[\]\\]/g;
 const regionFiltered = new Set(['/stocks','/product/admin/variants','/barcode','/business-location','/stocks/adjustment','/stocks/admin/transfer-history','/purchase','/assigned-orders','/pos/sale']);
 function rowRegion(row: RecordData) {
-  const declared = valueAt(row, 'region|product.region|business_location.region|current_location.region|from_business_location.region|from_location.region');
+  const declared = valueAt(row, 'region|product.region|business_location.region|current_location.region|from.region|from_business_location.region|from_location.region|location.region');
   return declared === 'INTERNATIONAL' ? 'INTERNATIONAL' : declared === 'BD' ? 'BD' : undefined;
 }
 
@@ -88,6 +88,20 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
     if (mongoId(loc)) params[resource.endpoint === '/stocks' ? 'businessLocationId' : 'business_location'] = loc;
     const product = param(q, 'product') ?? '';
     if (resource.endpoint === '/stocks' && mongoId(product)) params.productId = product;
+  }
+  if (resource.endpoint === '/stocks/adjustment') {
+    const loc = param(q, 'location') ?? '';
+    if (mongoId(loc)) params.business_location = loc;
+    const from = dateParam(param(q, 'from'));
+    const to = dateParam(param(q, 'to'));
+    if (from) params.startDate = from + 'T00:00:00' + (region === 'BD' ? '+06:00' : 'Z');
+    if (to) params.endDate = to + 'T23:59:59.999' + (region === 'BD' ? '+06:00' : 'Z');
+  }
+  if (resource.endpoint === '/stocks/admin/transfer-history') {
+    const source = param(q, 'source') ?? '';
+    const target = param(q, 'target') ?? '';
+    if (mongoId(source)) params.from = source;
+    if (mongoId(target)) params.to = target;
   }
   if (resource.legacy === 'staffs') {
     const roles = arr(obj(await api('/roles?page=1&limit=100', auth.token)).roles)

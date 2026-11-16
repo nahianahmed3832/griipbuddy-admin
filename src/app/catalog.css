@@ -98,3 +98,11 @@
   .catalog-table td{font-size:11px}
   .catalog-row-action .button{min-width:42px;min-height:38px}
 }
+
+.catalog-editor-group{min-width:0;border:1px solid var(--line);border-radius:12px;padding:1rem;display:grid;gap:1rem}
+.catalog-editor-group legend{font-weight:700;padding:0 .35rem}
+.catalog-editor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:1rem;padding:.5rem 0}
+.catalog-editor-wide{grid-column:1/-1}
+.catalog-editor-group summary{cursor:pointer;font-weight:650}
+.catalog-variant{border-top:1px solid var(--line);padding-top:.75rem}
+.catalog-editor-group select[multiple]{height:auto}

@@ -1,19 +1,18 @@
 import Link from 'next/link';
 import { ArrowUpRight, Plus, Search } from 'lucide-react';
-import { api, ApiError, arr, canWrite, integratedCheckoutEnabled, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
-import { columnText, loadResource, numericCells, param, permitted, printable, valueAt, type Query } from '@/lib/data';
+import { api, ApiError, arr, canWrite, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
+import { loadResource, param, permitted, printable, valueAt, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
-import { catalogFilters, catalogParams } from '@/lib/catalog-list';
 import { addressLabel } from '@/lib/website-orders';
-import { has, superAdmin, type Column, type Region, type Resource, type Section } from '@/lib/sections';
+import { has, type Column, type Region, type Resource, type Section } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Badge, Table } from './tables';
 import { ReviewModeration, StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
 import { advancedEnabled, loadLocations } from '@/lib/advanced';
-import { canOpenWorkflow } from '@/lib/workflows';
-import { canManage } from '@/lib/managed';
+import { canOperate } from '@/lib/operations';
+import { AnnouncementDelete } from './promotion-forms';
 
 const createPermissions: Record<string,string> = {
   'create-order':'order.create','pre-orders/create':'pre_order.create','create-product':'product.create','add-new-category':'product.create',
@@ -25,7 +24,7 @@ const createPermissions: Record<string,string> = {
 };
 
 const detailPath: Record<string,string> = {
-  '/order': '/order/', '/pre-order': '/pre-order/', '/product/admin/all': '/product/admin/products/',
+  '/order': '/order/', '/product/admin/all': '/product/admin/products/',
   '/country/admin/all': '/country/', '/stocks': '/stocks/variant/', '/product/admin/variants': '/product/variant/single/',
   '/review': '/review/', '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
 };
@@ -36,7 +35,9 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   section: Section; view: string; resource: Resource; auth: Session; q: Query; region: Region;
 }) {
   const path = '/desk/' + section.id + '/' + view;
-  const locationFilter = ['/stocks', '/barcode'].includes(resource.endpoint) && has(auth.staff, 'business_locations.view');
+  const stockTransfer = resource.endpoint === '/stocks/admin/transfer-history';
+  const stockAdjust = resource.endpoint === '/stocks/adjustment';
+  const locationFilter = (['/stocks', '/barcode'].includes(resource.endpoint) || stockTransfer || stockAdjust) && has(auth.staff, 'business_locations.view');
   const [result, locations] = await Promise.all([
     loadResource(resource,auth,q,region),
     locationFilter ? loadLocations(auth, region).catch(() => []) : [],
@@ -44,9 +45,7 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   const writeKey = resource.legacyCreate && createPermissions[resource.legacyCreate];
   const create = writeKey && has(auth.staff, writeKey) && legacyUrl(resource.legacyCreate);
   const classic = legacyUrl(resource.legacy);
-  const searchBy = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : undefined;
-  const product = resource.endpoint === '/stocks' && mongoId(param(q,'product') ?? '') ? param(q,'product') : undefined;
-  const query = { region, product, q: result.search, searchBy, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location') };
+  const query = { region, q: result.search, filter: param(q,'filter'), from: param(q,'from'), to: param(q,'to'), location: param(q,'location'), source: param(q,'source'), target: param(q,'target') };
   const handover = section.id === 'shipping' && advancedEnabled() && canWrite(auth.staff)
     && has(auth.staff, 'courier.update') && has(auth.staff, 'business_locations.view')
     ? { locations: await loadLocations(auth, region), region } : undefined;
@@ -54,11 +53,10 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
     const id = str(record._id);
     const slug = str(record.slug);
     const detailId = resource.endpoint === '/stocks' ? str(obj(record.variant)._id) || str(record.variant) : id;
-    const legacy = resource.legacyDetail && canOpenWorkflow(resource.legacyDetail.replace(':id','[id]').replace(':slug','[slug]'), auth.staff)
-      ? resource.legacyDetail.replace(':id', id).replace(':slug',slug) : undefined;
+    const legacy = resource.legacyDetail?.replace(':id', id).replace(':slug',slug);
     const currency = str(record.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
     return {
-      id: id || String(index), numeric: numericCells(record, resource.columns), values: resource.columns.map(col => columnText(record,col,currency)),
+      id: id || String(index), values: resource.columns.map(col => printable(valueAt(record,col.fields),col.kind,currency)),
       href: hasDetail(resource.endpoint) && mongoId(detailId) ? url(path+'/'+detailId,{region}) : undefined,
       legacy: legacy && !legacy.endsWith('/') && legacyUrl(legacy) || undefined,
     };
@@ -69,27 +67,31 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
       {create && <a className="button primary" href={create} target="_blank" rel="noreferrer"><Plus size={17}/> Open create form</a>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.create')
         && <Link className="button primary" href="/desk/pos/editor"><Plus size={16}/> New POS sale</Link>}
+      {resource.endpoint === '/stocks/adjustment' && canOperate(auth.staff, 'stock-adjust') &&
+        <Link className="button primary" href={url(path + '/create', {region})}><Plus size={16}/> Adjust stock</Link>}
+      {resource.endpoint === '/stocks/admin/transfer-history' && canOperate(auth.staff, 'stock-transfer') &&
+        <Link className="button primary" href={url(path + '/create', {region})}><Plus size={16}/> Transfer stock</Link>}
+      {resource.endpoint === '/coupon/admin/all' && canWrite(auth.staff) && has(auth.staff, 'coupon.create') &&
+        <Link className="button secondary" href={url(path + '/new', {region})}><Plus size={16}/> Create coupon with eligibility rules</Link>}
       <OperationActions endpoint={resource.endpoint} auth={auth} region={region}/>
     </PageHeading>
     {section.id === 'markets' && <div className="market-context"><span><strong>Country configuration</strong><small>Country activation and currency</small></span>
       <span><strong>Regional catalog</strong><small>Visibility and variant price overrides</small></span>
       <span><strong>Shipping and fallback</strong><small>Storefront runtime settings</small></span></div>}
     {section.id === 'shipping' && <div className="notice">Open an order to see its tracking record and available courier actions.</div>}
-    {product && <div className="notice"><span>Showing stock for the selected product.</span>
-      <Link className="table-link" href={url(path,{...query,product:undefined})}>Show all products</Link></div>}
     <form action={adminPath(path)} className="panel filters">
       <input type="hidden" name="region" value={region}/>
-      {product && <input type="hidden" name="product" value={product}/>}
       <label className="search-input"><Search size={17}/><input aria-label={resource.search ? 'Search records' : 'Search this page'} name="q" maxLength={80} placeholder={resource.search ? 'Search records…' : 'Filter visible records…'} defaultValue={result.search}/></label>
-      {resource.endpoint === '/product/admin/all' && <label className="filter-label">Search by
-        <select name="searchBy" defaultValue={searchBy ?? 'text'}><option value="text">Name or description</option><option value="sku">Product SKU</option></select>
-      </label>}
-      {locations.length > 0 && <label className="filter-label">Location<select name="location" defaultValue={param(q,'location') ?? ''}>
+      {locations.length > 0 && stockTransfer && [['source','Source location'], ['target','Destination location']].map(([key,name]) =>
+        <label className="filter-label" key={key}>{name}<select name={key} defaultValue={param(q,key) ?? ''}>
+          <option value="">Any location</option>{locations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
+        </select></label>)}
+      {locations.length > 0 && !stockTransfer && <label className="filter-label">Location<select name="location" defaultValue={param(q,'location') ?? ''}>
         <option value="">All locations</option>{locations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
       </select></label>}
       {resource.filter && <label className="filter-label">{resource.filter.label}<select name="filter" defaultValue={param(q,'filter') || resource.params?.[resource.filter.key] || ''}><option value="">{resource.params?.[resource.filter.key] ? 'Default status' : 'Any status'}</option>
-        {resource.filter.options.map(option => <option key={option} value={option}>{option === 'true' ? 'Published' : option === 'false' ? 'Unpublished' : label(option.toLowerCase())}</option>)}</select></label>}
-      {['/order','/pre-order'].includes(resource.endpoint) && <><label className="filter-label">From<input type="date" name="from" defaultValue={param(q,'from')}/></label>
+        {resource.filter.options.map(option => <option key={option} value={option}>{option === 'true' ? (resource.endpoint === '/coupon/admin/all' ? 'Enabled' : 'Published') : option === 'false' ? (resource.endpoint === '/coupon/admin/all' ? 'Disabled' : 'Unpublished') : label(option.toLowerCase())}</option>)}</select></label>}
+      {(resource.endpoint === '/order' || stockAdjust) && <><label className="filter-label">From<input type="date" name="from" defaultValue={param(q,'from')}/></label>
         <label className="filter-label">To<input type="date" name="to" defaultValue={param(q,'to')}/></label></>}
       <button className="button primary">Apply filters</button><Link href={url(path,{region})} className="button subtle">Reset</Link>
     </form>
@@ -100,8 +102,8 @@ export async function ResourcePage({ section, view, resource, auth, q, region }:
   </>;
 }
 
-export async function ResourceDetail({ section, view, resource, id, auth, region, q, openPurchaseEditor }: {
-  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region; q: Query; openPurchaseEditor?: boolean;
+export async function ResourceDetail({ section, view, resource, id, auth, region }: {
+  section: Section; view: string; resource: Resource; id: string; auth: Session; region: Region;
 }) {
   const prefix = detailPath[resource.endpoint];
   if (!permitted(resource,auth)) throw new ApiError(403);
@@ -117,72 +119,41 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   }
   const locationScoped = ['/purchase', '/pos/sale'].includes(resource.endpoint);
   const recordRegion = locationScoped ? str(obj(raw.business_location).region)
-    : str(raw.region) || str(obj(raw.product).region) || 'BD';
+    : str(raw.region) || str(obj(raw.product).region) || str(obj(obj(raw.variant).product).region) || 'BD';
   const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all', '/review'].includes(resource.endpoint);
   if (!isShared && resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
+  if (resource.endpoint === '/stocks') {
+    raw = {...raw, stocks_by_location: arr(raw.stocks_by_location).map(obj).filter(row => (str(obj(row.location).region) || 'BD') === region)};
+  }
   const columns = resource.columns;
   const slug = str(raw.slug);
-  const classic = resource.legacyDetail && canOpenWorkflow(resource.legacyDetail.replace(':id','[id]').replace(':slug','[slug]'), auth.staff)
-    ? resource.legacyDetail.replace(':id',id).replace(':slug',slug) : undefined;
+  const classic = resource.legacyDetail?.replace(':id',id).replace(':slug',slug);
   const href = classic && !classic.endsWith('/') ? legacyUrl(classic) : legacyUrl(resource.legacy);
   const heading = resource.endpoint === '/stocks' ? str(obj(raw.variant).sku) : printable(valueAt(raw,columns[0].fields), columns[0].kind);
   const currency = str(raw.currency) || (region === 'INTERNATIONAL' ? 'USD' : 'BDT');
-  const isCatalogProduct = section.id === 'catalog' && view === 'products';
-  const canViewStock = has(auth.staff, 'stock.view');
-  const canViewLocations = canViewStock && has(auth.staff, 'business_locations.view');
-  const catalog = isCatalogProduct ? catalogFilters(q, canViewStock, canViewLocations) : undefined;
-  const back = url('/desk/'+section.id+'/'+view, catalog ? catalogParams(catalog, region) : {region});
+  const back = url('/desk/'+section.id+'/'+view,{region});
   const storefrontWrites = process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff);
-  const checkout = resource.endpoint === '/order' && integratedCheckoutEnabled() && superAdmin(auth.staff)
-    ? obj(await api('/commerce/admin/orders/' + id, auth.token).catch(error => {
-      if (error instanceof ApiError && error.status === 404) return null;
-      throw error;
-    })) : undefined;
   const storefrontSettings = storefrontWrites && resource.endpoint === '/product/admin/all' && has(auth.staff, 'product.update')
     ? await api('/storefront/admin/product/' + id, auth.token) as StorefrontSettings : undefined;
   return <>
     <PageHeading eyebrow={section.label.toUpperCase()+' / RECORD'} title={heading || resource.title} description="Record details from the recovery API.">
       <Link className="button secondary" href={back}>Back to {resource.title.toLowerCase()}</Link>
-      {resource.endpoint === '/order' && canManage(auth.staff) && (!checkout || checkout.kind === 'cart') && <>
-        <Link className="button secondary" href={url('/desk/shipping/shipment-desk',{region,order:id})}>Manage shipments</Link>
-        <Link className="button secondary" href={url('/desk/payments/payment-desk',{region,order:id})}>Manage payments</Link>
-      </>}
-      {checkout?.hasReceipt === true && <Link className="button secondary" href={url('/desk/payments/checkout',{region,receipt:id})}>Review checkout receipt</Link>}
-      {isCatalogProduct && canViewStock && <Link className="button secondary"
-        href={url('/desk/inventory/stock', {region, product:id, location:catalog?.location})}>View stock</Link>}
       {href && <a className="button secondary" href={href} target="_blank" rel="noreferrer">Open workflow <ArrowUpRight size={15}/></a>}
       {resource.flags === 'market' && canWrite(auth.staff) && <MarketForm id={id} name={str(raw.name)} code={str(raw.code)} currency={str(raw.currency)} active={raw.is_active === true}/>}
       {resource.endpoint === '/pos/sale' && region === 'BD' && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.update')
         && <Link className="button primary" href={'/desk/pos/editor/' + id}>Edit sale</Link>}
-      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}
-        managedOrder={checkout?.kind === 'cart'} openPurchaseEditor={openPurchaseEditor}/>
+      <OperationActions endpoint={resource.endpoint} auth={auth} region={region} record={raw} id={id}/>
     </PageHeading>
+    {resource.endpoint === '/cms/admin/top-bar-messages' && region === 'BD' && canWrite(auth.staff) && has(auth.staff, 'cms.delete')
+      && <AnnouncementDelete id={id} back={back}/>}
     {resource.endpoint !== '/stocks' && <section className="panel"><div className="panel-header"><div><h2>Record summary</h2><p>{id}</p></div></div>
       <dl className="details-grid padded">{columns.map(col => {
-        const value = columnText(raw,col,currency);
+        const value = printable(valueAt(raw,col.fields),col.kind,currency);
         return <div key={col.label}><dt>{col.label}</dt><dd>{value && col.kind === 'badge' ? <Badge value={value}/> : value || '—'}</dd></div>;
       })}</dl></section>}
     {storefrontSettings && <StorefrontEditor id={id} settings={storefrontSettings} />}
     {storefrontWrites && resource.endpoint === '/review' && <ReviewModeration id={id} title={str(raw.title)}
       content={str(raw.content)} status={str(raw.status)} media={arr(raw.storefrontMediaTypes).map(str)} />}
-    {resource.endpoint === '/pre-order' && <>
-      <section className="panel"><div className="panel-header"><div><h2>Quote and delivery</h2><p>Amounts in BDT</p></div></div>
-        <dl className="details-grid padded">{[
-          ['Quoted total','quoted_total'], ['Delivery charge','delivery_charge'], ['Advance required','advance_amount'],
-          ['Paid to date','paid_amount'], ['Balance due','due_amount'],
-        ].map(([label,key]) => <div key={key}><dt>{label}</dt><dd>{printable(raw[key],'money','BDT') || '—'}</dd></div>)}
-          <div><dt>Batch</dt><dd>{str(raw.batch) || '—'}</dd></div>
-          <div><dt>Delivery estimate</dt><dd>{str(raw.estimated_delivery_time) || '—'}</dd></div>
-        </dl>
-      </section>
-      <ReadRows title="Pre-order items" input={arr(raw.items).length ? raw.items : [raw]} columns={[
-        {label:'Product',fields:'product.name|product_name|reference.product_name'},
-        {label:'Quantity',fields:'quantity'}, {label:'SKU',fields:'variant.sku'},
-      ]}/>
-      <ReadRows title="Pre-order activity" input={raw.status_history} columns={[
-        {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'changed_at',kind:'date'}, {label:'Note',fields:'note|remarks'},
-      ]}/>
-    </>}
     {resource.endpoint === '/order' && <>
       <section className="panel"><div className="panel-header"><h2>Delivery and payment</h2></div>
         <dl className="details-grid padded">{[
@@ -194,9 +165,6 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
       <ReadRows title="Order items" input={raw.products} columns={[
         {label:'Product',fields:'product.name|selected_variant.product_name|selected_variant.sku'},
         {label:'Quantity',fields:'total_quantity|quantity'}, {label:'SKU',fields:'selected_variant.sku|variant.sku'},
-      ]}/>
-      <ReadRows title="Staff notes" input={raw.admin_notes} columns={[
-        {label:'Note',fields:'note'}, {label:'Staff',fields:'added_by.full_name|added_by'}, {label:'Recorded',fields:'added_at'},
       ]}/>
       <ReadRows title="Order activity" input={raw.status_history} columns={[
         {label:'Status',fields:'status',kind:'badge'}, {label:'Date',fields:'changed_at|date|createdAt|updated_at',kind:'date'},

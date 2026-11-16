@@ -5,7 +5,8 @@ import { customerDate, customerFilters, customerStatus, customerStatuses, custom
   type Customer, type CustomerActivity, type CustomerOrder } from '@/lib/customers';
 import { param, printable, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
-import { has, type Region } from '@/lib/sections';
+import { has, superAdmin, type Region } from '@/lib/sections';
+import { CustomerPassword } from './customer-password';
 import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
 import { CustomerActions, CustomerCreateForm, CustomerNote } from './customer-forms';
@@ -17,7 +18,7 @@ const filters = (q: Query) => Object.fromEntries(customerFilters.map(key => [key
 type Page = { total: number; page: number; size: number };
 type Listing = Page & { rows: Customer[]; summary: { all: number; active: number; inactive: number; unverified: number } };
 type Profile = Page & { customer: Customer; activity: CustomerActivity[] };
-type Orders = Page & { orders: CustomerOrder[]; delivered: number; cancelled: number; lastOrder?: string; spending?: { _id: string; net: number; count: number }[] | null };
+type Orders = Page & { orders: CustomerOrder[]; delivered: number; cancelled: number; lastOrder?: string };
 
 export function canCreateCustomer(auth: Session) {
   return canWrite(auth.staff) && ['user.view', 'user.create'].every(key => has(auth.staff, key));
@@ -121,7 +122,7 @@ export async function CustomersPage({ auth, q, region }: { auth: Session; q: Que
   </>;
 }
 
-const activityLabels = { created: 'Customer created', edited: 'Profile updated', note: 'Staff note', status: 'Account status changed' };
+const activityLabels = { password: 'Password changed', created: 'Customer created', edited: 'Profile updated', note: 'Staff note', status: 'Account status changed' };
 
 export async function CustomerProfilePage({ auth, id, q, region }: { auth: Session; id: string; q: Query; region: Region }) {
   if (!has(auth.staff, 'user.view')) throw new ApiError(403);
@@ -134,6 +135,18 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
     canViewOrders ? (api(url(base + '/orders', { region, page: param(q, 'orderPage') }), auth.token) as Promise<Orders>).catch(() => null) : null,
   ]);
   const { customer } = profile;
+  const canResetPassword = canEdit && superAdmin(auth.staff) && customer.status === 'ACTIVE' && customer.is_verified_number === true;
+  if (param(q, 'action') === 'password') {
+    if (!canResetPassword) throw new ApiError(403);
+    const back = url(customersPath + '/' + id, { region });
+    return <>
+      <PageHeading eyebrow="COMMERCE / CUSTOMER ACCESS" title="Change customer password"
+        description={'Set a new password for ' + (customer.full_name || 'this customer') + '. The change is recorded in account activity.'}>
+        <Link className="button secondary" href={back}>Back to customer</Link>
+      </PageHeading>
+      <CustomerPassword id={id} revision={customer.updatedAt ?? null} back={back}/>
+    </>;
+  }
   const market = region === 'INTERNATIONAL' ? 'International' : 'Bangladesh';
   const directory = { ...filters(q), region, page: param(q, 'page') };
   const path = customersPath + '/' + id;
@@ -144,6 +157,7 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
     <PageHeading eyebrow="COMMERCE / CUSTOMER PROFILE" title={customer.full_name || 'Customer profile'}
       description="Contact details, linked website orders and internal activity.">
       {canEdit && <CustomerActions customer={customer}/>}
+      {canResetPassword && <Link className="button secondary" href={url(path, {region, action:'password'})}>Change password</Link>}
     </PageHeading>
     <div className="crm-profile-layout">
       <section className="panel crm-contact">
@@ -166,13 +180,6 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
               <div><dt>Orders</dt><dd>{number(orders.total)}</dd></div><div><dt>Delivered</dt><dd>{number(orders.delivered)}</dd></div>
               <div><dt>Cancelled</dt><dd>{number(orders.cancelled)}</dd></div><div><dt>Last order</dt><dd>{customerDate(orders.lastOrder)}</dd></div>
             </dl>
-            {orders.spending !== undefined && <div className="crm-spending">
-              <strong>Recorded customer spending</strong>
-              <p className="muted">Posted payments less posted refunds on linked website orders.</p>
-              {orders.spending === null ? <p>Payment records are temporarily unavailable.</p> : orders.spending.length ? <dl>{orders.spending.map(item => <div key={item._id}>
-                <dt>{item._id}</dt><dd>{printable(item.net, 'money', item._id)}</dd>
-              </div>)}</dl> : <p>No posted payments or refunds in this region.</p>}
-            </div>}
             {orders.orders.length > 0 ? <div className="table-scroll"><table aria-label="Linked website orders">
               <thead><tr><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Status</th><th scope="col">Order total</th></tr></thead>
               <tbody>{orders.orders.map(order => <tr key={order._id}>

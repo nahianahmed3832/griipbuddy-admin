@@ -23,13 +23,17 @@ const names: Record<string, string> = {
   supplier: 'Suppliers', business_locations: 'Business locations', pos: 'Point of sale',
   overview: 'Overview', role: 'Roles', coupon: 'Coupons', faq: 'FAQs', review: 'Reviews',
   expense: 'Expenses', barcode: 'Barcodes', international: 'Operating regions',
-  potential: 'Financial data', 'manage-permissions': 'Access administration', defaults: 'Purchases',
+  potential: 'Financial data', 'manage-permissions': 'Access administration', defaults: 'Purchases', operations: 'Daily operations',
 };
 const actionNames: Record<string, string> = {
   'manage-permissions': 'Manage access permissions', 'international.access': 'Switch to international operations',
   'defaults.purchase': 'Create purchases from defaults', 'purchase.price.view': 'View purchase costs',
   'potential.profit.view': 'View estimated profit', 'expense.approval': 'Approve expenses',
   'barcode.assign.stock': 'Assign barcodes to stock', 'report.view': 'View reports overview',
+  'operations.purchase': 'Review purchases, maintain suppliers and inspect stock corrections',
+  'operations.receive': 'Count and receive deliveries at the assigned warehouse',
+  'operations.supplier-finance': 'Record and verify supplier invoice and payment evidence',
+  'operations.pack': 'Pick and pack at assigned warehouse', 'operations.support': 'Look up order history and manage support requests',
 };
 const words = (value: string) => value.replaceAll('_', ' ').replace(/\bpos\b/gi, 'POS');
 export function permissionInfo(key: string) {

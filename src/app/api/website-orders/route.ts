@@ -4,15 +4,18 @@ import { has } from '@/lib/sections';
 import { orderFilterKeys } from '@/lib/website-orders';
 
 const root = '/order/workspace';
-const reads = ['history', 'status', 'tracking', 'payment', 'proof'];
+const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes'];
 const actions: Record<string, { path: string; method: string }> = {
   called: { path: '/called', method: 'PATCH' },
   edit: { path: '/details', method: 'PATCH' },
+  draft: { path: '/draft', method: 'PATCH' },
   note: { path: '/note', method: 'PUT' },
   sms: { path: '/sms', method: 'POST' },
   'update-status': { path: '/status', method: 'PATCH' },
   fraud: { path: '/fraud', method: 'POST' },
   'return-untracked': { path: '/return', method: 'POST' },
+  dispatch: { path: '/dispatch', method: 'POST' },
+  handover: { path: '/handover', method: 'POST' },
 };
 const reject = (message: string, status: number) => new Response(message, { status, headers: { 'Cache-Control': 'private, no-store' } });
 async function forward(path: string, token: string, init?: RequestInit, attachment?: string) {
@@ -21,7 +24,7 @@ async function forward(path: string, token: string, init?: RequestInit, attachme
     const data = obj(await response.json().catch(() => ({})));
     const error = str(data.message);
     return reject(response.status >= 500
-      ? (path.includes('/fraud?') ? 'Courier fraud check is unavailable.' : 'The order service did not confirm the request. Check the order before retrying.')
+      ? ((/\/(?:fraud|fraud-check)(?:\?|$)/.test(path)) ? 'Courier fraud check is unavailable.' : 'The order service did not confirm the request. Check the order before retrying.')
       : error.slice(0, 320) || 'The order service could not complete this request.', response.status);
   }
   if (attachment || response.headers.get('content-type')?.startsWith('image/png')) {
@@ -42,9 +45,10 @@ export async function GET(request: NextRequest) {
   const id = q.get('id') || '';
   try {
     const region = getRegion(q.get('region') || undefined, auth.staff);
-    if (action === 'products') {
-      if (!canWrite(auth.staff) || !has(auth.staff, 'order.create') || !has(auth.staff, 'product.view')) return reject('Access denied.', 403);
-      return await forward(url('/products', { region, page: q.get('page') || undefined, q: q.get('q')?.slice(0, 100),
+    if (action === 'products' || action === 'draft-products') {
+      const browse = action === 'products' ? has(auth.staff, 'order.create') : has(auth.staff, 'order.view') && has(auth.staff, 'order.update');
+      if (region !== 'BD' || !canWrite(auth.staff) || !browse || !has(auth.staff, 'product.view')) return reject('Access denied.', 403);
+      return await forward(url('/' + action, { region, page: q.get('page') || undefined, q: q.get('q')?.slice(0, 100),
         barcode: q.get('barcode')?.slice(0, 64) }), auth.token);
     }
     if (!has(auth.staff, 'order.view')) return reject('Access denied.', 403);
@@ -65,7 +69,7 @@ export async function POST(request: NextRequest) {
   const q = request.nextUrl.searchParams;
   const action = q.get('action') || '';
   const id = q.get('id') || '';
-  const limit = action === 'create' ? 2_150_000 : 15_000;
+  const limit = action === 'create' || action === 'draft' ? 2_150_000 : 15_000;
   if (!request.headers.get('content-type')?.startsWith('application/json') || Number(request.headers.get('content-length')) > limit) {
     return reject('Invalid order request.', 400);
   }
@@ -80,10 +84,18 @@ export async function POST(request: NextRequest) {
     if (action === 'create') {
       if (!has(auth.staff, 'order.create') || !has(auth.staff, 'product.view')) return reject('Access denied.', 403);
       path = '/orders';
+    } else if (action === 'fraud-check') {
+      if (process.env.GRIIP_ADMIN_FRAUD_LOOKUP !== '1') return reject('Courier history lookup is disabled in this workspace.', 503);
+      if (region !== 'BD' || !has(auth.staff, 'order.view')) return reject('Access denied.', 403);
+      if (!/^01\d{9}$/.test(str(body.phone))) return reject('Enter an 11-digit Bangladesh mobile number.', 400);
+      path = '/fraud-check';
     } else {
       const permission = action === 'fraud' ? 'order.view' : 'order.update';
       if (!has(auth.staff, 'order.view') || !has(auth.staff, permission)
-        || action === 'return-untracked' && !has(auth.staff, 'order.return')) return reject('Access denied.', 403);
+        || action === 'draft' && (region !== 'BD' || !has(auth.staff, 'product.view'))
+        || action === 'return-untracked' && !has(auth.staff, 'order.return')
+        || action === 'dispatch' && !has(auth.staff, 'business_locations.view')
+        || action === 'handover' && !has(auth.staff, 'courier.update')) return reject('Access denied.', 403);
       if (action === 'sync') path = '/sync';
       else {
         if (!mongoId(id) || !Object.hasOwn(actions, action)) return reject('Order action not found.', 404);

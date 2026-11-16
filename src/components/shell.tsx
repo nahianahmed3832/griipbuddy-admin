@@ -17,8 +17,8 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, international, destinations, reportLinks, activeReport, purchaseLinks, activePurchase, children }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; international: boolean; destinations: Destination[];
+export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, fraud, international, destinations, reportLinks, activeReport, purchaseLinks, activePurchase, children }: {
+  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[];
   reportLinks: (Destination & {id:string})[]; activeReport?: string;
   purchaseLinks: (Destination & {id:string})[]; activePurchase?: string; children: ReactNode;
 }) {
@@ -33,6 +33,8 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
   const results = destinations.filter(item => (item.label + ' ' + (item.description ?? '')).toLowerCase().includes(term.toLowerCase())).slice(0, 12);
   const recordSearches = term.length >= 2 ? destinations.filter(item => item.recordSearch) : [];
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
+  const hasOverview = nav.some(item => item.id === 'overview');
+  const alerts = hasOverview ? '/desk/overview' + regionQuery + '#work-queue' : '/desk/operations/queue' + regionQuery;
 
   function openSearch() {
     setQuery('');
@@ -85,7 +87,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }}>
       {open && <button className="icon-button sidebar-close" aria-label="Close navigation" onClick={() => setOpen(false)}><X size={19}/></button>}
-      <Link className="brand-link" href={'/desk/overview' + regionQuery} onClick={() => setOpen(false)}><Brand /></Link>
+      <Link className="brand-link" href={'/desk/' + (hasOverview ? 'overview' : 'operations') + regionQuery} onClick={() => setOpen(false)}><Brand /></Link>
       <nav aria-label="Primary navigation">
         {groups.map(group => nav.some(item => item.group === group) && <div className="nav-group" key={group}>
           <div className="nav-label">{group}</div>
@@ -123,7 +125,8 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
               href={regionPath + (value === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '')} aria-current={region === value ? 'true' : undefined}
               onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{value === 'BD' ? 'Bangladesh' : 'International'}</Link>)}</div>
           </details> : <span className="market-chip"><SectionIcon name="markets" size={16}/><span className="market-label">Bangladesh</span></span>}
-          <Link className="icon-button notification" aria-label="Operational alerts" href={'/desk/overview' + regionQuery + '#work-queue'}><Bell size={18}/></Link>
+          {fraud && <Link className="icon-button notification" aria-label="Fraud checker" title="Fraud checker" href="/desk/orders/fraud-check"><Search size={17}/></Link>}
+          <Link className="icon-button notification" aria-label="Operational alerts" href={alerts}><Bell size={18}/></Link>
           <details className="header-menu account-menu"><summary aria-label="Account menu"><span className="avatar">{initials}</span><span className="account-label">{staff.name}<small>{staff.role.replaceAll('_', ' ')}</small></span><ChevronDown size={13}/></summary>
             <div className="header-pop"><strong>{staff.name}</strong><small>{staff.role.replaceAll('_',' ')}</small>
               {!readOnly && <form method="post" action={adminPath('/api/session')}><button className="button subtle" name="action" value="signout"><LogOut size={15}/> Sign out</button></form>}

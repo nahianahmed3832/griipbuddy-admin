@@ -9,7 +9,7 @@ export type Customer = {
   createdAt?: string; updatedAt?: string; workspace_tags?: string[]; orderCount?: number;
 };
 export type CustomerActivity = {
-  _id: string; actorName?: string; kind: 'created' | 'edited' | 'note' | 'status'; detail: string; createdAt: string;
+  _id: string; actorName?: string; kind: 'created' | 'edited' | 'note' | 'status' | 'password'; detail: string; createdAt: string;
 };
 export type CustomerOrder = {
   _id: string; order_serial_id?: number; invoice_number?: string; order_date?: string;

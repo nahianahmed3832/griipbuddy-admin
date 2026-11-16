@@ -1,11 +1,12 @@
 import { api, arr, mongoId, obj, str, url, type RecordData, type Session } from './api';
+import { categoryKey, categoryName as treeName, childrenFor } from './category-tree';
+import { loadCategories } from './category-workspace';
 import { param, type Query } from './data';
 import type { Region } from './sections';
 
 export const catalogPath = '/desk/catalog/products';
 export const categoryKeys = ['category', 'subcategory', 'subSubcategory', 'thirdSubcategory'] as const;
 const categoryFields = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'] as const;
-const categoryChildren = ['subcategories', 'sub_subcategories', 'third_subcategories'] as const;
 const backendCategoryKeys = ['categoryId', 'subcategoryId', 'subSubcategoryId', 'thirdSubcategoryId'];
 export const catalogSorts = { newest: 'Newest first', oldest: 'Oldest first', name: 'Name: A to Z', nameDesc: 'Name: Z to A' } as const;
 export const catalogPageSizes = [20, 40, 60];
@@ -64,15 +65,13 @@ export async function loadCatalog(auth: Session, f: CatalogFilters, region: Regi
 
 const categoryName = (record: RecordData) => str(record.name_en) || str(record.name) || str(record.name_bn);
 export async function loadCategoryTree(auth: Session) {
-  const data = await api('/category', auth.token);
-  function nodes(records: unknown, level: number): CategoryOption[] {
-    return arr(records).map(obj).flatMap(record => {
-      const id = str(record._id);
-      const name = categoryName(record);
-      return mongoId(id) && name ? [{ id, name, children: level < 3 ? nodes(record[categoryChildren[level]], level + 1) : [] }] : [];
-    });
+  const data = await loadCategories(auth);
+  const branches = childrenFor(data.nodes);
+  function nodes(parent: string, level: number): CategoryOption[] {
+    return (branches.get(parent) ?? []).map(node => ({ id: node.id, name: treeName(node),
+      children: level < 3 ? nodes(categoryKey(node), level + 1) : [], }));
   }
-  return nodes(Array.isArray(data) ? data : obj(data).data, 0);
+  return nodes('', 0);
 }
 
 export function productCategory(row: RecordData) {

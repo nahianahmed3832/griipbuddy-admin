@@ -1,0 +1,47 @@
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.form fieldset {
+  min-width: 0;
+  margin: 0;
+}
+
+.form legend {
+  font-weight: 700;
+  padding-inline: 4px;
+}
+
+.fields,
+.results li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.fields label {
+  display: grid;
+  gap: 4px;
+  max-width: 100%;
+  font-weight: 600;
+}
+
+.results {
+  padding-inline-start: 0;
+}
+
+.results li {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form input[type='number'] {
+  max-width: 9rem;
+}
+
+.form p[role='alert'] {
+  color: #a62c22;
+}

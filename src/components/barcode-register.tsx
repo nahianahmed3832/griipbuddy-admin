@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { History, Printer } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { barcodePattern, type BarcodeLabel, type BarcodeRow } from '@/lib/barcode-data';
 import { Badge, Empty } from './tables';
 import { BarcodeImage, BarcodePrint } from './barcode-labels';
@@ -10,6 +10,8 @@ import { BarcodeImage, BarcodePrint } from './barcode-labels';
 export function BarcodeRegister({ rows, history }: { rows: BarcodeRow[]; history: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [print, setPrint] = useState<BarcodeLabel[]>([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
   const printable = rows.filter(row => barcodePattern.test(row.barcode));
   const selectedRows = printable.filter(row => selected.includes(row.barcode));
   const all = printable.length > 0 && selectedRows.length === printable.length;
@@ -26,13 +28,13 @@ export function BarcodeRegister({ rows, history }: { rows: BarcodeRow[]; history
       <table className="barcode-register">
         <thead><tr>
           <th scope="col" className="select-col"><input type="checkbox" aria-label="Select all barcodes on this page" checked={all}
-            disabled={!printable.length} onChange={() => setSelected(all ? [] : printable.map(row => row.barcode))}/></th>
+            disabled={!ready || !printable.length} onChange={() => setSelected(all ? [] : printable.map(row => row.barcode))}/></th>
           {['SKU', 'Barcode', 'Status', 'Condition', 'Barcode image', 'Generated at', 'Actions'].map(label => <th key={label} scope="col">{label}</th>)}
         </tr></thead>
         <tbody>{rows.map(row => {
           const valid = barcodePattern.test(row.barcode);
           return <tr key={row.barcode}>
-            <td className="select-col"><input type="checkbox" aria-label={'Select barcode ' + row.barcode} disabled={!valid}
+            <td className="select-col"><input type="checkbox" aria-label={'Select barcode ' + row.barcode} disabled={!ready || !valid}
               checked={selected.includes(row.barcode)} onChange={event => {
                 const checked = event.currentTarget.checked;
                 setSelected(previous => checked ? [...previous, row.barcode] : previous.filter(code => code !== row.barcode));
@@ -47,7 +49,7 @@ export function BarcodeRegister({ rows, history }: { rows: BarcodeRow[]; history
               <Link href={history + '&barcode=' + encodeURIComponent(row.barcode)} className="button subtle" aria-label={'View history for ' + row.barcode}>
                 <History size={15}/> View history
               </Link>
-              <button type="button" className="button subtle" aria-label={'Print label ' + row.barcode} onClick={() => setPrint([row])}>
+              <button type="button" className="button subtle" aria-label={'Print label ' + row.barcode} disabled={!ready} onClick={() => setPrint([row])}>
                 <Printer size={15}/> Print label
               </button>
             </div>}</td>

@@ -3,7 +3,7 @@
 import { Camera, ImagePlus, Minus, Package, Plus, ScanBarcode, Search, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { money, orderRequest, ordersPath, type ProductListing, type Variant } from '@/lib/website-orders';
+import { money, orderRequest, ordersPath, type ProductListing, type Variant, type WebsiteOrderDraft } from '@/lib/website-orders';
 import { OrderThumbnail } from './website-orders-table';
 
 type CartLine = Variant & { quantity: number };
@@ -80,7 +80,7 @@ function proofData(file: File) {
   });
 }
 
-export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
+export function WebsiteOrderCreate({ initial, draft }: { initial: ProductListing; draft?: WebsiteOrderDraft }) {
   const router = useRouter();
   const barcodeInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -95,15 +95,16 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
   const [searching, setSearching] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [barcodeBusy, setBarcodeBusy] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [delivery, setDelivery] = useState('70');
-  const [advance, setAdvance] = useState('');
-  const [discount, setDiscount] = useState('');
-  const [payment, setPayment] = useState('CASH_ON_DELIVERY');
+  const [cart, setCart] = useState<CartLine[]>(draft?.products ?? []);
+  const [delivery, setDelivery] = useState(String(draft?.delivery_charge ?? 70));
+  const [advance, setAdvance] = useState(draft ? String(draft.paid_amount) : '');
+  const [discount, setDiscount] = useState(draft ? String(draft.total_discount) : '');
+  const [payment, setPayment] = useState<string>(draft?.payment_type ?? 'CASH_ON_DELIVERY');
   const [proof, setProof] = useState<File>();
   const [proofError, setProofError] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const browseAction = draft ? 'draft-products' : 'products';
 
   useEffect(() => () => searchRequest.current?.abort(), []);
   const subtotal = Math.round(cart.reduce((sum, line) => sum + line.price * line.quantity, 0) * 100) / 100;
@@ -120,7 +121,7 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
     searchRequest.current = controller;
     setSearching(true); setCatalogError('');
     try {
-      const data = await orderRequest<ProductListing>('products', 'BD', { query: { q: term, page: String(page) }, signal: controller.signal });
+      const data = await orderRequest<ProductListing>(browseAction, 'BD', { query: { q: term, page: String(page) }, signal: controller.signal });
       if (!controller.signal.aborted) { setProducts(data); setActiveQuery(term); }
     } catch (error) {
       if (!controller.signal.aborted) setCatalogError(error instanceof Error ? error.message : 'Could not load products.');
@@ -133,7 +134,8 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
     setCart(lines => {
       const existing = lines.find(line => line.id === variant.id);
       if (existing) return lines.map(line => line.id === variant.id ? { ...line, quantity: Math.min(999, line.quantity + 1) } : line);
-      return lines.length >= 50 ? lines : [...lines, { ...variant, quantity: 1 }];
+      const snapshot = draft?.products.find(line => line.id === variant.id);
+      return lines.length >= 50 ? lines : [...lines, { ...variant, price: snapshot?.price ?? variant.price, quantity: 1 }];
     });
   }
   function quantity(id: string, value: number) {
@@ -145,7 +147,7 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
     lookingUpBarcode.current = true;
     setBarcodeBusy(true); setCatalogError('');
     try {
-      const data = await orderRequest<ProductListing>('products', 'BD', { query: { barcode: code } });
+      const data = await orderRequest<ProductListing>(browseAction, 'BD', { query: { barcode: code } });
       if (!data.rows[0]) throw new Error('No Bangladesh product matches this barcode.');
       if (!(data.rows[0].price > 0)) throw new Error('This product does not have a valid sale price.');
       add(data.rows[0]); setBarcode('');
@@ -158,7 +160,9 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
     submitting.current = true; setSaving(true); setError('');
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      const result = await orderRequest<{ _id: string; status: string }>('create', 'BD', { values: {
+      const result = await orderRequest<{ _id: string; status: string }>(draft ? 'draft' : 'create', 'BD', {
+        query: draft ? { id: draft.id } : undefined, values: {
+        revision: draft?.revision,
         products: cart.map(line => ({ product: line.product, variant: line.id, total_quantity: line.quantity })),
         customer_name: fields.name, customer_phone: fields.phone,
         delivery_address: { address: fields.address, division: fields.division, district: fields.district, thana: fields.thana },
@@ -208,7 +212,7 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
         <div className="website-create-head"><h2><Package size={17}/> Ordered Products</h2><span>Subtotal: <strong>{money(subtotal, 'BDT')}</strong></span></div>
         {cart.length === 0 ? <p className="muted">No items in cart.</p> : cart.map(line => <div key={line.id} className="website-cart-item">
           <div><strong>{line.sku}</strong><small>{line.name} · {money(line.price, 'BDT')} each</small>
-            {line.stock < line.quantity && <small className="website-danger">May await stock</small>}</div>
+            {line.stock < line.quantity && <small className="website-danger">{draft ? 'Check availability at save' : 'May await stock'}</small>}</div>
           <div className="website-quantity">
             <button type="button" className="button secondary" aria-label={'Decrease ' + line.sku} onClick={() => quantity(line.id, line.quantity - 1)}
               disabled={line.quantity <= 1}><Minus size={14}/></button>
@@ -226,33 +230,33 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
       <h2>Customer and delivery</h2>
       <fieldset disabled={saving} className="website-create-fields">
         <div className="website-form-grid">
-          <label>Customer Name *<input name="name" required maxLength={120} autoComplete="off" placeholder="Customer name"/></label>
-          <label>Customer Phone *<input name="phone" required type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX"/></label>
+          <label>Customer Name *<input name="name" required maxLength={120} autoComplete="off" placeholder="Customer name" defaultValue={draft?.customer_name}/></label>
+          <label>Customer Phone *<input name="phone" required type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX" defaultValue={draft?.customer_phone}/></label>
         </div>
-        <label>Delivery Address *<textarea name="address" required maxLength={450} placeholder="House, road and area"/></label>
+        <label>Delivery Address *<textarea name="address" required maxLength={450} placeholder="House, road and area" defaultValue={draft?.delivery_address?.address}/></label>
         <div className="website-form-grid three">
-          <label>Division<input name="division" maxLength={80}/></label><label>District<input name="district" maxLength={80}/></label>
-          <label>Thana<input name="thana" maxLength={80}/></label>
+          <label>Division<input name="division" maxLength={80} defaultValue={draft?.delivery_address?.division}/></label><label>District<input name="district" maxLength={80} defaultValue={draft?.delivery_address?.district}/></label>
+          <label>Thana<input name="thana" maxLength={80} defaultValue={draft?.delivery_address?.thana}/></label>
         </div>
-        <label>Delivery Notes<textarea name="notes" maxLength={1000} placeholder="Optional delivery instructions"/></label>
+        <label>Delivery Notes<textarea name="notes" maxLength={1000} placeholder="Optional delivery instructions" defaultValue={draft?.order_note}/></label>
         <section className="website-create-section">
           <h2>Payment</h2>
-          <label>Payment Type<select value={payment} onChange={e => setPayment(e.target.value)}>
+          <label>Payment Type<select aria-label="Payment Type" value={payment} disabled={draft?.paymentLocked} onChange={e => setPayment(e.target.value)}>
             <option value="CASH_ON_DELIVERY">Cash on Delivery</option><option value="FULL_PAYMENT">Full Payment (already received)</option>
           </select></label>
           <div className="website-form-grid three">
-            {([{ label: 'Delivery Charge', value: delivery, set: setDelivery }, { label: 'Advance Payment', value: advance, set: setAdvance },
+            {([{ label: 'Delivery Charge', value: delivery, set: setDelivery }, { label: 'Advance Payment', value: advance, set: setAdvance, readOnly: draft?.paymentLocked },
               { label: 'Discount', value: discount, set: setDiscount }]).map(field => <label key={field.label}>{field.label}
-              <input type="number" step="0.01" min="0" max="10000000" value={field.value} placeholder="0" onChange={e => field.set(e.target.value)}/></label>)}
+              <input type="number" step="0.01" min="0" max="10000000" value={field.value} placeholder="0" readOnly={field.readOnly} onChange={e => field.set(e.target.value)}/></label>)}
           </div>
         </section>
         <section className="website-create-section">
           <h2>Advance Payment Proof <small className="muted">(optional)</small></h2>
           <div className="website-form-grid">
-            <label>Sender Number<input name="sender" type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX"/></label>
-            <label>Transaction ID<input name="reference" maxLength={100} placeholder="TrxID"/></label>
+            <label>Sender Number<input name="sender" type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX" defaultValue={draft?.sender} readOnly={draft?.paymentLocked}/></label>
+            <label>Transaction ID<input name="reference" maxLength={100} placeholder="TrxID" defaultValue={draft?.reference} readOnly={draft?.paymentLocked}/></label>
           </div>
-          <label className="website-file-label"><span><ImagePlus size={16}/> Upload Payment Screenshot</span>
+          {draft?.proofPresent ? <p className="muted">Existing payment proof is retained.</p> : <label className="website-file-label"><span><ImagePlus size={16}/> Upload Payment Screenshot</span>
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" onChange={e => {
               const file = e.currentTarget.files?.[0];
               setProof(undefined); setProofError('');
@@ -261,7 +265,7 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
                 setProofError('Choose a PNG, JPEG or WebP screenshot up to 1.5 MB.'); return;
               }
               setProof(file);
-            }}/></label>
+            }}/></label>}
           {(proof || proofError) && <button type="button" className="button secondary" onClick={() => {
             setProof(undefined); setProofError(''); if (fileInput.current) fileInput.current.value = '';
           }}>Remove screenshot</button>}
@@ -277,7 +281,7 @@ export function WebsiteOrderCreate({ initial }: { initial: ProductListing }) {
       {validation && <p className="notice warn">{validation}</p>}
       {error && <p role="alert" className="notice warn">{error}</p>}
       <button type="submit" className="button primary" disabled={!cart.length || saving || !!validation || !!proofError}>
-        {saving ? 'Creating order…' : 'Create Order (' + money(Math.max(0, balance), 'BDT') + ')'}</button>
+        {saving ? (draft ? 'Saving order…' : 'Creating order…') : draft ? 'Save order changes' : 'Create Order (' + money(Math.max(0, balance), 'BDT') + ')'}</button>
     </form>
     {scanning && <CameraScan close={() => { setScanning(false); barcodeInput.current?.focus(); }}
       onCode={code => { setScanning(false); setBarcode(code); void scan(code); }}/>}

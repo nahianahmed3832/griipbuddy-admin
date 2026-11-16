@@ -1,36 +1,44 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, publicSandbox, session, url } from '@/lib/api';
+import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, operationsEnabled, operationsOnly, publicSandbox, session, url } from '@/lib/api';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
+import { ClassicDashboard } from '@/components/classic-dashboard';
 import { Reports, reportShortcuts } from '@/components/reports';
 import { ResourceDetail, ResourcePage } from '@/components/resources';
-import { ProductCatalog } from '@/components/product-catalog';
 import { Shell, type Destination } from '@/components/shell';
 import { Settings, WorkflowLibrary } from '@/components/workflow-library';
 import { CheckoutPanel } from '@/components/checkout-panel';
-import { ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
+import { contentViews, ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
 import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/components/integrated-commerce';
-import { advancedEnabled } from '@/lib/advanced';
-import { managedProfile, managedViewsFor } from '@/lib/managed';
-import { ManagedWorkspace } from '@/components/managed-workspace';
-import { CategoryManager } from '@/components/category-manager';
-import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
-import { WebsiteOrderCreatePage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
-import { AllPurchases, DefaultRateCreatePage, DefaultRatePage, PurchaseInvoice } from '@/components/purchases';
-import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
-import { canOperate } from '@/lib/operations';
+import { CatalogRegistry, CategoryWorkspace, ProductWorkspace } from '@/components/catalog-workspace';
+import { CouponEditor, GlobalOffer } from '@/components/promotion-pages';
 import { CustomerCreatePage, CustomerProfilePage, CustomersPage, canCreateCustomer } from '@/components/customers-page';
+import { PreOrdersPage } from '@/components/preorders-page';
+import { WebsiteOrderCreatePage, WebsiteOrderDetailPage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
 import { AllBarcodes, BarcodeLogs, GenerateInventoryLabels, ScanToReceive } from '@/components/smart-inventory';
 import { inventoryPath, smartInventoryTabs } from '@/lib/smart-inventory';
+import { AssignedOrders } from '@/components/assigned-orders';
+import { FinanceRecordsPage } from '@/components/finance-records';
+import { isFinanceView } from '@/lib/finance-records';
 import { AccountingPage } from '@/components/accounting-page';
 import { financeRead, financeWrite } from '@/lib/accounting';
+import { AllPurchases, PurchaseRecordPage, DefaultRatePage, DefaultRateCreatePage } from '@/components/purchases';
+import { SuppliersPage } from '@/components/suppliers-page';
+import { CourierFraud } from '@/components/courier-fraud';
+import { StockChangesPage } from '@/components/stock-changes-page';
+import { StockReport } from '@/components/stock-report';
 import { LocationsPage } from '@/components/locations-page';
 import { StaffWorkspace } from '@/components/staff-workspace';
+import { OperationsDesk } from '@/components/operations-desk';
+import { managedProfile, managedViewsFor } from '@/lib/managed';
+import { ManagedWorkspace } from '@/components/managed-workspace';
 import { TransactionPage } from '@/components/transactions';
 import { canReadTransactions } from '@/lib/transactions';
+import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
+import { canOperate } from '@/lib/operations';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,33 +52,42 @@ export default async function Desk({ params, searchParams }: {
     redirect('/sign-in');
   }
   const {section:sectionId,view=[]} = await params;
+  if (operationsOnly() && sectionId !== 'operations' && !(sectionId === 'staff' && superAdmin(auth.staff))) redirect('/desk/operations');
   const q = await searchParams;
   const section = sections.find(item => item.id === sectionId);
   if (!section || view.length > 2) notFound();
-  const nav = visibleSections(auth.staff);
+  const nav = visibleSections(auth.staff).filter(item => operationsOnly()
+    ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
-  const unifiedCategory = sectionId === 'catalog' && ['categories','subcategories','taxonomy'].includes(view[0] ?? '');
-  const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
+  const sectionResources = Object.entries(resources[sectionId] ?? {}).filter(([,res]) => permitted(res,auth));
   const integrated = integratedCheckoutEnabled();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const transactions = canReadTransactions(auth);
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
-  const tabs = [...sectionResources.filter(([key]) => !(sectionId === 'payments' && key === 'transactions' && transactions)).map(([key,res]) => [key, key === 'barcodes' && sectionId === 'inventory' ? 'Smart Inventory' : res.title]), ...managed];
+  const tabs = [...sectionResources.filter(([key]) => !(sectionId === 'payments' && key === 'transactions' && transactions))
+    .map(([key,res]) => [key, key === 'barcodes' && sectionId === 'inventory' ? 'Smart Inventory' : res.title]), ...managed];
   if (sectionId === 'staff' && superAdmin(auth.staff)) tabs.splice(0, tabs.length,
     ['staff', 'Staff directory'], ['roles', 'Roles and permissions'], ['activity', 'Access activity']);
   const inventoryTabs = smartInventoryTabs(auth);
   if (sectionId === 'customers' && canCreateCustomer(auth)) tabs.splice(1, 0, ['create', 'Create customer']);
-  if (sectionId === 'content' && advancedEnabled() && has(auth.staff, 'cms.view')) tabs.unshift(['workspace','Content and SEO']);
+  if (sectionId === 'content' && region === 'BD' && has(auth.staff, 'cms.view')) {
+    tabs.push(['hero', process.env.GRIIP_ADMIN_TARGET === 'integration' ? 'Homepage carousel' : 'Hero section'], ['offer','Global offer'], ['shop-by-category','Shop by category'], ['best-selling', 'Best selling'],
+      ['new-arrivals', 'New arrivals'], ['leather-section', 'Leather section'], ['featured-products', 'Featured products'], ['workspace','Content and SEO']);
+  }
+  const fraud = region === 'BD' && has(auth.staff, 'order.view') && !publicSandbox() && !operationsOnly();
+  if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
   if (allowCheckout) {
-    if (sectionId === 'markets') tabs.push(['checkout',integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
-    else if (sectionId === 'payments') tabs.unshift(['checkout',integrated ? 'Checkout receipts' : 'Checkout methods']);
+    if (sectionId === 'markets') tabs.push(['checkout', integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
+    else tabs.unshift(['checkout', integrated ? 'Checkout receipts' : 'Checkout methods']);
   }
   if (sectionId === 'payments' && transactions) tabs.unshift(['transactions', 'Transactions']);
   const accounting = financeRead(auth.staff) || (financeWrite() && has(auth.staff, 'expense.view') && has(auth.staff, 'expense.create'));
+  if (sectionId === 'payments' && region === 'BD' && has(auth.staff,'expense.view')) tabs.push(['expense-report', 'Expense report']);
+  if (sectionId === 'orders' && has(auth.staff, 'order.view')) tabs.push(['sales-executive', 'Sales Executive']);
   if (sectionId === 'payments' && accounting) tabs.push(['accounting', 'Accounting']);
-  const active = unifiedCategory ? 'categories' : view[0] ?? tabs[0]?.[0];
+  const active = view[0] ?? tabs[0]?.[0];
   const inSmartInventory = sectionId === 'inventory' && inventoryTabs.some(([key]) => key === active);
   const purchaseLinks = [
     ...(has(auth.staff, 'purchase.view') ? [{ id: 'all', label: 'All Purchases', href: url(purchasePath, { region }) }] : []),
@@ -84,11 +101,11 @@ export default async function Desk({ params, searchParams }: {
   const destinations = [...new Map(nav.flatMap<Destination>(item => [
     {label:item.label,href:url('/desk/'+item.id,{region}),description:item.description},
     ...(item.id === 'reports' ? reportLinks : []),
-    ...Object.entries(resources[item.id] ?? {}).filter(([key,res]) => permitted(res,auth) && !(item.id === 'catalog' && key === 'subcategories'))
+    ...Object.entries(resources[item.id] ?? {}).filter(([,res]) => permitted(res,auth))
       .map(([key,res]) => ({
         label:item.id === 'payments' && key === 'transactions' && transactions ? 'Transactions' : res.title,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label,
         skuSearch: item.id === 'catalog' && key === 'products',
-        recordSearch: Boolean(res.search) && ['orders/orders','catalog/products','inventory/stock','pos/sales'].includes(item.id+'/'+key) ||
+        recordSearch: ['orders/orders','catalog/products','inventory/stock','pos/sales'].includes(item.id+'/'+key) ||
           (transactions && item.id === 'payments' && key === 'transactions'),
       })),
     ...managedViewsFor(auth.staff,item.id)
@@ -102,20 +119,20 @@ export default async function Desk({ params, searchParams }: {
   try {
     getRegion(regionQuery,auth.staff);
     if (!nav.some(item => item.id === sectionId)) throw new ApiError(403);
-    if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region});
+    if (sectionId === 'operations') content = await OperationsDesk({ auth, region, view, query: {
+      from: param(q, 'from'), to: param(q, 'to'), q: param(q, 'q'), state: param(q, 'state'), proposal: param(q, 'proposal'),
+    } });
+    else if (sectionId === 'overview' && view.length === 1 && view[0] === 'classic') content = await ClassicDashboard({auth,q,region});
+    else if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region});
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({auth,id:view[0],q,region});
-    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q} region={region}/>;
-    else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
-    else if (unifiedCategory) {
-      if (!has(auth.staff,'product.view')) throw new ApiError(403);
-      if (view[0] !== 'categories' || view.length > 1) {
-        redirect(url('/desk/catalog/categories',{ region, record: view[1] ?? param(q,'record') }));
-      }
-      const { nodes, managed: editable } = await loadCategories(auth);
-      content = <CategoryManager nodes={nodes} initial={param(q,'record')}
-        canCreate={editable && canChangeCategories(auth,'product.create')}
-        canEdit={editable && canChangeCategories(auth,'product.update')}/>;
+    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
+    else if (sectionId === 'settings' && view.length === 1 && ['current-plan','renew-subscription'].includes(view[0]) && superAdmin(auth.staff)) {
+      const title = view[0] === 'current-plan' ? 'Current Plan' : 'Renew Subscription';
+      content = <><PageHeading eyebrow="ADMINISTRATION / SUBSCRIPTION" title={title} description="Feature coming soon."/>
+        <p className="notice">This feature is not available yet.</p></>;
     }
+    else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
+    else if (sectionId === 'payments' && active && isFinanceView(active)) content = await FinanceRecordsPage({auth,region,q,view:active,id:view[1]});
     else if (active && managed.has(active) && view.length < 2)
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (sectionId === 'payments' && active === 'transactions' && transactions) content = await TransactionPage({ auth, q, region, id: view[1] });
@@ -131,27 +148,53 @@ export default async function Desk({ params, searchParams }: {
         <CommerceReceipts key={param(q, 'receipt')} writable={canWrite(auth.staff)} initial={param(q, 'receipt')}/>
       </>;
     }
-    else if (sectionId === 'content' && active === 'workspace' && view.length <= 1) content = await ContentWorkspace({ auth });
+    else if (sectionId === 'content' && active === 'offer' && view.length === 1) content = await GlobalOffer({ auth, region });
+    else if (sectionId === 'content' && active && (active === 'workspace' || Object.hasOwn(contentViews, active)) && view.length <= 1) {
+      content = await ContentWorkspace({ auth, region, section: contentViews[active] });
+    }
+    else if (sectionId === 'content' && region !== 'BD') throw new ApiError(403);
+    else if (sectionId === 'catalog' && active === 'products') content = await ProductWorkspace({ auth, q, region, id: view[1] });
+    else if (sectionId === 'catalog' && active === 'taxonomy') redirect(url('/desk/catalog/categories', {region, record:view[1] ?? param(q,'record')}));
+    else if (sectionId === 'catalog' && (active === 'categories' || active === 'subcategories')) content = await CategoryWorkspace({ auth, q, region, id: view[1] });
+    else if (sectionId === 'catalog' && (active === 'brands' || active === 'faqs' || active === 'reviews' || active === 'policies')) {
+      content = await CatalogRegistry({ auth, q, region, id: view[1], kind: active });
+    }
+    else if (sectionId === 'markets' && active === 'countries') content = await CatalogRegistry({auth, q, region, id: view[1], kind: 'countries'});
+    else if (sectionId === 'marketing' && active === 'coupons' && view[1]) content = await CouponEditor({ auth, region, id: view[1] === 'new' ? undefined : view[1] });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
-    else if (sectionId === 'orders' && active === 'orders' && view.length <= 1) content = await WebsiteOrdersPage({ auth, q, region });
+    else if (sectionId === 'orders' && active === 'orders') content = view[1]
+      ? await WebsiteOrderDetailPage({ auth, q, region, id: view[1] }) : await WebsiteOrdersPage({ auth, q, region });
+    else if (sectionId === 'orders' && active === 'fraud-check' && view.length === 1 && fraud) {
+      content = <><PageHeading eyebrow="COMMERCE / COURIER" title="Fraud checker" description="Review the courier’s delivery history before confirming an order."/>
+        <CourierFraud enabled={process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1' && canWrite(auth.staff)}/></>;
+    }
+    else if (sectionId === 'orders' && active === 'sales-executive' && !view[1]) content = await WebsiteOrdersPage({auth, region, q, executive:true});
+    else if (sectionId === 'orders' && active === 'assigned' && !view[1]) content = await AssignedOrders({auth, region, q});
+    else if (sectionId === 'orders' && active === 'preorders') content = await PreOrdersPage({ auth, q, region, view });
     else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region });
     else if (sectionId === 'inventory' && active === 'barcodes' && view.length <= 1) content = await AllBarcodes({ auth, q, region });
     else if (sectionId === 'inventory' && active === 'generate-barcodes' && view.length === 1) content = GenerateInventoryLabels({ auth, region });
     else if (sectionId === 'inventory' && active === 'scan-to-receive' && view.length === 1) content = await ScanToReceive({ auth, region });
     else if (sectionId === 'inventory' && active === 'barcode-logs' && view.length === 1) content = await BarcodeLogs({ auth, q, region });
+    else if (sectionId === 'inventory' && active === 'stock' && !view[1]) content = await StockReport({auth, q, region});
+    else if (sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && view[1] === 'create') {
+      content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer' });
+    }
+    else if (sectionId === 'inventory' && (active === 'outlet-update' || active === 'warehouse-update') && view.length === 1) {
+      content = await StockChangesPage({auth, region, mode: active});
+    }
+    else if (sectionId === 'inventory' && active === 'purchases') content = view[1]
+      ? await PurchaseRecordPage({auth, region, q, id: view[1]}) : await AllPurchases({auth, region, q});
+    else if (sectionId === 'inventory' && active === 'rates' && view.length < 2) content = await DefaultRatePage({auth, region, q});
+    else if (sectionId === 'inventory' && active === 'rates' && view[1] === 'new') content = await DefaultRateCreatePage({auth, region});
+    else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1]});
     else if (sectionId === 'inventory' && active === 'warehouses') content = await LocationsPage({ auth, region, q, id: view[1] });
     else if (sectionId === 'customers' && active === 'customers') content = view[1]
       ? await CustomerProfilePage({ auth, id: view[1], q, region })
       : await CustomersPage({ auth, q, region });
     else if (sectionId === 'customers' && active === 'create' && view.length === 1) content = CustomerCreatePage({ auth, region });
     else if (sectionId === 'staff' && active && superAdmin(auth.staff)) content = await StaffWorkspace({ auth, view: active, id: view[1], q });
-    else if (sectionId === 'catalog' && active === 'products' && view.length <= 1) content = await ProductCatalog({ auth, q, region });
-    else if (activePurchase === 'all' && !view[1]) content = await AllPurchases({ auth, q, region });
-    else if (activePurchase === 'all' && view[1] && param(q, 'invoice') === '1') content = await PurchaseInvoice({ auth, region, id: view[1] });
-    else if (activePurchase === 'rates' && !view[1]) content = await DefaultRatePage({ auth, q, region });
-    else if (activePurchase === 'new') content = await DefaultRateCreatePage({ auth, region });
-    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region,q,
-      openPurchaseEditor: activePurchase === 'all' && param(q, 'edit') === '1'})
+    else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);
     else throw new ApiError(404);
@@ -164,10 +207,10 @@ export default async function Desk({ params, searchParams }: {
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
-    regionPath={activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
-    readOnly={publicSandbox()} environment={connection().name} international={has(auth.staff,'international.access')} destinations={destinations}
-    purchaseLinks={purchaseLinks} activePurchase={activePurchase}>
+    purchaseLinks={purchaseLinks} activePurchase={activePurchase}
+    regionPath={activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
+    readOnly={publicSandbox()} environment={connection().name} fraud={fraud} international={has(auth.staff,'international.access')} destinations={destinations}>
     {!!tabs.length && !activePurchase && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active || (key === 'barcodes' && inSmartInventory) ? 'page' : undefined}>{label}</Link>)}</nav>}
     {inSmartInventory && <nav className="tabs" aria-label="Smart Inventory views">

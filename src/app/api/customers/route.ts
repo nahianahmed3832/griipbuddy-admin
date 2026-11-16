@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { ApiError, arr, canWrite, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
 import { customerFilters } from '@/lib/customers';
-import { has } from '@/lib/sections';
+import { has, superAdmin } from '@/lib/sections';
 
 const root = '/customer-workspace';
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     if (!auth) return reject('Sign in required.', 401);
     if (!canWrite(auth.staff) || !has(auth.staff, 'user.view')) return reject('Customer updates are restricted.', 403);
     const id = request.nextUrl.searchParams.get('id');
+    const password = request.nextUrl.searchParams.get('action') === 'password';
+    if (password && (!id || !superAdmin(auth.staff))) return reject('Password changes are restricted to a super admin.', 403);
     if (id !== null && !mongoId(id)) return reject('Customer not found.', 404);
     if (!has(auth.staff, id ? 'user.update' : 'user.create')) return reject('Customer update permission required.', 403);
     const limit = 8000;
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     if (Buffer.byteLength(body) > limit) return reject('Customer request is too large.', 413);
     try { JSON.parse(body); } catch { return reject('Invalid customer request.', 400); }
-    const response = await requestApi(id ? root + '/' + id : root, auth.token, { method: id ? 'PATCH' : 'POST', body });
+    const response = await requestApi(id ? root + '/' + id + (password ? '/password' : '') : root, auth.token, { method: id && !password ? 'PATCH' : 'POST', body });
     const payload = obj(await response.json());
     if (!response.ok) {
       const validation = str(obj(arr(payload.errorMessages)[0]).message);

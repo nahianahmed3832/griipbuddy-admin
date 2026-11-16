@@ -111,10 +111,12 @@
 .purchase-error { white-space: pre-line; }
 .purchase-invoice { display: grid; gap: 16px; }
 .purchase-invoice .table-scroll { overflow: auto; }
+.supplier-fields { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); border: 0; padding: 0; min-width: 0; }
+.supplier-fields input, .supplier-fields textarea, .supplier-fields select { width: 100%; }
 
 @media print {
   body:has(.purchase-invoice) { background: white; }
-  body:has(.purchase-invoice) :is(.sidebar, .topbar, .workspace-footer, .skip-link, .purchase-print-hidden, .search-dialog) { display: none; }
+  body:has(.purchase-invoice) :is(.sidebar, .topbar, .workspace-footer, .skip-link, .purchase-print-hidden, .search-dialog, .tabs) { display: none; }
   body:has(.purchase-invoice) :is(.shell, .workspace) { display: block; }
   body:has(.purchase-invoice) .main-content { padding: 0; }
   .purchase-invoice { border: 0; box-shadow: none; padding: 0; }

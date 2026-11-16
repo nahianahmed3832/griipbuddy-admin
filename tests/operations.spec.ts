@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { fixturePassword } from './fixture-password';
 
-const origin = 'http://127.0.0.1:4327';
+const origin = process.env.GRIIP_ADMIN_TEST_OPERATIONS_ORIGIN ?? 'http://127.0.0.1:4327';
+const portOffset = Number(process.env.GRIIP_ADMIN_TEST_OPERATIONS_PORT_OFFSET ?? 0);
+if (!/^http:\/\/127\.0\.0\.1:\d{4,5}$/.test(origin)) throw new Error('The operations test requires a loopback admin origin.');
+if (!Number.isInteger(portOffset) || portOffset < 0 || portOffset > 500) throw new Error('Invalid fixture port offset.');
+const fixtureOrigin = 'http://127.0.0.1:' + (38100 + portOffset);
 const variant = '000000000000000000000005';
 const intlVariant = '000000000000000000000006';
 const intlProduct = '000000000000000000000004';
@@ -22,14 +26,14 @@ async function fixtureDatabase<T>(work: (collection: (name: string) => FixtureCo
   const backend = process.env.GRIIP_ADMIN_TEST_BACKEND_DIR;
   if (!backend) throw new Error('Set GRIIP_ADMIN_TEST_BACKEND_DIR to the private recovered backend with installed dependencies.');
   const { MongoClient, ObjectId } = createRequire(resolve(backend, 'package.json'))('mongoose').mongo;
-  const client = new MongoClient('mongodb://127.0.0.1:38117/griipbuddy_fixture?replicaSet=griip-recovery&directConnection=true',
+  const client = new MongoClient(`mongodb://127.0.0.1:${38117 + portOffset}/griipbuddy_fixture?replicaSet=griip-recovery&directConnection=true`,
     { serverSelectionTimeoutMS: 2000 });
   try {
     const db = client.db('griipbuddy_fixture');
     const topology = await db.admin().command({ hello: 1 });
     const id = (value: string) => new ObjectId(value);
     const marker = await db.collection('variants').findOne({ _id: id(variant), sku: 'FIXTURE-BD-BLUE' });
-    if (topology.setName !== 'griip-recovery' || topology.me !== '127.0.0.1:38117' || !marker) {
+    if (topology.setName !== 'griip-recovery' || topology.me !== `127.0.0.1:${38117 + portOffset}` || !marker) {
       throw new Error('Unexpected disposable inventory fixture.');
     }
     return await work(name => db.collection(name), id);
@@ -46,8 +50,8 @@ async function signIn(page: Page, role = '1') {
   await expect(page).toHaveURL(origin + '/desk/overview');
 }
 
-async function confirm(page: Page, status = 200) {
-  const response = page.waitForResponse(value => value.url() === origin + '/api/operations');
+async function confirm(page: Page, status = 200, path = '/api/operations') {
+  const response = page.waitForResponse(value => value.url() === origin + path && value.request().method() === 'POST', { timeout: 15000 });
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm' }).click();
   const result = await response;
   expect(result.status(), await result.text()).toBe(status);
@@ -102,7 +106,7 @@ test('Smart Inventory prints labels, receives a dated purchase, and supports a p
   await page.getByRole('button', { name: 'Add supplier' }).click();
   await page.getByLabel('Supplier name').fill('Acceptance supply');
   await page.getByLabel('Contact reference number').fill('9870021');
-  await confirm(page);
+  await confirm(page, 200, '/api/purchases/suppliers');
   await expect(page.getByRole('table').getByText('Acceptance supply')).toBeVisible();
 
   await page.goto(origin + '/desk/catalog/variants/' + variant);
@@ -173,13 +177,21 @@ test('Smart Inventory prints labels, receives a dated purchase, and supports a p
   await page.goto(origin + '/desk/inventory/barcode-logs?region=INTERNATIONAL&barcode=' + codes[0]);
   await expect(inventoryAlert).toContainText('No unit matches that barcode');
   await page.goto(origin + purchase);
-  await expect(page.getByText('2026-10-31', { exact: true })).toBeVisible();
+  await expect(page.locator('time[datetime^="2026-10-31"]').first()).toBeVisible();
   await page.getByRole('button', { name: 'Edit purchase notes' }).click();
   await page.getByRole('dialog').getByLabel('Purchase notes', { exact: true }).fill('Checked during receipt acceptance');
   await confirm(page);
   await expect(page.getByRole('paragraph').filter({ hasText: 'Checked during receipt acceptance' })).toBeVisible();
+  await page.getByRole('link', { name: 'Edit purchase', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Edit purchase #/ })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Purchase notes', exact: true }).fill('Edited from the purchase record');
+  await page.getByRole('button', { name: 'Save purchase', exact: true }).click();
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Edited from the purchase record$/ })).toBeVisible();
+  expect(await quantities()).toEqual(afterReceiving);
+  await page.getByRole('link', { name: 'Purchase invoice', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Purchase Invoice/ })).toBeVisible();
 
-  const placed = await page.request.post('http://127.0.0.1:38100/api/v1/order', { data: {
+  const placed = await page.request.post(fixtureOrigin + '/api/v1/order', { data: {
     order_by: 'GUEST', customer_name: 'Acceptance checkout', customer_phone: '01000000008',
     delivery_address: { division: 'Fixture', district: 'Fixture', thana: 'Fixture', address: 'Fixture address' },
     products: [{ product, total_quantity: 2, total_price: 1600, shipping_cost: 0, shipping_cost_per_unit: 0,
@@ -191,30 +203,32 @@ test('Smart Inventory prints labels, receives a dated purchase, and supports a p
   expect(placed.status(), await placed.text()).toBe(201);
   const order = (await placed.json()).data._id;
   await page.goto(origin + '/desk/orders/orders/' + order);
-  await page.getByRole('button', { name: 'Add staff note' }).click();
-  await page.getByRole('dialog').getByLabel('Staff note').fill('Confirmed delivery details during acceptance');
-  await confirm(page);
-  await expect(page.getByRole('cell',{name:'Confirmed delivery details during acceptance'})).toBeVisible();
-  await page.getByRole('button', { name: 'Assign order barcodes' }).click();
+  const orderAction = async (name: string) => {
+    await page.getByRole('button', { name: 'Order Actions', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name, exact: true }).click();
+  };
+  await orderAction('Assign Barcodes');
   await page.getByRole('dialog').getByLabel('Scanned barcodes').fill(codes.join('\n'));
-  await confirm(page);
+  await page.getByRole('dialog').getByRole('button', { name: 'Assign barcodes', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
+  const testTracking = 'FIXTURE-RETURN-' + order;
   await fixtureDatabase(async (collection, id) => {
     await collection('orders').updateOne({ _id: id(order) }, { $set: {
-      transfer_to_courier: true, tracking_code: 'FIXTURE-TRACKING', status: 'IN_TRANSIT',
+      transfer_to_courier: true, tracking_code: testTracking, status: 'IN_TRANSIT',
     } });
   });
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Assign order barcodes' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Refresh simulated tracking' }).click();
-  await confirm(page);
+  await page.goto(origin + '/desk/orders/orders?q=' + testTracking);
+  await page.getByRole('button', { name: 'Sync with Courier', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Sync orders', exact: true }).click();
+  await expect(page.getByText(/1 refreshed/)).toBeVisible();
+  await page.goto(origin + '/desk/orders/orders/' + order);
   await expect(page.getByText('Delivered', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Mark pending return' }).click();
-  await confirm(page);
+  await orderAction('Mark as Pending Return');
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm pending return', exact: true }).click();
   await expect(page.getByText('Pending return', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Process scanned return' }).click();
+  await orderAction('Return Order');
   await page.getByRole('dialog').getByLabel('Scanned barcodes').fill(codes[0]);
-  await confirm(page);
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm return', exact: true }).click();
   await expect.poll(() => fixtureDatabase(async (collection, id) =>
     (await collection('orders').findOne({ _id: id(order) }))?.status)).toBe('PARTIAL');
   expect(await quantities()).toEqual([Number(afterReceiving[0]) - 1, afterReceiving[1], Number(afterReceiving[2]) - 1]);
@@ -308,5 +322,5 @@ test('native cash sale and return reconcile inventory and coupon status retries 
     data: { action: 'coupon-status', recordId: id, region: 'BD', values: { enabled: 'true' } } });
   expect(replay.status()).toBe(200);
   await page.reload();
-  await expect(page.locator('dd').getByText('Active', { exact: true })).toBeVisible();
+  await expect(page.getByText('Enabled · 0 recorded uses', { exact: true })).toBeVisible();
 });

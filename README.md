@@ -58,9 +58,11 @@ Open **Website Orders → All Orders** for market-scoped filters, status counts,
 
 This workspace needs the paired backend with the `/api/v1/order/workspace` routes. Courier sync refreshes eligible orders on the current page. Courier and SMS use the configured providers; local fixtures simulate both. The courier fraud lookup is off until the backend is configured with `GRIIP_WEBSITE_ORDER_FRAUD_LOOKUP=1`.
 
+Open an order to review its invoice, staff notes and logs. **Print Invoice** prints only the invoice. **Order Actions** shows what staff can do at the current status. For eligible Bangladesh orders, **Send to Courier** creates a Steadfast consignment from the selected warehouse. Use **Mark as Handed Over** when the courier has collected it. If dispatch times out, check for the consignment in Steadfast before submitting again.
+
 ## Hosted sample preview
 
-The [admin](https://dev.griipbuddy.com/desk/overview) opens without a login and shows read-only sample data. The [storefront](https://frontend.griipbuddy.com/bd) uses the same isolated sample catalog with guest shopping and quote simulation. See `deploy/public-build.compose.yaml` and `deploy/public-build.nginx.conf` for the sample stack. Step 10 uses local fixtures and does not update either host.
+The [admin](https://dev.griipbuddy.com/desk/overview) opens without a login and shows read-only sample data. The [storefront](https://frontend.griipbuddy.com/bd) uses the same isolated sample catalog with guest shopping and quote simulation. See `deploy/public-build.compose.yaml` and `deploy/public-build.nginx.conf` for the sample stack. The [staff workspace](https://dev.griipbuddy.com/admin/sign-in) uses the protected integration environment.
 
 The Step 8 deployment and rollback notes below describe the older isolated stack and are retained for recovery reference.
 

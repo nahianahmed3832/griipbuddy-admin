@@ -154,13 +154,24 @@ export async function Reports({ auth, id, q, region }: { auth: Session; id?: str
     const definitions = arr(await api(url('/analytics/reports', {region}),auth.token)).map(obj).filter(report => reportIds.includes(str(report.id)));
     return <>
       <PageHeading eyebrow="OPERATIONS / ANALYTICS" title="Reports" description="Review sales, fulfilment and inventory reports."/>
-      <div className="report-grid">{definitions.map(report => {
-        const domain = reportDomain(report.domain);
-        return <Link className={'panel report-card overview-' + domain.color} key={str(report.id)} href={url('/desk/reports/' + str(report.id),{region})}>
-          <span className="overview-block-icon"><domain.icon size={20}/></span><span className="eyebrow">{domain.name}</span>
-          <h2>{str(report.title)}</h2><p>{str(report.description)}</p><span className="card-cta">Open report <ArrowRight size={15}/></span>
-        </Link>;
-      })}</div>
+      {Object.entries(domains).map(([key, domain]) => {
+        const reports = definitions.filter(entry => entry.domain === key);
+        if (!reports.length) return null;
+        return <section className="stack-form" key={key} aria-label={domain.name}>
+          <h2>{domain.name}</h2>
+          <div className="report-grid">{reports.map(report =>
+            <Link className={'panel report-card overview-' + domain.color} key={str(report.id)} href={url('/desk/reports/' + str(report.id),{region})}>
+              <span className="overview-block-icon"><domain.icon size={20}/></span>
+              <h3>{str(report.title)}</h3><p>{str(report.description)}</p><span className="card-cta">Open report <ArrowRight size={15}/></span>
+            </Link>)}</div>
+        </section>;
+      })}
+      {(has(auth.staff, 'stock.view') || (region === 'BD' && has(auth.staff, 'expense.view'))) && <section className="panel padded stack-form">
+        <h2>Other reports</h2><div className="page-actions">
+          {has(auth.staff, 'stock.view') && <Link className="button secondary" href={url('/desk/inventory/stock', {region})}>Stocks report by location</Link>}
+          {region === 'BD' && has(auth.staff, 'expense.view') && <Link className="button secondary" href="/desk/payments/expense-report">Expense report</Link>}
+        </div>
+      </section>}
       {!definitions.length && <Empty title="No report permissions" detail="Ask a workspace administrator for access to a specific report."/>}
     </>;
   }

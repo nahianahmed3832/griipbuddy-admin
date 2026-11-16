@@ -3,7 +3,7 @@ import { api, ApiError, arr, canWrite, mongoId, obj, str, type Session } from '.
 import { has } from './sections';
 import { type CategoryNode, type CategoryMedia } from './category-tree';
 
-export function canChangeCategories(auth: Session, permission: 'product.create' | 'product.update') {
+export function canChangeCategories(auth: Session, permission: 'product.create' | 'product.update' | 'product.delete') {
   return canWrite(auth.staff) && has(auth.staff, 'product.view') && has(auth.staff, permission);
 }
 

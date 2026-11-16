@@ -1,0 +1,49 @@
+.workspace,
+.workspace :global(.stack) {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace :global(.stack) {
+  min-width: 0;
+}
+
+.workspace h2,
+.workspace h3,
+.workspace fieldset {
+  margin-block: 0;
+}
+
+.workspace fieldset {
+  min-width: 0;
+}
+
+.workspace :global(.filters) label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.workspace :global(.filters) label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace :global(.operation-form) {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding-block-start: 10px;
+}
+
+.workspace :global(.operation-form) :global(.filters) {
+  padding: 0;
+}
+
+.workspace summary {
+  cursor: pointer;
+  font-weight: 650;
+}

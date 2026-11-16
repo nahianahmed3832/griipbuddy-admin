@@ -9,8 +9,8 @@ type Editor = { node: CategoryNode } | { parent?: CategoryNode };
 const depthLabel = ['Top level','Level 2','Level 3','Level 4'];
 const inputKey = (size: string, field: string) => size + '-' + field;
 
-export function CategoryManager({ nodes, initial, canCreate, canEdit }: {
-  nodes: CategoryNode[]; initial?: string; canCreate: boolean; canEdit: boolean;
+export function CategoryManager({ nodes, initial, mode, canCreate, canEdit, canDelete }: {
+  nodes: CategoryNode[]; initial?: string; mode?: string; canCreate: boolean; canEdit: boolean; canDelete: boolean;
 }) {
   const [rows, setRows] = useState(nodes);
   const index = useMemo(() => new Map(rows.map(node => [categoryKey(node),node])), [rows]);
@@ -23,10 +23,16 @@ export function CategoryManager({ nodes, initial, canCreate, canEdit }: {
   const [expanded, setExpanded] = useState(() => new Set(selected?.ancestors.map((id, depth) => depth + ':' + id)));
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const [editor, setEditor] = useState<Editor>();
+  const [editor, setEditor] = useState<Editor | undefined>(() => {
+    if (canEdit && mode === 'edit' && initial && selected) return { node: selected };
+    if (canCreate && mode === 'create') return {};
+    if (canCreate && mode === 'create-child' && initial && selected && selected.depth < 3) return { parent: selected };
+    return undefined;
+  });
   const [feedback, setFeedback] = useState('');
   const [moveError, setMoveError] = useState('');
   const [moving, setMoving] = useState(false);
+  const deleteDialog = useRef<HTMLDialogElement>(null);
   const detail = useRef<HTMLElement>(null);
   const view = new Map(rows.map(row => [categoryKey(row),visibility(row,index)]));
   const roots = branches.get('') ?? [];
@@ -68,6 +74,23 @@ export function CategoryManager({ nodes, initial, canCreate, canEdit }: {
     select(node);
     setEditor(undefined);
     setFeedback(created ? 'Category created.' : 'Category changes saved.');
+  }
+
+  async function remove(node: CategoryNode) {
+    if (moving) return;
+    setMoving(true);
+    setMoveError('');
+    try {
+      const query = new URLSearchParams({ id: node.id, depth: String(node.depth) });
+      const response = await fetch(adminPath('/api/categories?' + query.toString()), { method: 'DELETE' });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.deleted !== true) throw new Error(result?.error || 'Could not delete the category.');
+      const parent = index.get(parentKey(node));
+      setRows(previous => previous.filter(row => categoryKey(row) !== categoryKey(node)));
+      setSelected(parent ? categoryKey(parent) : '');
+      setFeedback('Category deleted.');
+    } catch (error) { setMoveError(error instanceof Error ? error.message : 'Could not delete the category.'); }
+    finally { setMoving(false); deleteDialog.current?.close(); }
   }
 
   function renderGroup(nodes: CategoryNode[]) {
@@ -140,6 +163,7 @@ export function CategoryManager({ nodes, initial, canCreate, canEdit }: {
       <span className="category-scope">Shared across markets</span>
     </div>
     <p role="status" className={feedback ? 'notice' : 'category-sr'}>{feedback}</p>
+    {mode === 'create-child' && !editor && !feedback && canCreate && <p className="notice">Select a parent, then choose Add child category.</p>}
     {!canCreate && !canEdit && <p className="notice">This category tree is available to you in read-only mode.</p>}
     <div className="category-layout">
       <section className="panel category-browser" aria-labelledby="category-tree-heading">
@@ -184,11 +208,18 @@ export function CategoryManager({ nodes, initial, canCreate, canEdit }: {
           </dl>
           {selectedStatus === 'Hidden by parent' && <p className="notice">Make the parent categories visible to show this category in navigation.</p>}
           {selectedStatus === 'Needs review' && <p className="notice warn">The saved category path needs review before this branch can be extended.</p>}
-          {(canEdit || canCreate) && <div className="page-actions">
+          {(canEdit || canCreate || canDelete) && <div className="page-actions">
             {canEdit && <button className="button secondary" disabled={moving} onClick={() => setEditor({ node:selected })}>Edit category</button>}
             {canCreate && selected.depth < 3 && selectedStatus !== 'Needs review' &&
               <button className="button secondary" disabled={moving} onClick={() => setEditor({ parent:selected })}><Plus size={16}/> Add child category</button>}
+            {canDelete && <button className="button secondary" disabled={moving} onClick={() => deleteDialog.current?.showModal()}>Delete category</button>}
           </div>}
+          <dialog className="form-dialog" ref={deleteDialog} aria-label="Delete category" onCancel={event => { if (moving) event.preventDefault(); }}>
+            <div className="stack-form"><h2>Delete {categoryName(selected)}</h2><p>Remove this category from the catalog.</p>
+              <div className="page-actions"><button className="button secondary" type="button" disabled={moving} onClick={() => deleteDialog.current?.close()}>Cancel</button>
+                <button className="button primary" type="button" disabled={moving} onClick={() => void remove(selected)}>{moving ? 'Deleting…' : 'Confirm deletion'}</button></div>
+            </div>
+          </dialog>
           {canEdit && selectedStatus !== 'Needs review' && siblings.length > 1 && <div className="category-order">
             <span className="muted">Order among siblings</span>
             <button className="button secondary" disabled={moving || rank <= 0} onClick={() => void move('earlier')}><ArrowUp size={15}/> Move earlier</button>

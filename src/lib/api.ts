@@ -20,7 +20,17 @@ export function publicSandbox() {
   return process.env.GRIIP_ADMIN_TARGET === 'sandbox';
 }
 
+export function operationsEnabled() {
+  return process.env.GRIIP_ADMIN_OPERATIONS === '1' || operationsOnly();
+}
+
+export function operationsOnly() {
+  return ['operations', 'pilot'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
+}
+
 export function connection() {
+  if (process.env.GRIIP_ADMIN_TARGET === 'pilot') return { origin: 'http://pilot-api:38100', name: 'Bangladesh COD pilot staging', legacy: null };
+  if (operationsOnly()) return { origin: 'http://127.0.0.1:14920', name: 'Operations staging', legacy: null };
   if (publicSandbox()) return { origin: 'http://127.0.0.1:14829', name: 'Read-only sample workspace', legacy: null };
   if (process.env.GRIIP_ADMIN_TARGET === 'integration') {
     return { origin: 'http://127.0.0.1:14819', name: 'Isolated integration staging', legacy: null };
@@ -54,12 +64,12 @@ export function canWrite(staff: Staff) {
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
   const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
   const integration = target === 'Isolated integration staging' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
-  return superAdmin(staff) && (local || stage || preview || integration);
+  return superAdmin(staff) && (local || stage || preview || integration || operationsOnly());
 }
 
 // The hosted shared previews currently accept only their designated fixture login.
 export function staffEnrollmentAvailable() {
-  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging';
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging' || operationsOnly();
 }
 
 export function legacyUrl(path?: string) {
@@ -76,8 +86,8 @@ export async function requestApi(path: string, token?: string, init?: RequestIni
       ...init, headers: {
         Accept: 'application/json',
         ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
-        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000),
     });

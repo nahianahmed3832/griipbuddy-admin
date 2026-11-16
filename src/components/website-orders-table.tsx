@@ -6,8 +6,8 @@ import { ArrowLeft, ArrowRight, Download, MoreHorizontal, Package, Truck } from 
 import { useRef, useState } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
-import { addressLabel, canSync, courierStatuses, currencyFor, money, openStatuses, orderDate, orderNumber, ordersPath,
-  pendingStatuses, statuses, statusLabel, type Listing, type Order, type OrderFilters } from '@/lib/website-orders';
+import { addressLabel, canSync, currencyFor, money, orderActions, orderDate, orderListQuery, orderNumber, ordersPath,
+  statuses, statusLabel, type Listing, type Order, type OrderAccess, type OrderFilters, type OrderLocation } from '@/lib/website-orders';
 import { Badge, Empty } from './tables';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
 
@@ -17,13 +17,13 @@ function localDate(region: Region, ago: number) {
   return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit',
     timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC' }).format(now);
 }
-export function OrderFiltersForm({ filters, region, locations, creators }: {
-  filters: OrderFilters; region: Region; locations: Choice[]; creators: { _id: string; label: string }[];
+export function OrderFiltersForm({ filters, region, locations, creators, listPath = ordersPath }: {
+  filters: OrderFilters; region: Region; locations: Choice[]; creators: { _id: string; label: string }[]; listPath?: string;
 }) {
   const from = useRef<HTMLInputElement>(null);
   const to = useRef<HTMLInputElement>(null);
-  const [preset, setPreset] = useState(filters.from || filters.to ? 'custom' : '');
-  return <form className="website-filters-form" action={adminPath(ordersPath)}>
+  const [preset, setPreset] = useState(filters.from === localDate(region, 0) && filters.to === filters.from ? '0' : filters.from || filters.to ? 'custom' : '');
+  return <form className="website-filters-form" action={adminPath(listPath)}>
     <input type="hidden" name="region" value={region}/>
     <label>Search<input name="q" defaultValue={filters.q} maxLength={100} placeholder="Order ID, phone, tracking code"/></label>
     <label>SKU<input name="sku" defaultValue={filters.sku} maxLength={100} placeholder="Product SKU"/></label>
@@ -56,10 +56,11 @@ export function OrderFiltersForm({ filters, region, locations, creators }: {
       <option value="">All orders</option><option value="true">Called</option><option value="false">Not called</option>
     </select></label>
     <label>Order status<select name="filter" defaultValue={filters.filter ?? ''}>
+      {filters.filter?.includes(',') && <option value={filters.filter}>{filters.filter.split(',').map(statusLabel).join(', ')}</option>}
       <option value="">All statuses</option>{statuses.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
     </select></label>
     <div className="page-actions"><button className="button primary">Apply filters</button>
-      <Link className="button secondary" href={region === 'BD' ? ordersPath : ordersPath + '?region=INTERNATIONAL'}>Clear Filter</Link></div>
+      <Link className="button secondary" href={region === 'BD' ? listPath : listPath + '?region=INTERNATIONAL'}>Clear Filter</Link></div>
   </form>;
 }
 
@@ -78,8 +79,8 @@ export function OrderThumbnail({ src }: { src?: string }) {
     : <Package size={18} aria-hidden="true"/>}</span>;
 }
 
-export function WebsiteOrdersTable({ listing, filters, region, canUpdate, canFraud, canReturn }: {
-  listing: Listing; filters: OrderFilters; region: Region; canUpdate: boolean; canFraud: boolean; canReturn: boolean;
+export function WebsiteOrdersTable({ listing, filters, region, access, locations, listPath = ordersPath, executive }: {
+  listing: Listing; filters: OrderFilters; region: Region; access: OrderAccess; locations: OrderLocation[]; listPath?: string; executive?: boolean;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<DialogState>();
@@ -93,7 +94,8 @@ export function WebsiteOrdersTable({ listing, filters, region, canUpdate, canFra
   const href = (changes: Record<string, string>) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries({ region, ...filters, ...changes })) if (value) params.set(key, value);
-    return ordersPath + '?' + params;
+    if (executive && !filters.from && !filters.to) { params.set('from', ''); params.set('to', ''); }
+    return listPath + '?' + params;
   };
   function downloadSelected() {
     const cell = (value: unknown) => {
@@ -121,70 +123,57 @@ export function WebsiteOrdersTable({ listing, filters, region, canUpdate, canFra
         <div><h2>Website orders</h2><p>{listing.total.toLocaleString('en')} matching orders · {bd ? 'Bangladesh time' : 'UTC'}</p></div>
         <div className="page-actions">
           {!!chosen.length && <button className="button secondary" onClick={downloadSelected}><Download size={16}/> Export selected</button>}
-          {bd && canUpdate && <button className="button secondary" title="Refresh eligible orders on this page"
+          {bd && access.update && <button className="button secondary" title="Refresh eligible orders on this page"
             disabled={!syncIds.length} onClick={() => setDialog({ kind: 'sync', ids: syncIds })}><Truck size={16}/> Sync with Courier</button>}
         </div>
       </div>
       {notice && <p role="status" className="notice website-result">{notice}</p>}
       {rows.length ? <div className="table-scroll website-orders-scroll" tabIndex={0} role="region" aria-label="Orders table">
-        <table><thead><tr>
+        <table role="table"><thead role="rowgroup"><tr role="row">
           <th scope="col"><input type="checkbox" aria-label="Select all visible records" checked={all} onChange={() => setSelected(all ? [] : rows.map(row => row._id))}/></th>
-          {['Actions', 'Order ID', 'Order Date', 'Products', 'Customer Info', 'COD', 'Paid by Courier', 'Total Paid',
-            'Order Status', 'Call Info', 'Note', 'Courier Info', 'Created By'].map(label => <th key={label} scope="col">{label}</th>)}
-        </tr></thead><tbody>{rows.map(row => {
+          {['Order', 'Products', 'Customer', 'Payment', 'Fulfillment', 'Actions'].map(label => <th key={label} scope="col">{label}</th>)}
+        </tr></thead><tbody role="rowgroup">{rows.map(row => {
           const number = orderNumber(row);
           const currency = currencyFor(row.currency, region);
-          const orderHref = ordersPath + '/' + row._id + '?region=' + region;
-          const editable = canUpdate && bd && !row.managed && !row.transfer_to_courier && openStatuses.includes(row.status);
-          const shipped = canUpdate && bd && !row.managed && row.transfer_to_courier && courierStatuses.includes(row.status);
-          const actions: [OrderDialogKind, string][] = [];
-          if (editable) {
-            actions.push(['edit', 'Edit Order']);
-            if (row.status !== 'AWAITING_STOCK') actions.push(['update-status', 'Update Status']);
-          }
-          if (canUpdate) actions.push(['note', 'Update Note']);
-          if (canUpdate && bd && row.customer_phone) actions.push(['sms', 'Send SMS']);
-          if (shipped) actions.push(['delivered', 'Mark as Delivered']);
-          if (canReturn && bd && !row.managed && ['DELIVERED', 'PENDING_RETURN', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'PARTIAL'].includes(row.status))
-            actions.push(['return', 'Return Order']);
-          if (canUpdate && bd && !row.managed && pendingStatuses.includes(row.status)) actions.push(['pending-return', 'Mark as Pending Return']);
-          if (editable) actions.push(['cancel', 'Cancel Order']);
-          return <tr key={row._id}>
-            <td><input type="checkbox" aria-label={'Select ' + number} checked={selected.includes(row._id)}
+          const orderHref = ordersPath + '/' + row._id + orderListQuery(region, filters, String(page));
+          const actions = orderActions(row, access, region);
+          return <tr key={row._id} role="row">
+            <td role="cell"><input type="checkbox" aria-label={'Select ' + number} checked={selected.includes(row._id)}
               onChange={() => setSelected(ids => ids.includes(row._id) ? ids.filter(id => id !== row._id) : [...ids, row._id])}/></td>
-            <td><button className="button secondary website-more" aria-label={'Actions for ' + number} aria-haspopup="dialog"
-              onClick={() => setDialog({ kind: 'actions', order: row, href: orderHref, actions })}><MoreHorizontal size={17}/></button></td>
-            <td><Link className="table-link" href={orderHref}>{number}</Link>
-              {row.order_note && <small className="website-order-note"><strong>Customer note</strong>{row.order_note}</small>}</td>
-            <td>{orderDate(row.order_date || row.createdAt, region)}</td>
-            <td><div className="website-order-products">{row.products.map((line, i) => <div key={i}>
+            <td role="cell"><Link className="table-link" href={orderHref}>{number}</Link>
+              <small className="website-cell-line muted">{orderDate(row.order_date || row.createdAt, region)}</small>
+              <small className="website-cell-line muted">{row.user?.full_name || (row.order_by === 'GUEST' ? 'Guest customer' : row.order_by === 'USER' ? 'Registered customer' : row.order_by || '—')}
+                {row.user?.role && row.user.role !== 'USER' ? ` · ${statusLabel(row.user.role)}` : ''}</small>
+              {row.latestNote && <small className="website-order-note"><strong>Staff note</strong>{row.latestNote}</small>}</td>
+            <td role="cell"><div className="website-order-products">{row.products.map((line, i) => <div key={i}>
               <OrderThumbnail src={line.image}/><span><strong>{line.sku || line.name || 'Item'}</strong>
                 {line.sku && line.name && line.name !== line.sku && <small>{line.name}</small>}
                 <small>Qty: {line.quantity ?? '—'}</small></span>
             </div>)}</div></td>
-            <td><button className="website-link website-customer" onClick={() => open('history', row)}>{row.customer_name || 'Customer details'}</button>
+            <td role="cell"><button className="website-link website-customer" onClick={() => open('history', row)}>{row.customer_name || 'Customer details'}</button>
               {row.customer_phone && <span className="website-cell-line">{row.customer_phone}</span>}
               <small className="website-cell-line muted">{addressLabel(row.delivery_address)}</small>
-              {canFraud && row.customer_phone && <button className="website-link website-cell-line" onClick={() => open('fraud', row)}>Fraud Check</button>}</td>
-            <td>{money(row.COD, currency)}</td><td>{money(row.paid_by_courier, currency)}</td>
-            <td>{money(row.paid_amount, currency)}<button className="website-link website-cell-line" onClick={() => open('payment', row)}>Pay Info</button></td>
-            <td><Badge value={row.status || 'Unknown'}/>
+              {row.order_note && <small className="website-order-note"><strong>Customer note</strong>{row.order_note}</small>}
+              {access.fraud && row.customer_phone && <button className="website-link website-cell-line" onClick={() => open('fraud', row)}>Fraud Check</button>}
+              {row.is_called ? <small className="website-cell-line muted"><strong>Called{row.latestCall?.called_by_name ? ' by ' + row.latestCall.called_by_name : ''}</strong>
+                {' · '}{orderDate(row.latestCall?.called_at, region)}</small>
+                : access.update && deferredCalls.includes(row._id) ? <button className="website-link website-cell-line" onClick={() => open('called', row)}>Record call</button>
+                : access.update ? <div className="website-call-buttons"><small>Called?</small>
+                  <button className="button secondary" aria-label={'Mark ' + number + ' as called'} onClick={() => open('called', row)}>Yes</button>
+                  <button className="button secondary" aria-label={'Skip call record for ' + number}
+                    onClick={() => setDeferredCalls(ids => [...ids, row._id])}>No</button></div> : <small className="website-cell-line muted">Not called</small>}</td>
+            <td role="cell"><strong>{money(row.COD, currency)}</strong> <small className="muted">COD</small>
+              <small className="website-cell-line muted">Paid {money(row.paid_amount, currency)}</small>
+              {row.paid_by_courier != null && <small className="website-cell-line muted">Courier paid {money(row.paid_by_courier, currency)}</small>}
+              <button className="website-link website-cell-line" onClick={() => open('payment', row)}>Pay Info</button></td>
+            <td role="cell"><Badge value={row.status || 'Unknown'}/>
               {row.assigned_business_location && <small className="website-cell-line">Assigned to: {row.assigned_business_location.name || row.assigned_business_location.business_location_name}</small>}
-              <button className="website-link website-cell-line" onClick={() => open('status', row)}>Status Logs</button></td>
-            <td>{row.is_called ? <><strong>Called{row.latestCall?.called_by_name ? ' by ' + row.latestCall.called_by_name : ''}</strong>
-                <small className="website-cell-line muted">{orderDate(row.latestCall?.called_at, region)}</small></>
-              : canUpdate && deferredCalls.includes(row._id) ? <>Not called
-                <button className="website-link website-cell-line" onClick={() => open('called', row)}>Record call</button></>
-              : canUpdate ? <><small>Have you called?</small><div className="website-call-buttons">
-                <button className="button primary" aria-label={'Mark ' + number + ' as called'} onClick={() => open('called', row)}>Yes</button>
-                <button className="button secondary" aria-label={'Skip call record for ' + number}
-                  onClick={() => setDeferredCalls(ids => [...ids, row._id])}>No</button></div></> : 'Not called'}</td>
-            <td className="website-note-cell">{row.latestNote || <span className="muted">No note</span>}</td>
-            <td>{row.consignment_id ? <span>Parcel ID: {row.consignment_id}</span> : <span className="muted">No parcel ID</span>}
+              {row.consignment_id ? <small className="website-cell-line muted">Parcel #{row.consignment_id}</small> : null}
               {row.tracking_code && <button className="website-link website-cell-line" onClick={() => open('track', row)}>Track Order</button>}
-              {(row.tracking_code || row.transfer_to_courier || row.managed) && <button className="website-link website-cell-line" onClick={() => open('tracking', row)}>Tracking Logs</button>}</td>
-            <td>{row.user?.full_name || (row.order_by === 'GUEST' ? 'Guest customer' : row.order_by === 'USER' ? 'Registered customer' : row.order_by || '—')}
-              {row.user?.role && <small className="website-cell-line muted">{statusLabel(row.user.role)}</small>}</td>
+              {(row.tracking_code || row.transfer_to_courier || row.managed) && <button className="website-link website-cell-line" onClick={() => open('tracking', row)}>Tracking Logs</button>}
+              <button className="website-link website-cell-line" onClick={() => open('status', row)}>Status Logs</button></td>
+            <td role="cell"><button className="button secondary website-more" aria-label={'Actions for ' + number} aria-haspopup="dialog"
+              onClick={() => setDialog({ kind: 'actions', order: row, href: orderHref, actions })}><MoreHorizontal size={17}/></button></td>
           </tr>;
         })}</tbody></table>
       </div> : <Empty title="No orders match" detail="Try clearing a filter or selecting another status."/>}
@@ -193,7 +182,7 @@ export function WebsiteOrdersTable({ listing, filters, region, canUpdate, canFra
         {page * size < listing.total && <Link className="button secondary" href={href({ page: String(page + 1) })}>Next <ArrowRight size={15}/></Link>}
       </div></div>
     </section>
-    {dialog && <OrderDialog key={dialog.kind} state={dialog} region={region} close={() => setDialog(undefined)}
+    {dialog && <OrderDialog key={dialog.kind} state={dialog} region={region} locations={locations} close={() => setDialog(undefined)}
       change={kind => { if ('order' in dialog) open(kind, dialog.order); }}
       saved={message => { setDialog(undefined); setNotice(message); router.refresh(); }}/>}
   </>;

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { api, ApiError, arr, getRegion, mongoId, obj, sameOrigin, session, str } from '@/lib/api';
+import { api, ApiError, arr, getRegion, mongoId, obj, sameOrigin, session, str, url } from '@/lib/api';
 import { canOperate } from '@/lib/operations';
 import { maxRateLines, rateOptions, suppliers } from '@/lib/purchases';
 
@@ -62,7 +62,7 @@ export async function PUT(request: NextRequest) {
       if ((str(item.region) || 'BD') !== region || item.is_deleted === true) throw new ApiError(404, 'A selected product is unavailable in this region.');
       lines.push({ variant, product, supplier, unit_cost, discount, tax });
     }
-    const result = obj(await api('/purchase/default', auth.token, { method: 'PUT', body: JSON.stringify(lines) }));
+    const result = obj(await api(url('/purchase/default', { region }), auth.token, { method: 'PUT', body: JSON.stringify(lines) }));
     return Response.json({
       saved: arr(result.successful).map(row => str(obj(row).variant)).filter(mongoId),
       failed: arr(result.failed).map(obj).map(row => ({ id: str(row.variant), message: str(row.message).slice(0, 240) })),

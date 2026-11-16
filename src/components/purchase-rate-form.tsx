@@ -22,11 +22,14 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [ready, setReady] = useState(false);
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
   const visible = options.filter(option => !lines.some(line => line.id === option.id));
   const showResults = open && term.trim().length >= 2;
   const activeId = showResults && visible[active] ? listId + '-' + visible[active].id : undefined;
+
+  useEffect(() => { setReady(true); }, []);
 
   useEffect(() => {
     if (!supplier || term.trim().length < 2) return;
@@ -102,7 +105,7 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
   }
 
   return <form className="purchase-rate-form" onSubmit={save}>
-    <fieldset disabled={saving}>
+    <fieldset disabled={saving || !ready}>
       <section className="panel padded purchase-rate-picker">
         <label className="filter-label">Supplier
           <select value={supplier} onChange={event => { setSupplier(event.target.value); search('', false); }} required>

@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
-import { publicSandbox, session } from '@/lib/api';
+import { operationsEnabled, operationsOnly, publicSandbox, session } from '@/lib/api';
+import { hasOperations, superAdmin } from '@/lib/sections';
 
 export default async function Index() {
-  if (publicSandbox()) redirect('/admin/desk/overview');
-  redirect(await session() ? '/desk/overview' : '/sign-in');
+  const auth = await session();
+  if (auth && operationsEnabled() && hasOperations(auth.staff) && (operationsOnly() || !superAdmin(auth.staff))) redirect('/desk/operations');
+  redirect(publicSandbox() || auth ? '/desk/overview' : '/sign-in');
 }

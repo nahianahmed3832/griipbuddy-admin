@@ -67,3 +67,19 @@ async function categoryResponse(response: Response, upload: boolean, reorder = f
 
 export const POST = (request: Request) => mutate(request, 'POST');
 export const PATCH = (request: Request) => mutate(request, 'PATCH');
+
+export async function DELETE(request: Request) {
+  if (!sameOrigin(request)) return invalid('Use the category editor to remove categories.', 403);
+  try {
+    const auth = await session();
+    if (!auth || !canChangeCategories(auth, 'product.delete')) return invalid('You do not have access to delete categories.', 403);
+    const query = new URL(request.url).searchParams;
+    const id = query.get('id') ?? '', depth = query.get('depth') ?? '';
+    if (!mongoId(id) || !/^[0-3]$/.test(depth)) return invalid('Choose a valid category.');
+    const response = await requestApi('/catalog/category-tree/' + depth + '/' + id, auth.token, { method: 'DELETE' });
+    if (!response.ok) return invalid(response.status === 400 ? 'Move linked products and remove child categories first.' : 'Could not delete the category.', response.status);
+    return Response.json({ deleted: true });
+  } catch (error) {
+    return invalid('The category service could not confirm removal.', error instanceof ApiError ? error.status : 502);
+  }
+}

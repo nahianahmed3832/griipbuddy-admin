@@ -5,7 +5,6 @@ import { loadLocations } from '@/lib/advanced';
 import { basePricing, catalogFilters, catalogPageSizes, catalogParams, catalogPath, catalogSorts, categoryKeys,
   loadCatalog, loadCategoryTree, productCategory, stockOverview } from '@/lib/catalog-list';
 import { permitted, type Query } from '@/lib/data';
-import { managedViewsFor } from '@/lib/managed';
 import { adminPath } from '@/lib/paths';
 import { has, resources, type Region } from '@/lib/sections';
 import { CatalogExport, CatalogFiltersForm } from './catalog-controls';
@@ -31,9 +30,7 @@ export async function ProductCatalog({ auth, q, region }: { auth: Session; q: Qu
   const locations = locationResult ?? [];
   const classic = legacyUrl('products');
   const mayCreate = has(auth.staff, 'product.create');
-  const classicCreate = mayCreate ? legacyUrl('create-product') : undefined;
-  const studio = managedViewsFor(auth.staff, 'catalog').some(([key]) => key === 'listing-studio');
-  const createInStudio = studio && mayCreate && canWrite(auth.staff);
+  const canCreate = mayCreate && canWrite(auth.staff);
   const stockHref = url('/desk/inventory/stock', { region, location: f.location });
   const market = region === 'INTERNATIONAL' ? 'International' : 'Bangladesh';
   const entries = data.rows.map((row, index) => {
@@ -84,9 +81,8 @@ export async function ProductCatalog({ auth, q, region }: { auth: Session; q: Qu
         <p>Find a listing and check its category, price and publication in one place.</p></div>
       <div className="page-actions">
         {showStock && <Link className="button secondary" href={stockHref}><Boxes size={16} aria-hidden="true"/> Stock report</Link>}
-        {classicCreate ? <a className="button primary" href={classicCreate} target="_blank" rel="noreferrer"><Plus size={16} aria-hidden="true"/> Create product</a>
-          : createInStudio && <Link className="button primary" href={url('/desk/catalog/listing-studio', { region }) + '#create-product'}>
-            <Plus size={16} aria-hidden="true"/> Create product</Link>}
+        {canCreate && <Link className="button primary" href={url(catalogPath + '/new', { region })}>
+          <Plus size={16} aria-hidden="true"/> Create product</Link>}
       </div>
     </header>
     <section className="panel catalog-filter-panel" aria-label="Filter products">
