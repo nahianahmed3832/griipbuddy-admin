@@ -7,16 +7,17 @@
   border: 1px solid transparent;
   border-radius: 7px;
   min-height: 35px;
-  color: #494155;
+  color: #e2d9ea;
   font-size: 12.5px;
   font-weight: 560;
   cursor: pointer;
 }
 .purchase-nav > summary::-webkit-details-marker, .purchase-filters > summary::-webkit-details-marker { display: none; }
-.purchase-nav > summary svg { flex: none; color: #087956; }
+.purchase-nav > summary svg { flex: none; color: #c5a4e6; }
 .purchase-nav > summary svg:last-child { margin-left: auto; transform: rotate(-90deg); }
 .purchase-nav[open] > summary svg:last-child { transform: none; }
 .purchase-nav[open] > summary, .purchase-nav > summary:hover { background: #e3f2eb; color: #07674a; }
+.purchase-nav[open] > summary svg, .purchase-nav > summary:hover svg { color: currentColor; }
 .sidebar .purchase-nav a[aria-current=page] { background: #087956; border-color: #087956; color: white; box-shadow: none; }
 
 .purchases-workspace, .purchase-rate-form fieldset { display: grid; gap: 22px; min-width: 0; }
