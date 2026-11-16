@@ -71,7 +71,7 @@ function validPath(path) {
   }
 }
 
-export function createGateway({ origin, backend, app, staffPhone, recovery, mediaDirectory }) {
+export function createGateway({ origin, backend, app, staffPhone, recovery, mediaDirectory, fraudOrigin }) {
   const unsafe = method => !['GET', 'HEAD'].includes(method);
   const authHeaders = token => ({ Accept: 'application/json', Authorization: `Bearer ${token}` });
   const http = (path, init) => fetch(new URL(path, backend), { ...init, redirect: 'error', signal: AbortSignal.timeout(12_000) });
@@ -182,9 +182,15 @@ export function createGateway({ origin, backend, app, staffPhone, recovery, medi
       if (isFraud && incoming.method === 'GET') {
         const phone = new URL(target, origin).searchParams.get('phone');
         if (!phone) return json(outgoing, 400, { error: 'Phone number is required' });
-        if (!/^01\d{9}$/.test(phone)) return json(outgoing, 500, { error: 'Failed to fetch fraud data' });
-        // The synthetic courier has no parcel history for a real phone number.
-        return json(outgoing, 200, { data: { successRate: 0, totalParcels: 0, totalDelivered: 0, totalCancelled: 0, apis: [] } });
+        if (fraudOrigin && /^01\d{9}$/.test(phone)) {
+          try {
+            const result = await fetch(new URL(`/api/v1/fraud-checker/${phone}`, fraudOrigin), {
+              headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000),
+            });
+            if (result.ok) return json(outgoing, 200, await result.json());
+          } catch { /* Preserve the original provider error response. */ }
+        }
+        return json(outgoing, 500, { error: 'Failed to fetch fraud data' });
       }
       return json(outgoing, 404, { success: false, message: 'Not found.' });
     }

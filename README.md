@@ -8,6 +8,8 @@ Build from the revision being verified with `docker build -f deploy/original-adm
 
 Run [the original-admin comparison](tests/original-admin-parity.mjs) with `GRIIP_ADMIN_PARITY_REFERENCE_URL` and `GRIIP_ADMIN_PARITY_TARGET_URL` set to the two isolated builds. Use disposable records and staff accounts. The script accepts dynamic record identifiers through `GRIIP_ADMIN_PARITY_RECORDS`. Exercise saves, exports, scans, and courier effects on the isolated backend before switching the protected upstream.
 
+Fraud lookup uses `GRIIP_ORIGINAL_ADMIN_FRAUD_ORIGIN=http://fraud-provider:8080` when an isolated provider implements the original response contract. Without that provider, the original lookup error is shown.
+
 ## Workspace background
 
 Step 8 adds a Next.js workspace around the recovered staff API. The route inventory in [evidence](evidence/legacy-routes.txt) records all 102 preserved build entries, including 98 dashboard routes. The workflow library links through the private legacy admin tunnel and identifies dynamic and provider-bound routes. The legacy admin performs its own login and authorization.

@@ -21,7 +21,7 @@ const knownRecords = {
   '/dashboard/product-details/[id]': fixtureId(3),
   '/dashboard/update-category/[slug]': 'fixture-category',
   '/dashboard/update-country/[id]': fixtureId(19),
-  '/dashboard/update-product/[slug]': 'fixture-bd',
+  '/dashboard/update-product/[slug]': fixtureId(3),
   '/dashboard/update-role/[slug]': fixtureId(17),
   '/dashboard/update-staff/[slug]': fixtureId(14),
   '/dashboard/update-sub-category/[slug]': 'fixture-subcategory',
@@ -50,6 +50,19 @@ const actions = [
     act: page => search(page, 'Scan or type barcode', 'FIXTURE-UNIT-01', () => page.getByRole('button', { name: 'Load', exact: true }).click()),
   },
   {
+    name: 'sales summary CSV export', route: '/dashboard/reports/sales-summary',
+    act: async page => {
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout }),
+        page.getByRole('button', { name: 'CSV', exact: true }).click(),
+      ]);
+      const filename = download.suggestedFilename();
+      const csv = await readFile(await download.path());
+      if (!filename.endsWith('.csv') || csv.length === 0) throw new Error('The original CSV export did not download.');
+      return `${filename}:${createHash('sha256').update(csv).digest('hex')}`;
+    },
+  },
+  {
     name: 'international product scope', route: '/dashboard/products',
     act: async page => {
       await page.getByRole('combobox').first().click();
@@ -72,10 +85,12 @@ const actions = [
     },
   },
 ];
+const viewportFilter = process.env.GRIIP_ADMIN_PARITY_VIEWPORT;
 const viewports = [
   { name: 'desktop', viewport: { width: 1440, height: 960 } },
   { name: 'mobile', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
-];
+].filter(viewport => !viewportFilter || viewport.name === viewportFilter);
+if (!viewports.length) throw new Error('The parity viewport must be desktop or mobile.');
 const fixedTime = new Date(Math.floor(Date.now() / 60_000) * 60_000);
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const loginApi = /\/(?:api\/v1\/user\/admin\/login|api\/auth\/[^/]+|api\/session)$/;
@@ -310,6 +325,16 @@ function normalize(text, endpoint) {
     .replaceAll(`${endpoint.mount}/dashboard/`, '/dashboard/').replace(/\s+/g, ' ').trim();
 }
 
+function accessibilityDifference(first, second) {
+  const a = first.split(' - ');
+  const b = second.split(' - ');
+  const index = a.findIndex((entry, index) => entry !== b[index]);
+  const indexOrEnd = index < 0 ? a.length : index;
+  const control = entry => entry?.replace(/\b(?:\d{4,}|[\da-f]{24})\b/gi, '[fixture]')
+    .replace(/\b[\w-]+\.[\w-]+\.[\w-]+\b/g, '[token]').slice(0, 120);
+  return { index: indexOrEnd, reference: control(a[indexOrEnd]), target: control(b[indexOrEnd]) };
+}
+
 function relativePath(url, endpoint) {
   const { pathname, search } = url;
   const { mount } = endpoint;
@@ -370,15 +395,17 @@ async function compareScreens(pair, test, label, screenshot) {
   try {
     const results = await Promise.all(pair.map(async (session, index) => {
       const response = await go(session, test.paths[index]);
+      let interaction;
       if (test.act) {
-        await test.act(session.page);
+        interaction = await test.act(session.page);
         await settled(session.page);
       }
-      return { ...await snapshot(session, screenshot, response), status: response.status() };
+      return { ...await snapshot(session, screenshot, response), status: response.status(), interaction };
     }));
     const [a, b] = results;
     const issues = [];
     if (a.status !== b.status || a.status >= 500 || b.status >= 500) issues.push(`HTTP ${a.status}/${b.status}`);
+    if (a.interaction !== b.interaction) issues.push('interaction output differs');
     if (test.ids && results.some((result, index) => {
       return result.status === 404 || result.api.some(request => {
         const [, path, status] = request.split(' ');
@@ -386,6 +413,9 @@ async function compareScreens(pair, test, label, screenshot) {
       }) || /heading "(?:[^"\n]*(?:not found|does not exist))"/i.test(result.body);
     })) issues.push('fixture record did not load');
     for (const key of ['title', 'body']) if (a[key] !== b[key]) issues.push(`${key} differs`);
+    if (a.body !== b.body && process.env.GRIIP_ADMIN_PARITY_PROGRESS === 'structure') {
+      console.log(`${prefix} accessibility difference`, accessibilityDifference(a.body, b.body));
+    }
     if (a.route !== b.route) issues.push(`route differs (${a.route.split('?')[0]}/${b.route.split('?')[0]})`);
     if (!test.act && test.route.startsWith('/dashboard/') && !a.route.startsWith('/dashboard/') && label.startsWith('owner')) {
       issues.push('owner did not reach the original dashboard');
@@ -520,6 +550,7 @@ console.log(`${cases.length} original URL cases selected from ${manifest.length}
 for (const issue of different) console.error(issue);
 if (shardCount > 1) console.log(`Shard ${shardSpec}. Run each shard to cover the manifest.`);
 if (pattern) console.log('The route pattern limited this run.');
+if (viewportFilter) console.log(`This run checked only the ${viewportFilter} viewport.`);
 if (endpoints.some(endpoint => endpoint.assetDirectory)) {
   console.log('Browser static assets used the captured running builds. Declared assets, CSS and fonts were also checked over HTTP.');
 }
