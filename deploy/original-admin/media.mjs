@@ -67,7 +67,7 @@ export async function uploadMedia(incoming, origin, directory, path) {
 export async function readMedia(incoming, outgoing, directory, path) {
   if (!path.startsWith(mediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
   const key = path.slice(mediaPrefix.length);
-  if (!/^[a-f\d-]{36}\.[a-z]{3,4}$/.test(key)) return false;
+  if (!/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\.[a-z\d]{3,4}$/.test(key)) return false;
   const type = [...mediaTypes].find(([, extension]) => extension === key.split('.')[1])?.[0];
   if (!type) return false;
   const file = join(directory, key);
