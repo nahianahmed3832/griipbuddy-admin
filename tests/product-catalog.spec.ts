@@ -9,8 +9,8 @@ const catalog = '/desk/catalog/products';
 
 test.use({ actionTimeout: 10000, navigationTimeout: 20000 });
 
-async function signIn(page: Page, account = '1') {
-  await page.goto('/sign-in');
+async function signIn(page: Page, account = '1', origin = '') {
+  await page.goto(origin + '/sign-in');
   await page.getByLabel('Staff email or phone number').fill('0100000000' + account);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -60,8 +60,9 @@ test('legacy product edit links find exact slugs within the selected market', as
 });
 
 test('product prices, publication, and exact stock links remain readable on phones', async ({ page }, testInfo) => {
-  await signIn(page);
-  await page.goto(catalog);
+  const writable = 'http://127.0.0.1:4327';
+  await signIn(page, '1', writable);
+  await page.goto(writable + catalog);
   const product = page.getByRole('row').filter({ hasText: 'Fixture domestic case' });
   await expect(product).toContainText('৳800');
   await expect(product).toContainText('৳900');
