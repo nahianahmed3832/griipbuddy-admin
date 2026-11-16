@@ -105,7 +105,7 @@ function environment(label) {
   const url = new URL(process.env[key + 'URL'] ?? '');
   const mount = url.pathname.replace(/\/$/, '');
   const local = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
-  const dev = label === 'TARGET' && url.origin === 'https://dev.griipbuddy.com' && mount === '/admin';
+  const dev = label === 'TARGET' && ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(url.origin) && mount === '/admin';
   if ((!local && !dev) || !['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error(`${key}URL must be an isolated loopback origin or the protected dev /admin URL.`);
   }

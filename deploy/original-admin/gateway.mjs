@@ -1,6 +1,6 @@
 import { createServer, request } from 'node:http';
 import { allowedOriginalApiPath, requiredOriginalMutationPermission } from './api-policy.mjs';
-import { readMedia, uploadMedia } from './media.mjs';
+import { readMedia, readPublishedCatalogMedia, uploadMedia } from './media.mjs';
 
 const prefix = '/admin';
 const apiPrefix = `${prefix}/api/v1`;
@@ -71,7 +71,7 @@ function validPath(path) {
   }
 }
 
-export function createGateway({ origin, backend, app, staffPhone, recovery, mediaDirectory, fraudOrigin }) {
+export function createGateway({ origin, backend, app, staffPhone, staffEmail, recovery, mediaDirectory, fraudOrigin }) {
   const unsafe = method => !['GET', 'HEAD'].includes(method);
   const authHeaders = token => ({ Accept: 'application/json', Authorization: `Bearer ${token}` });
   const http = (path, init) => fetch(new URL(path, backend), { ...init, redirect: 'error', signal: AbortSignal.timeout(12_000) });
@@ -128,9 +128,10 @@ export function createGateway({ origin, backend, app, staffPhone, recovery, medi
         } catch {
           return json(outgoing, 400, { success: false, message: 'Invalid sign-in request.' });
         }
-        const phone = input?.phone_number;
+        const identifier = typeof input?.phone_number === 'string' ? input.phone_number.trim() : '';
+        const phone = staffEmail && identifier.toLowerCase() === staffEmail ? staffPhone : identifier;
         const password = input?.password;
-        if (typeof phone !== 'string' || !/^\+?\d{8,16}$/.test(phone) || typeof password !== 'string' || !password.length || password.length > 256) {
+        if (!/^\+?\d{8,16}$/.test(phone ?? '') || typeof password !== 'string' || !password.length || password.length > 256) {
           return json(outgoing, 400, { success: false, message: 'Invalid sign-in request.' });
         }
         const result = await http('/api/v1/user/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -158,7 +159,10 @@ export function createGateway({ origin, backend, app, staffPhone, recovery, medi
         const payload = await uploadMedia(incoming, origin, mediaDirectory, path);
         return payload ? json(outgoing, 200, payload) : json(outgoing, 400, { success: false, message: 'Upload file is invalid.' });
       }
-      if (isMedia && await readMedia(incoming, outgoing, mediaDirectory, path)) return;
+      if (isMedia) {
+        if (await readMedia(incoming, outgoing, mediaDirectory, path)) return;
+        if (await readPublishedCatalogMedia(incoming, outgoing, fraudOrigin, path)) return;
+      }
       if (isApi) {
         const apiPath = path.slice(prefix.length);
         const permission = requiredOriginalMutationPermission(apiPath, incoming.method);
