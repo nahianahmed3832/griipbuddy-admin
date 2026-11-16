@@ -88,9 +88,14 @@ test('product prices, publication, and exact stock links remain readable on phon
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('heading', { name: '1 product', exact: true })).toBeVisible();
   await product.getByRole('link', { name: 'Open listing for Fixture domestic case' }).click();
+  await page.getByRole('link', { name: 'Edit product', exact: true }).click();
+  await page.getByRole('link', { name: 'Product details', exact: true }).click();
   await page.getByRole('link', { name: 'Back to all products' }).click();
   await expect(page.getByLabel('Search records')).toHaveValue('FIXTURE-BD');
   await expect(page.getByLabel('Search by', { exact: true })).toHaveValue('sku');
+  await page.getByRole('link', { name: 'Create product' }).click();
+  await page.getByRole('link', { name: 'Back to all products' }).click();
+  await expect(page.getByLabel('Search records')).toHaveValue('FIXTURE-BD');
 
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export page' }).click();

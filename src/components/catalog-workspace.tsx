@@ -4,7 +4,7 @@ import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, 
 import { reference } from '@/lib/advanced';
 import { canEditProduct, canEditRegistry, readProduct, readRegistry, registryOptions } from '@/lib/catalog-admin';
 import { currencies, productFields, registries, statusOptions, type Registry } from '@/lib/catalog-edit-fields';
-import { loadCategoryTree } from '@/lib/catalog-list';
+import { catalogFilters, catalogParams, catalogPath, loadCategoryTree } from '@/lib/catalog-list';
 import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
 import { columnText, loadResource, param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
@@ -26,7 +26,6 @@ const reviewStatuses = ['pending', 'approved', 'rejected'];
 const fields = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'];
 const asInput = (value: unknown): string => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
 const asLines = (value: unknown) => arr(value).map(str).join('\n');
-const storeProduct = '/desk/catalog/products';
 const columns = (data: Record<string,string>) => Object.entries(data).map(([label, fields]) => ({ label, fields }));
 
 export async function CategoryWorkspace({ auth, q }: Props) {
@@ -73,8 +72,11 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
   const mayEdit = canEditProduct('edit', auth);
   const maySeeCost = has(auth.staff, 'purchase.price.view');
   const mayDelete = canEditProduct('delete', auth);
-  const current = url(storeProduct + '/' + readId, { region });
-  const back = url(storeProduct, { region });
+  const canViewStock = has(auth.staff, 'stock.view');
+  const filters = catalogFilters(q, canViewStock, canViewStock && has(auth.staff, 'business_locations.view'));
+  const listParams = catalogParams(filters, region);
+  const current = url(catalogPath + '/' + readId, listParams);
+  const back = url(catalogPath, listParams);
   if (!creating && (editing || variantsOnly) && !mayEdit) throw new ApiError(403);
   const title = creating ? 'Create product' : (editing ? 'Edit product' : variantsOnly ? 'Edit variants' : str(record.name) || 'Product details');
   if (editing || variantsOnly) {
@@ -91,10 +93,11 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
     const drafts = variantDrafts(variantRecords, maySeeCost);
     const attributes = [...new Set([...arr(record.attributes).map(str), ...drafts.flatMap(row => Object.keys(row.attribute_values))].filter(Boolean))];
     return <><PageHeading eyebrow="COMMERCE / CATALOG" title={title} description={str(record.name) || 'Set up a listing in the selected market.'}/>
-      <div className="page-actions"><Link className="button secondary" href={creating ? back : current}>{creating ? 'All products' : 'Product details'}</Link></div>
+      <div className="page-actions"><Link className="button secondary" href={creating ? back : current}>{creating ? 'Back to all products' : 'Product details'}</Link></div>
       <section className="panel padded"><ProductEditForm key={title + readId} id={creating ? undefined : readId} region={region} tree={tree}
         initial={initial} brands={brands} policies={policies} countries={countries} selected={fields.map(key => reference(record[key]))}
-        allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly={variantsOnly}/></section>
+        allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts}
+        variantOnly={variantsOnly} productListQuery={back.slice(catalogPath.length)}/></section>
     </>;
   }
   const [storedVariants, storefront] = await Promise.all([
@@ -105,11 +108,11 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
   const variants = arr(storedVariants).map(obj).filter(variant => mongoId(reference(variant)));
   const variantColumns = columns({ SKU: 'sku', 'Regular price': 'regular_price', 'Sale price': 'sale_price', Barcode: 'barcode' });
   const branches = fields.map(key => str(obj(record[key]).name_en) || str(obj(record[key]).name)).filter(Boolean);
-  const edit = (mode: string) => url(storeProduct + '/' + readId, { region, mode });
+  const edit = (mode: string) => url(catalogPath + '/' + readId, { ...listParams, mode });
   return <><PageHeading eyebrow="COMMERCE / CATALOG" title={title} description={str(record.sku)}/>
-    <div className="page-actions"><Link className="button secondary" href={back}>All products</Link>
+    <div className="page-actions"><Link className="button secondary" href={back}>Back to all products</Link>
       {mayEdit && <><Link className="button primary" href={edit('edit')}>Edit product</Link><Link className="button secondary" href={edit('variants')}>Edit variants</Link></>}
-      {has(auth.staff, 'stock.view') && <Link className="button secondary" href={url('/desk/inventory/stock', { region, product: readId })}>View stock</Link>}
+      {canViewStock && <Link className="button secondary" href={url('/desk/inventory/stock', { region, product: readId, location: filters.location })}>View stock</Link>}
       <OperationActions endpoint="/product/admin/all" auth={auth} region={region} record={record} id={readId}/>
       {mayDelete && <CatalogConfirm kind="products" id={readId} region={region} action="delete" label="Delete product" finish={back}
         description="Delete this product and its listing. Review its stock and referenced records before confirming."/>}

@@ -81,7 +81,7 @@ export async function ProductCatalog({ auth, q, region }: { auth: Session; q: Qu
         <p>Find a listing and check its category, price and publication in one place.</p></div>
       <div className="page-actions">
         {showStock && <Link className="button secondary" href={stockHref}><Boxes size={16} aria-hidden="true"/> Stock report</Link>}
-        {canCreate && <Link className="button primary" href={url(catalogPath + '/new', { region })}>
+        {canCreate && <Link className="button primary" href={url(catalogPath + '/new', params)}>
           <Plus size={16} aria-hidden="true"/> Create product</Link>}
       </div>
     </header>

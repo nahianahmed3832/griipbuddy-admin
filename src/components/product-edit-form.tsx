@@ -149,10 +149,10 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
   </fieldset>;
 }
 
-export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, initialVariants = [], initialAttributes = [], variantOnly = false }: {
+export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false }: {
   id?: string; region: Region; tree: CategoryOption[]; brands: Choice[]; policies: Choice[]; countries: Choice[];
   selected: string[]; initial: Record<string,string>; allowCost: boolean; canDelete: boolean; initialVariants?: VariantDraft[];
-  initialAttributes?: string[]; variantOnly?: boolean;
+  initialAttributes?: string[]; variantOnly?: boolean; productListQuery: string;
 }) {
   const [attributesText, setAttributes] = useState(initialAttributes.join('\n'));
   const [variants, setVariants] = useState(initialVariants);
@@ -173,7 +173,7 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
     try {
       const record = await saveCatalog({ kind: 'products', id, region, action: variantOnly ? 'variants' : 'save', values });
       if (stock) router.push('/desk/inventory/stock?region=' + region + '&product=' + encodeURIComponent(record));
-      else if (!id) router.push('/desk/catalog/products/' + encodeURIComponent(record) + '?region=' + region);
+      else if (!id) router.push('/desk/catalog/products/' + encodeURIComponent(record) + productListQuery);
       else { setNotice('Saved.'); router.refresh(); }
     } catch (issue) { setError(issue instanceof Error ? issue.message : 'The product could not be saved.'); }
     finally { busy.current = false; setSaving(false); }
