@@ -4,6 +4,7 @@ import { mkdir, stat, unlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { catalogMediaKey, forwardCatalogMedia } from './catalog-media.mjs';
 
 const require = createRequire(resolve(process.env.GRIIP_ORIGINAL_ADMIN_APP ?? '/app', 'package.json'));
 const multipart = require('next/dist/compiled/busboy');
@@ -87,4 +88,11 @@ export async function readMedia(incoming, outgoing, directory, path) {
   if (incoming.method === 'HEAD') outgoing.end();
   else await pipeline(createReadStream(file, { start, end }), outgoing);
   return true;
+}
+
+export function readPublishedCatalogMedia(incoming, outgoing, provider, path) {
+  if (!provider || !path.startsWith(mediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
+  const key = path.slice(mediaPrefix.length);
+  if (!catalogMediaKey(key)) return false;
+  return forwardCatalogMedia(incoming, outgoing, new URL(`/catalog-media/${key}`, provider), key);
 }

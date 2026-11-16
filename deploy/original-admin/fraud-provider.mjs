@@ -1,13 +1,15 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { createCatalogMedia } from './catalog-media.mjs';
 
 const provider = 'https://efraudchecker.zephix.io';
 const path = /^\/api\/v1\/fraud-checker\/01\d{9}$/;
 const maxResponseSize = 128 * 1024;
 
-export function createFraudProvider(lookup = fetch) {
+export function createFraudProvider(lookup = fetch, catalogMedia = createCatalogMedia()) {
   return createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
+    if (await catalogMedia(request, response)) return;
     if (request.method !== 'GET' || !path.test(request.url ?? '')) {
       response.writeHead(404).end();
       return;
