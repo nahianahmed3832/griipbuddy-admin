@@ -166,7 +166,8 @@ export default async function Desk({ params, searchParams }: {
       ? await WebsiteOrderDetailPage({ auth, q, region, id: view[1] }) : await WebsiteOrdersPage({ auth, q, region });
     else if (sectionId === 'orders' && active === 'fraud-check' && view.length === 1 && fraud) {
       content = <><PageHeading eyebrow="COMMERCE / COURIER" title="Fraud checker" description="Review the courier’s delivery history before confirming an order."/>
-        <CourierFraud enabled={process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1' && canWrite(auth.staff)}/></>;
+        <CourierFraud enabled={process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1' && canWrite(auth.staff)}
+          simulated={process.env.GRIIP_ADMIN_TARGET === 'integration' && process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1'}/></>;
     }
     else if (sectionId === 'orders' && active === 'sales-executive' && !view[1]) content = await WebsiteOrdersPage({auth, region, q, executive:true});
     else if (sectionId === 'orders' && active === 'assigned' && !view[1]) content = await AssignedOrders({auth, region, q});

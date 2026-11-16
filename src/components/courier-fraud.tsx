@@ -6,7 +6,7 @@ import { adminPath } from '@/lib/paths';
 
 type Result = { success_rate: number; status_tag: string; required_delivery_charge: boolean };
 
-export function CourierFraud({ enabled }: { enabled: boolean }) {
+export function CourierFraud({ enabled, simulated }: { enabled: boolean, simulated: boolean }) {
   const [result, setResult] = useState<Result>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,8 @@ export function CourierFraud({ enabled }: { enabled: boolean }) {
     finally { setBusy(false); }
   }
   return <section className="panel padded stack-form">
-    <p>Look up a Bangladesh mobile number using the configured courier history provider. The number is sent to the provider when you submit.</p>
+    <p>{simulated ? 'This workspace returns simulated courier history. Use 01000000002 to test an advance recommendation.'
+      : 'Look up a Bangladesh mobile number using the configured courier history provider. The number is sent to the provider when you submit.'}</p>
     {!enabled && <p className="notice">Courier history lookup is disabled in this workspace.</p>}
     <form className="period-form" onSubmit={lookup}>
       <label>Bangladesh mobile number<input name="phone" type="tel" inputMode="numeric" placeholder="01XXXXXXXXX"

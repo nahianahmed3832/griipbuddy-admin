@@ -27,7 +27,10 @@ function failure(message: string, status: number) {
 
 export async function POST(request: Request) {
   const directory = process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR;
-  if (process.env.GRIIP_ADMIN_TARGET !== 'integration' || !directory) return failure('Carousel uploads are unavailable.', 404);
+  if (process.env.GRIIP_ADMIN_TARGET !== 'integration' ||
+      process.env.GRIIP_ADMIN_PUBLIC_ORIGIN !== 'https://dev.griipbuddy.com' || !directory) {
+    return failure('Carousel uploads are unavailable.', 404);
+  }
   if (!sameOrigin(request)) return failure('Use the admin editor to upload files.', 403);
   const auth = await session();
   if (!auth) return failure('Sign in to upload carousel media.', 401);
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
       await writeFile(temporary, bytes, { flag: 'wx', mode: 0o644 });
       await link(temporary, destination);
     }
-    return Response.json({ url: 'https://frontend.griipbuddy.com/campaign-media/' + name });
+    return Response.json({ url: 'https://dev.griipbuddy.com/campaign-media/' + name });
   } catch {
     return failure('The file couldn’t be saved. Try again or use a direct media URL.', 503);
   } finally {
