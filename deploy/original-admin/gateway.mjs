@@ -185,7 +185,7 @@ export function createGateway({ origin, backend, app, staffPhone, recovery, medi
         if (fraudOrigin && /^01\d{9}$/.test(phone)) {
           try {
             const result = await fetch(new URL(`/api/v1/fraud-checker/${phone}`, fraudOrigin), {
-              headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(5000),
+              headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(9000),
             });
             if (result.ok) return json(outgoing, 200, await result.json());
           } catch { /* Preserve the original provider error response. */ }

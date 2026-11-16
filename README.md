@@ -8,7 +8,7 @@ Build from the revision being verified with `docker build -f deploy/original-adm
 
 Run [the original-admin comparison](tests/original-admin-parity.mjs) with `GRIIP_ADMIN_PARITY_REFERENCE_URL` and `GRIIP_ADMIN_PARITY_TARGET_URL` set to the two isolated builds. Use disposable records and staff accounts. The script accepts dynamic record identifiers through `GRIIP_ADMIN_PARITY_RECORDS`. Exercise saves, exports, scans, and courier effects on the isolated backend before switching the protected upstream.
 
-Fraud lookup uses `GRIIP_ORIGINAL_ADMIN_FRAUD_ORIGIN=http://fraud-provider:8080` when an isolated provider implements the original response contract. Without that provider, the original lookup error is shown.
+The protected dev Compose service routes fraud lookups through `fraud-provider` to the same HTTPS provider as the live admin. It preserves the original response, including all courier rows, and keeps the provider port private.
 
 ## Workspace background
 
