@@ -17,6 +17,48 @@ async function signIn(page: Page, account = '1') {
   await expect(page).toHaveURL(/\/desk\//);
 }
 
+test('legacy product edit links find exact slugs within the selected market', async ({ page }) => {
+  const backend = process.env.GRIIP_ADMIN_TEST_BACKEND_DIR;
+  if (!backend) throw new Error('Set GRIIP_ADMIN_TEST_BACKEND_DIR to the disposable fixture backend.');
+  const { MongoClient, ObjectId } = createRequire(resolve(backend, 'package.json'))('mongoose').mongo;
+  const port = 38117 + Number(process.env.GRIIP_RECOVERY_PORT_OFFSET ?? 0);
+  const address = '127.0.0.1:' + port;
+  const client = new MongoClient('mongodb://' + address + '/griipbuddy_fixture?replicaSet=griip-recovery&directConnection=true',
+    { serverSelectionTimeoutMS: 2000 });
+  const db = client.db('griipbuddy_fixture');
+  const products = db.collection('products');
+  const draftId = new ObjectId();
+  const fixtureId = new ObjectId('000000000000000000000003');
+  let inserted = false;
+  try {
+    const hello = await db.admin().command({ hello: 1 });
+    const marker = await products.findOne({ _id: fixtureId, sku: 'FIXTURE-BD' });
+    if (hello.setName !== 'griip-recovery' || hello.me !== address || !marker) throw new Error('Unexpected fixture database.');
+    await products.insertOne({ _id: draftId, slug: 'new', name: 'Draft with reserved slug', sku: 'SLUG-DRAFT-' + draftId,
+      region: 'BD', is_published: false, category: marker.category, subcategory: marker.subcategory });
+    inserted = true;
+
+    await signIn(page);
+    for (const [path, title] of [
+      ['/dashboard/update-product/fixture-bd', 'Fixture domestic case'],
+      ['/dashboard/update-product/fixture-int?region=INTERNATIONAL', 'Fixture international case'],
+      ['/dashboard/update-product/new', 'Draft with reserved slug'],
+    ]) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { name: 'Edit product', level: 1 })).toBeVisible();
+      await expect(page.getByLabel('Product name', { exact: true })).toHaveValue(title);
+    }
+    await page.goto('/dashboard/create-product');
+    await expect(page.getByRole('heading', { name: 'Create product', level: 1 })).toBeVisible();
+    for (const path of ['/dashboard/update-product/fixture-int', '/dashboard/update-product/fixture']) {
+      expect((await page.goto(path))?.status()).toBe(404);
+    }
+  } finally {
+    if (inserted) await products.deleteOne({ _id: draftId });
+    await client.close();
+  }
+});
+
 test('product prices, publication, and exact stock links remain readable on phones', async ({ page }, testInfo) => {
   await signIn(page);
   await page.goto(catalog);

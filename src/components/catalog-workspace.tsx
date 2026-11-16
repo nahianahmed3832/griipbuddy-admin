@@ -61,8 +61,9 @@ function inputValue(record: RecordData, field: string) {
 }
 export async function ProductWorkspace({ auth, q, region, id }: Props) {
   if (!id) return ProductCatalog({ auth, q, region });
-  const creating = id === 'new';
-  const readId = !creating && !mongoId(id) ? await productIdForSlug(id, auth, region) : id;
+  const lookupSlug = param(q, 'lookup') === 'slug';
+  const creating = id === 'new' && !lookupSlug;
+  const readId = !creating && (lookupSlug || !mongoId(id)) ? await productIdForSlug(id, auth, region) : id;
   if (!readId) throw new ApiError(404);
   if (creating && !canEditProduct('create', auth)) throw new ApiError(403);
   const record = creating ? {} : await readProduct(readId, auth, region);
@@ -128,15 +129,11 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
   </>;
 }
 async function productIdForSlug(slug: string, auth: Session, region: Region) {
-  if (!has(auth.staff, 'product.view') || !/^[a-z0-9][a-z0-9_-]{1,159}$/i.test(slug)) throw new ApiError(404);
-  const publicProduct = obj(await api('/product/slug/' + slug, auth.token).catch((error: unknown) => {
-    if (error instanceof ApiError && error.status === 404) return null;
-    throw error;
-  }));
-  if (mongoId(reference(publicProduct)) && (str(publicProduct.region) || 'BD') === region) return reference(publicProduct);
-  const result = obj(await api(url('/product/admin/all', { searchQuery: slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), region, limit: '20' }), auth.token));
-  const row = arr(result.data).map(obj).find(row => row.slug === slug);
-  return row && mongoId(reference(row)) ? reference(row) : undefined;
+  if (!has(auth.staff, 'product.view') || !/^[a-z0-9_-]{1,160}$/i.test(slug)) throw new ApiError(404);
+  const result = obj(await api(url('/product/admin/all', { slug, region, limit: '2' }), auth.token));
+  const matches = arr(result.data).map(obj).filter(row => row.slug === slug && (str(row.region) || 'BD') === region);
+  const id = matches.length === 1 ? reference(matches[0]) : '';
+  return mongoId(id) ? id : undefined;
 }
 
 const registryResources = {

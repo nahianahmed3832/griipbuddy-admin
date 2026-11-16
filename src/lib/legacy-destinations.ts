@@ -20,7 +20,7 @@ add('pre-orders/[id]/edit', '/desk/orders/preorders/[id]', { edit: '1' });
 
 add('products', '/desk/catalog/products');
 add('create-product', '/desk/catalog/products/new');
-add('update-product/[slug]', '/desk/catalog/products/[slug]', { mode: 'edit' });
+add('update-product/[slug]', '/desk/catalog/products/[slug]', { mode: 'edit', lookup: 'slug' });
 add('product-details/[id]', '/desk/catalog/products/[id]');
 add('categories', '/desk/catalog/categories');
 add('sub-categories', '/desk/catalog/subcategories');
