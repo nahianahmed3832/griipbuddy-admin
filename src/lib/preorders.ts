@@ -1,6 +1,7 @@
 import { adminPath } from './paths';
 
 export const preOrdersPath = '/desk/orders/preorders';
+export const preOrderActionStatus = 'ACTION_REQUIRED';
 export const preOrderStatuses = [
   'REQUESTED', 'QUOTED', 'CONFIRMED', 'PURCHASED', 'SHIPPED_TO_BD', 'ARRIVED_IN_BD',
   'READY_FOR_DELIVERY', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'RETURNED', 'ON_HOLD',
@@ -73,7 +74,8 @@ export function preOrderQuery(params: URLSearchParams | PreOrderFilters): PreOrd
   const to = get('to');
   return {
     q: get('q').trim().slice(0, 100) || undefined,
-    status: status.split(',').filter(value => (preOrderStatuses as readonly string[]).includes(value)).join(',') || undefined,
+    status: status === preOrderActionStatus ? status
+      : status.split(',').filter(value => (preOrderStatuses as readonly string[]).includes(value)).join(',') || undefined,
     batch: get('batch').trim().slice(0, 120) || undefined,
     source: source === 'EXTERNAL' || source === 'LISTED' ? source : undefined,
     creator: /^[a-f\d]{24}$/i.test(creator) ? creator : undefined,

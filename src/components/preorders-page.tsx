@@ -5,7 +5,7 @@ import { adminPath } from '@/lib/paths';
 import { preOrderAccess } from '@/lib/preorders-server';
 import { addressLabel, money, orderDate } from '@/lib/website-orders';
 import {
-  inboundPreOrderStatuses, outboundPreOrderStatuses, preOrderApiParams, preOrderFilterKeys, preOrderItems,
+  inboundPreOrderStatuses, outboundPreOrderStatuses, preOrderActionStatus, preOrderApiParams, preOrderFilterKeys, preOrderItems,
   preOrderNumber, preOrderProduct, preOrderQuery, preOrderRequestUrl, preOrderStatuses, preOrdersPath,
   preOrderUrl, statusText, type PreOrderRow,
 } from '@/lib/preorders';
@@ -44,7 +44,8 @@ export async function PreOrdersPage({ auth, q, region, view }: { auth: Session; 
     return <PreOrderDetail row={item} update={access.update} remove={access.remove} mediaOrigin={mediaOrigin} />;
   }
 
-  const filters = preOrderQuery(Object.fromEntries(preOrderFilterKeys.map(key => [key, param(q, key)])));
+  const filterInput = Object.fromEntries(preOrderFilterKeys.map(key => [key, param(q, key)]));
+  const filters = preOrderQuery({ ...filterInput, status: filterInput.status ?? param(q, 'filter') });
   const upstream = preOrderApiParams(filters);
   const page = Math.max(1, Math.min(10000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const [listing, counts, batchData, creators] = await Promise.all([
@@ -73,8 +74,9 @@ export async function PreOrdersPage({ auth, q, region, view }: { auth: Session; 
     </nav>
     <form className="panel filters" action={adminPath(preOrdersPath)}>
       <label>Search<input name="q" defaultValue={filters.q} placeholder="Pre-order, customer, tracking, or product" maxLength={100} /></label>
-      <label>Status<select name="status" defaultValue={filters.status ?? ''}>
+      <label>Pre-order status<select name="status" defaultValue={filters.status ?? ''}>
         <option value="">All statuses</option>
+        <option value={preOrderActionStatus}>Action required</option>
         {destinations.slice(1).map(target => <option key={target.title} value={target.status}>{target.title}</option>)}
         {preOrderStatuses.map(status => <option key={status} value={status}>{statusText(status)} ({count(status)})</option>)}
       </select></label>
