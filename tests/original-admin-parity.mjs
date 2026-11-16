@@ -59,7 +59,7 @@ const actions = [
       const filename = download.suggestedFilename();
       const csv = await readFile(await download.path());
       if (!filename.endsWith('.csv') || csv.length === 0) throw new Error('The original CSV export did not download.');
-      return `${filename}:${createHash('sha256').update(csv).digest('hex')}`;
+      return `${filename}:${createHash('sha256').update(normalizeReportCsv(csv)).digest('hex')}`;
     },
   },
   {
@@ -290,6 +290,22 @@ async function search(page, label, value, submit) {
   await response.finished();
 }
 
+function normalizeReportCsv(csv) {
+  const generated = /^Generated,\d{4}-\d{2}-\d{2} \d{2}:\d{2}( \([^)]+\))$/m;
+  const text = csv.toString('utf8');
+  if (!generated.test(text)) throw new Error('The original export lacks its Generated timestamp.');
+  return text.replace(generated, 'Generated,<timestamp>$1');
+}
+
+async function waitForOriginalControls(page, route, ids) {
+  if (route === '/dashboard/update-product/[slug]' && ids) {
+    await page.getByText('Product Name', { exact: true }).first().waitFor();
+  }
+  if (route === '/dashboard/reports') {
+    await page.getByRole('heading', { name: /^Sales summary$/i }).first().waitFor();
+  }
+}
+
 async function signIn(session, role) {
   const { page, endpoint } = session;
   const root = endpoint.mount === '/admin' ? '/sign-in' : '/';
@@ -395,6 +411,7 @@ async function compareScreens(pair, test, label, screenshot) {
   try {
     const results = await Promise.all(pair.map(async (session, index) => {
       const response = await go(session, test.paths[index]);
+      if (label.startsWith('owner')) await waitForOriginalControls(session.page, test.route, test.ids);
       let interaction;
       if (test.act) {
         interaction = await test.act(session.page);
