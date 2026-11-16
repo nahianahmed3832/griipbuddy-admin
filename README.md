@@ -1,5 +1,15 @@
 # GriipBuddy commerce admin
 
+## Original admin on protected dev
+
+The protected release uses the preserved GriipBuddy admin build `euAYl85haEyQ5Bfnz2vP3`. The [Dockerfile](deploy/original-admin/Dockerfile) pins the original image, retains its screens and assets, and installs the Next.js runtime from this repository's lockfile. The build adapter mounts the existing admin at `/admin` and connects it to the isolated dev API. [Original route manifest](evidence/legacy-routes.txt)
+
+Build from the revision being verified with `docker build -f deploy/original-admin/Dockerfile -t griipbuddy-original-admin:<revision> .`. The [Compose service](deploy/original-admin/compose.yaml) expects that image in `GRIIP_ORIGINAL_ADMIN_RELEASE` and uses the existing protected staff login configuration in `GRIIP_ADMIN_STAFF_PHONE`. It binds to loopback port 4359. The protected `/admin/` Nginx location can use [nginx.inc](deploy/original-admin/nginx.inc) after verification. Save the existing include for rollback and run `nginx -t` before reloading.
+
+Run [the original-admin comparison](tests/original-admin-parity.mjs) with `GRIIP_ADMIN_PARITY_REFERENCE_URL` and `GRIIP_ADMIN_PARITY_TARGET_URL` set to the two isolated builds. Use disposable records and staff accounts. The script accepts dynamic record identifiers through `GRIIP_ADMIN_PARITY_RECORDS`. Exercise saves, exports, scans, and courier effects on the isolated backend before switching the protected upstream.
+
+## Workspace background
+
 Step 8 adds a Next.js workspace around the recovered staff API. The route inventory in [evidence](evidence/legacy-routes.txt) records all 102 preserved build entries, including 98 dashboard routes. The workflow library links through the private legacy admin tunnel and identifies dynamic and provider-bound routes. The legacy admin performs its own login and authorization.
 
 ## Run locally

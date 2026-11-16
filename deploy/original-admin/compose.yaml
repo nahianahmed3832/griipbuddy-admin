@@ -1,0 +1,30 @@
+name: griipbuddy-original-admin
+services:
+  original-admin:
+    image: ${GRIIP_ORIGINAL_ADMIN_RELEASE:?Use the verified original admin image}
+    environment:
+      GRIIP_ORIGINAL_ADMIN_LISTEN: 0.0.0.0
+      GRIIP_ORIGINAL_ADMIN_MEDIA: /var/lib/griipbuddy/admin-media
+      GRIIP_ADMIN_STAFF_PHONE: ${GRIIP_ADMIN_STAFF_PHONE:?Use the existing protected dev staff number}
+    volumes: [media:/var/lib/griipbuddy/admin-media]
+    networks: [integration]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  edge:
+    image: node:22.22.3-bookworm-slim
+    user: node
+    command: ["node", "/edge.mjs"]
+    volumes: [./edge.mjs:/edge.mjs:ro]
+    ports: ["127.0.0.1:4359:4359"]
+    networks: [integration, edge]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  integration:
+    external: true
+    name: griipbuddy-step9-integration_isolated
+  edge:
+volumes:
+  media:
