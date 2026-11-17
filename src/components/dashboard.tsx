@@ -117,8 +117,8 @@ const outcomes = [
 ] as const;
 
 function Funnel({ data, production }: { data: RecordData; production?: boolean }) {
-  const visible = production ? outcomes.filter(([key]) => key !== 'other') : outcomes;
-  const total = production ? visible.reduce((sum,[key]) => sum + (number(data[key]) ?? 0),0) : number(data.total) ?? 0;
+  const visible = outcomes.filter(([key]) => !production || key !== 'other');
+  const total = production ? visible.reduce<number>((sum,[key]) => sum + (number(data[key]) ?? 0),0) : number(data.total) ?? 0;
   return <div className={"overview-subpanel" + (production ? " production-overview-funnel" : "")}><h3>Where the orders placed in this period are now</h3>
     <p className="muted">{production ? 'Orders a customer returned after delivery count as delivered; returned to sender means it never reached them.' :
       'Customer returns after delivery count as delivered. Returned to sender means the parcel never reached the customer.'}</p>
