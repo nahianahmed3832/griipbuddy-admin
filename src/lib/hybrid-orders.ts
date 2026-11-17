@@ -81,7 +81,7 @@ export async function saveHybridFulfillment(id: string, auth: Session, region: R
 function visibleStatus(order: HybridOrder) {
   if (order.status === 'CANCELLED') return 'CANCELLED';
   const delivery = order.bangladeshShipment?.status;
-  if (delivery === 'REFUSED') return 'PENDING_RETURN';
+  if (delivery === 'REFUSED') return order.bangladeshRefusedParcelReceipt ? 'RETURNED' : 'PENDING_RETURN';
   if (delivery === 'DELIVERED' || order.fulfillmentStatus === 'DELIVERED') return 'DELIVERED';
   if (delivery === 'OUT_FOR_DELIVERY' || delivery === 'IN_TRANSIT' || order.fulfillmentStatus === 'SHIPPED') return 'IN_TRANSIT';
   if (order.fulfillmentStatus === 'READY_TO_SHIP') return 'IN_REVIEW';

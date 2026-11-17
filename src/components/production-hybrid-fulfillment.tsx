@@ -58,7 +58,7 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
         </li>)}</ol>}
       </>}
       {receipt && <p>Parcel received {orderDate(receipt.receivedAt, 'BD')}. {receipt.disposition === 'RESTOCK'
-        ? `${receipt.restockedUnits} units returned to stock.` : 'Stock held for inspection.'}</p>}
+        ? `${receipt.restockedUnits} ${receipt.restockedUnits === 1 ? 'unit' : 'units'} returned to stock.` : 'Stock held for inspection.'}</p>}
       {notice && <p role={notice.error ? 'alert' : 'status'} className="notice">{notice.message}</p>}
       {next && <form className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
         ...(next === 'SHIPPED' && (simulatedHandoff ? { simulate: true }
