@@ -95,8 +95,7 @@
 .variantSection { display: grid; gap: 16px; min-width: 0; }
 .variantEditor, .dangerZone { display: grid; gap: 16px; min-width: 0; padding: 16px; border: 1px solid var(--editor-line); border-radius: 10px; background: white; box-shadow: 0 1px 2px #0002; }
 .variantEditor { padding: 8px 24px 16px; }
-.variantHeading, .dialogHeading, .danger:disabled { opacity: .6; }
-.dangerHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.variantHeading, .dialogHeading, .dangerHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .variantHeading h2, .matrix h2, .dialogHeading h3 { font-size: 20px; line-height: 28px; font-weight: 600; margin: 0; }
 .variantHeading button, .attributeValues button { gap: 6px; }
 .attributes { display: grid; gap: 24px; }
@@ -130,7 +129,12 @@
 .dangerZone { border-color: #fecaca; background: #fff9f999; padding: 16px 16px 20px; }
 .dangerZone .tableScroll { background: white; border: 1px solid var(--editor-line); border-radius: 6px; }
 .danger:disabled { opacity: .6; }
-.dangerHeading { justify-content: flex-start; align-items: flex-start; color: #b91c1c; }
+.dangerHeading { justify-content: flex-start; align-items: flex-start; gap: 12px; color: #b91c1c; }
+.dangerHeading > svg { margin-top: 4px; flex: 0 0 20px; }
+.dangerHeading h3 { font-size: 16px; font-weight: 600; line-height: 24px; }
+.dangerHeading div { flex: 1; }
+.dangerZone .saveActions button { min-height: 36px; padding-inline: 16px; }
+.dangerZone .matrixTable :is(td,th):last-child { text-align: right; }
 .dangerHeading h3, .dangerZone p { margin: 0; }
 .dangerZone p { font-size: 14px; color: var(--editor-muted); }
 .switchField[data-inline="true"] label { width: fit-content; flex-direction: row-reverse; min-height: 18px; border: 0; padding: 0; font-size: 12px; }
@@ -153,7 +157,8 @@
 .rowGallery > span { position: absolute; top: -5px; right: -5px; min-width: 20px; font-size: 12px; color: white; background: var(--editor-primary); border-radius: 12px; }
 .variantRow td:nth-child(5) input { width: 235px; }
 .matrixDefaults > button { max-width: 150px; }
-.selectWrap[data-return="true"] { width: min(100%, max-content); }
+.selectWrap[data-return="true"] { width: fit-content; max-width: 100%; }
+.editor[data-update="true"] .selectWrap[data-return="true"] { width: min(100%, 176px); }
 .emptyVariants { text-align: center; }
 @media (max-width: 767px) { .variantHeading { align-items: center; flex-direction: column; } .variantHeading h2, .matrix h2 { font-size: 16px; line-height: 24px; } .variantEditor { padding-inline: 16px; } }
 
@@ -183,3 +188,27 @@
 .clip input { min-width: 0; min-height: 28px; padding: 4px 8px; border: 1px solid var(--editor-line); border-radius: 6px; font: inherit; font-size: 12px; }
 @media (min-width: 640px) { .clipGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (min-width: 768px) { .clipGrid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+
+.pairedFields { display: grid; gap: 24px; }
+.panel h2 > small { color: var(--editor-muted); font-size: 14px; font-weight: 400; }
+.editor[data-update="true"] .body { --product-panel-pad: 16px; padding: var(--product-panel-pad); }
+.editor[data-update="true"] .panel h2 { padding-inline: 16px; }
+.editor[data-update="true"] .body[data-general="true"] { gap: 16px; }
+.editor[data-update="true"] .fields { align-items: start; }
+.editor[data-update="true"] .extraDetails { margin-inline: calc(var(--product-panel-pad) * -1); padding-inline: var(--product-panel-pad); border-top: 0; }
+.editor[data-update="true"] .extraDetails:last-child { margin-bottom: 0; }
+.editor[data-update="true"] .extraDetails summary { margin-inline: calc(var(--product-panel-pad) * -1); padding-inline: var(--product-panel-pad); }
+.editor[data-update="true"] :is(.imageFields,.fields) { grid-template-columns: minmax(0,1fr); }
+.matrixTable thead tr { background: transparent; }
+@media (min-width: 768px) {
+  .editor[data-update="true"] :is(.imageFields,.fields) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (min-width: 1024px) {
+  .editor[data-update="true"] .body { --product-panel-pad: 24px; }
+  .editor[data-update="true"] .panel h2 { padding-inline: 24px; }
+}
+@media (min-width: 1280px) {
+  .editor[data-update="true"] .fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .pairedFields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 767px) { .dangerZone .saveActions { justify-content: flex-start; } }

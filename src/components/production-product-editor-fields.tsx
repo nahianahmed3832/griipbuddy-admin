@@ -100,10 +100,10 @@ export function ProductSpecsEditor({ initial }: { initial: string }) {
   </details>;
 }
 
-export function ProductEditorPanel({ title, children }: { title?: string; children: ReactNode }) {
+export function ProductEditorPanel({ title, children, general = false }: { title?: ReactNode; children: ReactNode; general?: boolean }) {
   return <section className={styles.panel}>
     {title && <h2>{title}</h2>}
-    <div className={styles.body}>{children}</div>
+    <div className={styles.body} data-general={general}>{children}</div>
   </section>;
 }
 

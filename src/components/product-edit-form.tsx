@@ -317,7 +317,7 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
           <ProductDescriptionEditor initial={initial.description ?? ''}/>
           <ProductSpecsEditor initial={initial.dynamic_specs ?? '[]'}/>
         </ProductEditorPanel>
-        <ProductEditorPanel title="General Setup">
+        <ProductEditorPanel title="General Setup" general={Boolean(id)}>
           <div className={productionStyles.fields}>
             <CategorySelects tree={tree} selected={selected} production/>
             <SelectRef name="brand" current={initial.brand} label="Brand (optional)" values={brands} placeholder="Select a brand"/>
@@ -346,11 +346,11 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
             <ProductPropertiesEditor field="product_card_properties" initial={initial.product_card_properties ?? '[]'}/>
           </>}
         </ProductEditorPanel>
-        <ProductEditorPanel title="Sale Channels"><div className={productionStyles.fields}>
+        <ProductEditorPanel title="Sale Channels"><div className={id ? productionStyles.pairedFields : productionStyles.fields}>
           <ProductEditorSwitch label="POS" hint="Is available on POS?" name="pos" initial={initial.pos === 'true'}/>
           <ProductEditorSwitch label="Website" hint="Is available on website?" name="website" initial={initialValue('website') === 'true'}/>
         </div></ProductEditorPanel>
-        <ProductEditorPanel title="Warranty &amp; Return Policy (Optional)"><div className={productionStyles.fields}>
+        <ProductEditorPanel title="Warranty &amp; Return Policy (Optional)"><div className={id ? productionStyles.pairedFields : productionStyles.fields}>
           <label className={productionStyles.field}>Warranty<input name="warranty" defaultValue={initial.warranty} placeholder="Enter warranty details"/></label>
           <SelectRef name="return_policy" label="Return Policy" current={initial.return_policy} values={policies} placeholder="Select return policy"/>
         </div></ProductEditorPanel>
@@ -361,7 +361,7 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
             <textarea name="short_videos" defaultValue={initial.short_videos} rows={3} placeholder="One video URL per line"/>
           </label>}
         </ProductEditorPanel>
-        {id && <ProductEditorPanel title="Short Videos (Story / Reels) (Optional)">
+        {id && <ProductEditorPanel title={<>Short Videos (Story / Reels) <small>(Optional)</small></>}>
           <ProductionProductVideos initial={initial.short_video_details ?? '[]'} uploading={uploading} setUploading={setUploading}/>
         </ProductEditorPanel>}
         {['facebook','instagram','youtube','tiktok','is_published','shipping_cost','shipping_cost_per_unit','coin_per_order']

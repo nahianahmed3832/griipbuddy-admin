@@ -122,7 +122,7 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
       const target = creating ? undefined : readId;
       const listQuery = back.slice(catalogPath.length);
       const Form = creating || variantsOnly ? ProductEditForm : ProductionProductUpdate;
-      return <div className={productEditorStyles.editor}>
+      return <div className={productEditorStyles.editor} data-update={!creating && !variantsOnly}>
         <div className={productEditorStyles.pageHeading}>
           {!creating && !variantsOnly && <Link className={productEditorStyles.back} href={url('/dashboard/products', listParams)} aria-label="Back to products">
             <ChevronLeft size={16} aria-hidden="true"/>
