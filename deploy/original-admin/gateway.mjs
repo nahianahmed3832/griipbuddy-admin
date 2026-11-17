@@ -1,6 +1,7 @@
 import { createServer, request } from 'node:http';
 import { allowedOriginalApiPath, requiredOriginalMutationPermission } from './api-policy.mjs';
 import { readMedia, readPublishedCatalogMedia, uploadMedia } from './media.mjs';
+import { serveStorefrontContent, storefrontHost, storefrontPrefix } from './storefront-content.mjs';
 
 const prefix = '/admin';
 const apiPrefix = `${prefix}/api/v1`;
@@ -105,6 +106,12 @@ export function createGateway({ origin, backend, app, staffPhone, staffEmail, re
 
     const target = incoming.url ?? '';
     const path = target.split('?')[0];
+    if (path === storefrontPrefix || path.startsWith(storefrontPrefix + '/')) {
+      if (origin.hostname === 'devadmin.griipbuddy.com' && incoming.headers.host === storefrontHost && validPath(path)) {
+        return serveStorefrontContent(incoming, outgoing, target, http, mediaDirectory, json);
+      }
+      return json(outgoing, 404, { success: false, message: 'Not found.' });
+    }
     if (incoming.headers.host !== origin.host || !validPath(path)) {
       return json(outgoing, 404, { success: false, message: 'Not found.' });
     }
