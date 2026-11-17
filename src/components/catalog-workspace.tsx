@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { reference } from '@/lib/advanced';
@@ -19,7 +20,7 @@ import { PageHeading } from './dashboard';
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
 import { ProductCatalog } from './product-catalog';
-import { ProductEditForm, type VariantDraft } from './product-edit-form';
+import { ProductEditForm, ProductionProductUpdate, type VariantDraft } from './product-edit-form';
 import { ProductThumbnail } from './product-thumbnail';
 import { ProductionCountries, ProductionCountryEditor, ProductionCountryMissing, type Country } from './production-countries';
 import { ProductionProductDetail } from './production-product-detail';
@@ -68,12 +69,12 @@ function variantDrafts(value: unknown, canSeeCost: boolean): VariantDraft[] {
     sku: str(variant.sku), attribute_values: Object.fromEntries(Object.entries(obj(variant.attribute_values)).map(([key,val]) => [key, asInput(val)])),
     base: visiblePrices(variant), prices: Object.fromEntries(currencies.map(currency => [currency, visiblePrices(obj(obj(variant.prices)[currency]))])),
     image: str(variant.image), images: asLines(variant.images), videos: asLines(variant.videos), color_code: str(variant.color_code),
-    color_image: str(variant.color_image), image_based_on: str(variant.image_based_on),
+    barcode: str(variant.barcode), color_image: str(variant.color_image), image_based_on: str(variant.image_based_on),
   }));
 }
 function inputValue(record: RecordData, field: string) {
   if (field === 'short_videos') return arr(record.short_videos).map(clip => str(obj(clip).url)).filter(Boolean).join('\n');
-  if (field === 'dynamic_specs') return JSON.stringify(arr(record.dynamic_specs), null, 2);
+  if (['dynamic_specs', 'product_specifications', 'product_card_properties'].includes(field)) return JSON.stringify(arr(record[field]), null, 2);
   if (['facebook', 'instagram', 'youtube', 'tiktok'].includes(field)) return asInput(obj(record.social_links)[field]);
   if (['website', 'pos'].includes(field)) return asInput(obj(record.sale_channels)[field]) || (field === 'website' ? 'true' : 'false');
   if (Array.isArray(record[field])) return asLines(record[field]);
@@ -116,16 +117,18 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
     if (production) {
       const target = creating ? undefined : readId;
       const listQuery = back.slice(catalogPath.length);
+      const Form = creating || variantsOnly ? ProductEditForm : ProductionProductUpdate;
       return <div className={productEditorStyles.editor}>
-        <h1 className={productEditorStyles.heading}>{creating ? 'Create Product' : variantsOnly ? 'Update Product Attribute & Variant' : 'Update Product'}</h1>
-        <ProductEditForm key={title + readId} production changeRegion={has(auth.staff, 'international.access')} id={target} region={region}
+        <div className={productEditorStyles.pageHeading}>
+          {!creating && !variantsOnly && <Link className={productEditorStyles.back} href={url('/dashboard/products', listParams)} aria-label="Back to products">
+            <ChevronLeft size={16} aria-hidden="true"/>
+          </Link>}
+          <h1 className={productEditorStyles.heading}>{creating ? 'Create Product' : variantsOnly ? 'Update Product Attribute & Variant' : 'Update Product'}</h1>
+        </div>
+        <Form key={title + readId} production changeRegion={has(auth.staff, 'international.access')} id={target} region={region}
           tree={tree} initial={initial} brands={brands} policies={policies} countries={countries} selected={fields.map(key => reference(record[key]))}
           allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly={variantsOnly} productListQuery={listQuery}/>
-        {!creating && !variantsOnly && <section>
-          <h2 className={productEditorStyles.heading}>Update Product Attribute &amp; Variant</h2>
-          <ProductEditForm production id={target} region={region} tree={[]} initial={initial} brands={[]} policies={[]} countries={[]} selected={[]}
-            allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly productListQuery={listQuery}/>
-        </section>}
+
       </div>;
     }
     return <><PageHeading eyebrow="COMMERCE / CATALOG" title={title} description={str(record.name) || 'Set up a listing in the selected market.'}/>

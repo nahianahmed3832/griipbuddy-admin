@@ -1,5 +1,5 @@
 import 'server-only';
-import { api, ApiError, arr, canWrite, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
+import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
 import { reference } from './advanced';
 import { currencies, productFields, registries, type EditorFields, type Registry } from './catalog-edit-fields';
 import { has, superAdmin, type Region } from './sections';
@@ -199,7 +199,7 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
   const references = ['subcategory', 'sub_subcategory', 'third_subcategory', 'brand', 'return_policy'] as const;
   for (const key of references) if (values[key] && !mongoId(str(values[key]))) throw invalid('Choose a valid ' + key.replaceAll('_', ' ') + '.');
   const selected = { category, ...Object.fromEntries(references.map(key => [key, str(values[key]) || null])) };
-  const countries = [...new Set(arr(values.available_countries).map(str))];
+  const countries = [...new Set((region === 'INTERNATIONAL' || values.next_region !== undefined ? arr(values.available_countries) : arr(previous.available_countries).map(reference)).map(str))];
   if (countries.some(value => !mongoId(value)) || countries.length > 250) throw invalid('Choose existing countries.');
   const clips = arr(short_videos).map(str);
   if ([...clips, ...arr(product.slider_images).map(str)].some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS links for product media.');
@@ -209,9 +209,30 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
     throw invalid('Specifications must be an array of title, description and options objects.');
   }
   product.dynamic_specs = dynamic.map(spec => ({ title: str(spec.title).slice(0, 200), description: str(spec.description).slice(0, 2000), options: arr(spec.options).map(str).slice(0, 30) }));
+  const dimensionFields = ['title', 'min_text', 'max_text', 'min_value', 'max_value', 'current_value'];
+  function dimensions(value: unknown) {
+    return Object.fromEntries(dimensionFields.map(key => [key, str(obj(value)[key]).trim().slice(0, 200)]));
+  }
+  const cards = product.product_card_properties;
+  if (cards !== undefined) {
+    if (!Array.isArray(cards) || cards.length > 30 || cards.some(card => !str(obj(card).title).trim())) throw invalid('Enter a title for each product card property.');
+    product.product_card_properties = cards.map(dimensions);
+  }
+  const information = product.product_specifications;
+  if (information !== undefined) {
+    if (!Array.isArray(information) || information.length > 30 || information.some(row => !str(obj(row).title).trim() || !Array.isArray(obj(row).description))) {
+      throw invalid('Enter a title and description items for each product specification.');
+    }
+    product.product_specifications = information.map(raw => {
+      const row = obj(raw);
+      return { title: str(row.title).trim().slice(0, 200), description: arr(row.description).map(str).map(value => value.trim().slice(0, 200)).filter(Boolean).slice(0, 30),
+        ...(Object.values(obj(row.imported_value)).some(Boolean) && { imported_value: dimensions(row.imported_value) }) };
+    });
+  }
+  if (arr(product.highlight_labels).length > 3) throw invalid('Choose up to three highlight labels.');
   const min = Number(product.min_order_qty ?? 1), max = Number(product.max_order_qty ?? 100);
   if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 1 || max < min) throw invalid('Enter valid minimum and maximum order quantities.');
-  return { ...product, ...selected, region, available_countries: region === 'INTERNATIONAL' ? countries : [],
+  return { ...product, ...selected, region, available_countries: countries,
     social_links: { facebook, instagram, youtube, tiktok }, sale_channels: { website: website === true, pos: pos === true },
     short_videos: clips.map(clip => existingClips.find(record => record.url === clip) ?? { url: clip }) };
 }
@@ -223,11 +244,15 @@ export async function productWrite(action: string, id: string, values: RecordDat
   if (action === 'delete') return saved('/product/' + id, auth, 'DELETE');
   if (action === 'variants') return saved('/product/variant/' + id, auth, 'PATCH', cleanVariants(values, auth, true));
   if (action === 'delete-variant') {
-    if (!canEditProduct('delete', auth) || !mongoId(str(values.variant))) throw new ApiError(403);
-    return saved('/product/variant/by-product/' + id, auth, 'DELETE', { variant_ids: [values.variant] });
+    if (!canEditProduct('delete', auth)) throw new ApiError(403);
+    const selected = [...new Set(values.variants === undefined ? [str(values.variant)] : arr(values.variants).map(str))];
+    if (!selected.length || selected.length > 120 || selected.some(value => !mongoId(value))) throw invalid('Select valid variants.');
+    return saved('/product/variant/by-product/' + id, auth, 'DELETE', { variant_ids: selected });
   }
   if (action !== 'save') throw invalid('Unknown product action.');
-  const fields = cleanProduct(values, region, previous);
+  if (values.next_region !== undefined && (!id || !['BD', 'INTERNATIONAL'].includes(str(values.next_region)))) throw invalid('Choose a valid region.');
+  const destination = values.next_region === undefined ? region : getRegion(str(values.next_region), auth.staff);
+  const fields = cleanProduct(values, destination, previous);
   if (id) return saved('/product/' + id, auth, 'PATCH', fields);
   const { attributes, variants } = cleanVariants(values, auth, false);
   const createFields = Object.fromEntries(Object.entries(fields).filter(([,value]) => value !== null));

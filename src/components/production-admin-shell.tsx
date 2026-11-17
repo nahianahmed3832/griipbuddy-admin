@@ -82,7 +82,7 @@ const navigation = [
 
 function currentMenuPath(path: string) {
   if (path.startsWith('/dashboard/order-details/')) return '/dashboard/orders';
-  if (path.startsWith('/dashboard/product-details/') || path.startsWith('/dashboard/update-product/')) return '/dashboard/products';
+  if (path.startsWith('/dashboard/product-details/')) return '/dashboard/products';
   return navigation.flatMap(section => section.groups.flatMap(group => group.entries))
     .map(entry => entry.path)
     .filter(href => path === href || path.startsWith(href + '/'))

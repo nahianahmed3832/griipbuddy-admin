@@ -87,13 +87,16 @@ test('production inventory, purchasing, variant media, and barcode workflows', a
     await expect(page.getByRole('table').getByText(otherSku, { exact: true })).toBeVisible();
 
     const image = 'https://example.test/fixture-blue.png';
-    await page.route('**/api/catalog-edit?upload=1', route => route.fulfill({ json: { url: image } }));
+    await page.route('**/api/media/upload?scope=product&kind=image', route => route.fulfill({ json: { url: image } }));
     await page.goto(origin + '/dashboard/update-product/fixture-bd');
     const attribute = Object.keys(original.attribute_values)[0];
     const value = original.attribute_values[attribute];
-    await page.getByLabel('Assign images by attribute').selectOption(attribute);
-    await page.getByLabel('Upload New Image for ' + value).setInputFiles({ name: 'blue.png', mimeType: 'image/png', buffer: Buffer.from('fixture image') });
-    await expect(page.getByRole('list', { name: 'Images for ' + value })).toContainText('Image 1');
+    await page.getByRole('switch', { name: 'Show Image by ' + attribute }).check();
+    await page.getByRole('button', { name: 'Images for ' + value }).click();
+    const gallery = page.getByRole('dialog', { name: 'Images for ' + value });
+    await gallery.getByLabel('Upload New Image for ' + value).setInputFiles({ name: 'blue.png', mimeType: 'image/png', buffer: Buffer.from('fixture image') });
+    await expect(gallery.getByRole('img', { name: 'Image 1' })).toHaveAttribute('src', image);
+    await gallery.getByRole('button', { name: 'Close images' }).click();
     const variantSave = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/catalog-edit'));
     await page.getByRole('button', { name: 'Update Variants', exact: true }).click();
     const savedVariant = await variantSave;

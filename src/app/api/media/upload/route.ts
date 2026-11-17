@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
 import { canChangeCategories } from '@/lib/category-workspace';
+import { canEditProduct } from '@/lib/catalog-admin';
 import { requireWrite } from '@/lib/advanced';
 import { requestPinnedAdmin } from '@/lib/pinned-admin-gateway';
 import { localCmsUpload } from '@/lib/production-cms-media';
@@ -15,7 +16,10 @@ export async function POST(request: NextRequest) {
   const auth = await session();
   if (!auth) return fail('Sign in to upload media.', 401);
   try {
-    if (request.nextUrl.searchParams.get('scope') === 'category') {
+    const scope = request.nextUrl.searchParams.get('scope');
+    if (scope === 'product') {
+      if (!canEditProduct('create', auth) && !canEditProduct('edit', auth)) return fail('Upload access denied.', 403);
+    } else if (scope === 'category') {
       if (!canChangeCategories(auth, 'product.create') && !canChangeCategories(auth, 'product.update')) return fail('Upload access denied.', 403);
     } else requireWrite(auth, 'cms.view', 'cms.update');
     const kind = request.nextUrl.searchParams.get('kind');
@@ -23,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (!request.headers.get('content-type')?.startsWith('multipart/form-data;') || !request.body) {
       return fail('Choose a file to upload.', 400);
     }
-    const fileLimit = kind === 'video' ? 50 : 5;
+    const fileLimit = kind === 'video' ? (scope === 'product' ? 500 : 50) : 5;
     const length = Number(request.headers.get('content-length'));
     if (!Number.isSafeInteger(length) || length <= 0 || length > fileLimit * 1024 * 1024 + 8192) {
       return fail(`The file can be up to ${fileLimit} MB.`, 413);
