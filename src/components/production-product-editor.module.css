@@ -217,3 +217,9 @@
 .editor[data-update="true"] .specs summary { font-size: 16px; font-weight: 400; line-height: 24px; }
 .variantHeading h2, .matrix h2, .dialogHeading h3 { font-family: inherit; }
 .updateAction { border-width: 0; }
+.editor[data-update="true"] .tagInput { min-height: 42px; }
+.editor[data-update="true"] .body[data-general="true"] { padding-bottom: 16px; }
+.editor[data-update="true"] .body[data-general="true"] > .fields { margin-bottom: 8px; }
+.editor[data-update="true"] .countryField { padding-top: 2px; }
+.editor[data-update="true"] .mediaPicker > p { line-height: 20px; }
+.editor[data-update="true"] .panel h2 > small { line-height: 1; }
