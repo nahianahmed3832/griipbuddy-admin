@@ -158,4 +158,11 @@
   color: white; background: var(--order-accent); font: inherit; }
 .operationButton:disabled { opacity: .55; }
 .parcelFields { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hybridFulfillment dl, .hybridFulfillment ol { margin: 0; }
+.hybridFulfillment dl > div, .hybridFulfillment ol li { display: flex; justify-content: space-between; gap: 8px; }
+.hybridFulfillment dd { margin: 0; text-align: end; }
+.hybridFulfillment dd, .hybridFulfillment small { overflow-wrap: anywhere; }
+.hybridFulfillment form + form { border-top: 1px solid var(--order-border); }
+.operationForm .hybridChoice { display: flex; align-items: center; gap: 8px; }
+.operationForm .hybridChoice input { width: 16px; min-height: 16px; flex: 0 0 auto; }
 @media (min-width: 1024px) { .shipmentOperations { padding-inline: 24px; } }

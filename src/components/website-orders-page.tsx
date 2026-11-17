@@ -103,13 +103,13 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
   const hybrid = hybridOrderId(id);
   if (productionLayout && hybrid && param(q, 'draft') !== '1' && param(q, 'edit') !== '1') {
-    const order = await getHybridOrder(hybrid, auth, region);
+    const { order, fulfillment } = await getHybridOrder(hybrid, auth, region);
     const size = param(q, 'limit');
     const back = '/dashboard/orders' + orderListQuery(region, selectedFilters(q), param(q, 'page'))
       + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
     return <ProductionWebsiteOrderDetail order={order} region={region} back={back}
       access={{ update: false, fraud: false, return: false, pick: false, handover: false, dispatch: false }}
-      locations={[]} integrations={{ shipments: 'https://dev.griipbuddy.com/staff/orders/' + hybrid }}/>;
+      locations={[]} hybridFulfillment={fulfillment} integrations={{}}/>;
   }
   if (!mongoId(id)) throw new ApiError(404);
   const access = accessFor(auth, region);

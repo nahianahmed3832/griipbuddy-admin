@@ -6,6 +6,7 @@ import { ChevronLeft, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
+import type { HybridFulfillment } from '@/lib/hybrid-fulfillment';
 import type { Region } from '@/lib/sections';
 import {
   currencyFor, money, orderActions, orderDate, orderNumber,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/website-orders';
 import { OrderDialog, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionManagedPayment, ProductionManagedShipments, useManagedOrder } from './production-order-operations';
+import { ProductionHybridFulfillment } from './production-hybrid-fulfillment';
 import styles from './production-website-order-detail.module.css';
 
 type Props = {
@@ -24,6 +26,7 @@ type Props = {
   openEdit?: boolean;
   editHref?: string;
   managedOperations?: boolean;
+  hybridFulfillment?: HybridFulfillment;
   integrations: { shipments?: string; payments?: string; receipt?: string };
 };
 
@@ -108,7 +111,7 @@ function Invoice({ order, region, openPayment, payment }: {
   </section>;
 }
 
-export function ProductionWebsiteOrderDetail({ order, access, locations, region, back, openEdit, editHref, integrations, managedOperations = false }: Props) {
+export function ProductionWebsiteOrderDetail({ order, access, locations, region, back, openEdit, editHref, integrations, managedOperations = false, hybridFulfillment }: Props) {
   const router = useRouter();
   const managed = useManagedOrder(order._id, managedOperations);
   const actions = orderActions(order, access, region);
@@ -140,6 +143,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
           </div>
         </section>
         {managedOperations && <ProductionManagedShipments operations={managed} editable={access.update} canReturn={access.return}/>}
+        {hybridFulfillment && <ProductionHybridFulfillment orderId={order._id} state={hybridFulfillment}/>}
         <section className={styles.card}>
           <h2 className={styles.cardHeading}>Customer Info</h2>
           <div className={styles.contact}>
@@ -155,7 +159,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         {!managedOperations && (integrations.shipments || integrations.payments || integrations.receipt) && <section className={styles.card}>
           <h2 className={styles.cardHeading}>Fulfillment</h2>
           <div className={styles.integrations}>
-            {integrations.shipments && <Link href={integrations.shipments}>{order.checkoutProjection ? 'Open checkout order' : 'Manage shipments'}</Link>}
+            {integrations.shipments && <Link href={integrations.shipments}>Manage shipments</Link>}
             {integrations.payments && <Link href={integrations.payments}>Manage payments</Link>}
             {integrations.receipt && <Link href={integrations.receipt}>Review checkout receipt</Link>}
           </div>

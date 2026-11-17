@@ -16,6 +16,7 @@ services:
       GRIIP_ADMIN_LEGACY_MEDIA_ORIGIN: http://127.0.0.1:4359
       GRIIP_ADMIN_EXPENSE_MEDIA_DIR: /var/lib/griipbuddy/expense-media
       GRIIP_HYBRID_ADMIN_ORDERS_TOKEN: ${GRIIP_HYBRID_ADMIN_ORDERS_TOKEN:-}
+      GRIIP_HYBRID_ADMIN_FULFILLMENT_TOKEN: ${GRIIP_HYBRID_ADMIN_FULFILLMENT_TOKEN:-}
     volumes:
       - expense-media:/var/lib/griipbuddy/expense-media
     restart: unless-stopped
