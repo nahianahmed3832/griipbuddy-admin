@@ -74,15 +74,15 @@ export function StaffForm({ row, options, back, production = false }: { row?: St
       <label>Full Name<input name="name" required maxLength={120} defaultValue={row?.name}/></label>
       <label>Email<input name="email" type="email" maxLength={254} defaultValue={row?.email}/></label>
       <label>Phone Number<input name="phone" type="tel" inputMode="tel" required pattern={'\\+?[0-9]{8,16}'} defaultValue={row?.phone}/></label>
-      <label>Role<select name="role" value={roleId} onChange={event => setRoleId(event.target.value)} required>
+      <label>Role<select name="role" aria-label="Role" value={roleId} onChange={event => setRoleId(event.target.value)} required>
         <option value="">Select a role</option>
         {row && !options.roles.some(option => option.id === row.roleId) && <option value={row.roleId}>{row.role}</option>}
         {options.roles.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select></label>
       <label>Password<input name="password" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
       <label>Confirm Password<input name="confirmation" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
-      <label>Gender<select name="gender" defaultValue={row?.gender === 'FEMALE' ? 'FEMALE' : 'MALE'}><option>MALE</option><option>FEMALE</option></select></label>
-      <label>Access Outlet<select name="location" defaultValue={row?.locationId ?? ''}>
+      <label>Gender<select name="gender" aria-label="Gender" defaultValue={row?.gender === 'FEMALE' ? 'FEMALE' : 'MALE'}><option>MALE</option><option>FEMALE</option></select></label>
+      <label>Access Outlet<select name="location" aria-label="Access Outlet" defaultValue={row?.locationId ?? ''}>
         <option value="">Select outlet</option>
         {row?.locationId && !options.locations.some(option => option.id === row.locationId) && <option value={row.locationId}>{row.location}</option>}
         {options.locations.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}

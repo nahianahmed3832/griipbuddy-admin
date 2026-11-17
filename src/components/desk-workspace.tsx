@@ -31,6 +31,7 @@ import { AllPurchases, PurchaseRecordPage, DefaultRatePage, DefaultRateCreatePag
 import { SuppliersPage } from '@/components/suppliers-page';
 import { CourierFraud } from '@/components/courier-fraud';
 import { ProductionFraudPage } from '@/components/production-fraud';
+import { ProductionPosReport } from '@/components/production-pos-report';
 import { ProductionHeaderPage } from '@/components/production-header';
 import { StockChangesPage } from '@/components/stock-changes-page';
 import { StockReport } from '@/components/stock-report';
@@ -181,6 +182,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     }
     else if (sectionId === 'markets' && active === 'countries') content = await CatalogRegistry({ auth, q, region, id: view[1], kind: 'countries', production: Boolean(production) });
     else if (sectionId === 'marketing' && active === 'coupons' && view[1]) content = await CouponEditor({ auth, region, id: view[1] === 'new' ? undefined : view[1] });
+    else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region });
     else if (sectionId === 'orders' && active === 'orders') content = view[1]
       ? await WebsiteOrderDetailPage({ auth, q, region, id: view[1], productionLayout: Boolean(production) }) : await WebsiteOrdersPage({ auth, q, region, productionLayout: Boolean(production) });
@@ -190,8 +192,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
           simulated={process.env.GRIIP_ADMIN_TARGET === 'integration' && process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1'}/></>;
     }
     else if (sectionId === 'orders' && active === 'sales-executive' && !view[1]) content = await WebsiteOrdersPage({auth, region, q, executive:true});
-    else if (sectionId === 'orders' && active === 'assigned' && !view[1]) content = await AssignedOrders({auth, region, q});
-    else if (sectionId === 'orders' && active === 'preorders') content = await PreOrdersPage({ auth, q, region, view });
+    else if (sectionId === 'orders' && active === 'assigned' && !view[1]) content = await AssignedOrders({auth, region, q, productionLayout: Boolean(production)});
+    else if (sectionId === 'orders' && active === 'preorders') content = await PreOrdersPage({ auth, q, region, view, productionLayout: Boolean(production) });
     else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region, productionLayout: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'barcodes' && view.length <= 1) content = await AllBarcodes({ auth, q, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'generate-barcodes' && view.length === 1) content = GenerateInventoryLabels({ auth, region, production: Boolean(production) });

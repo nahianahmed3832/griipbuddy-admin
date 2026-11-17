@@ -127,8 +127,10 @@ export async function who(token: string): Promise<Staff | null> {
     if (str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE &&
       (fixtureStaffLoginOnly() || (integrationStaffEnrollment() && user.staffEnrollmentCompleted !== true))) return null;
     if (publicSandbox() && (user._id !== '00000000000000000000e001' || user.role !== 'Sandbox Viewer')) return null;
+    const location = str(obj(user.business_location)._id) || str(user.business_location);
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
-      permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };
+      permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string'),
+      ...(mongoId(location) && { assignedLocation: location }) };
   } catch (error) {
     if (error instanceof ApiError && error.status < 500) return null;
     // Recovered verifyToken reports expired or malformed JWTs as HTTP 500.
