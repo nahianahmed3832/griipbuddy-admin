@@ -315,8 +315,9 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-split"><ProductTable products={arr(sales.topProducts).map(obj)} currency={currency} region={region} canOpen={grant('product.view')} production={production}/>
           <div className="overview-stack"><Metric title="Returns processed" value={count(obj(sales.returns).orders)} detail={money(obj(sales.returns).value) + ' returned'}
             {...productionMetric('Orders for which a return was processed.', orderQueue('returns','RETURNED,PARTIAL'))}/>
-            {!production && sales.pos ? <Metric title="Point-of-sale value" value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
-              prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + ' sales'}/> : null}</div>
+            {sales.pos && (!production || Number(obj(sales.pos).sales) > 0) ? <Metric title={production ? 'POS sales' : 'Point-of-sale value'} value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
+              prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + (Number(obj(sales.pos).sales) === 1 ? ' sale' : ' sales')}
+              {...productionMetric('Sales completed at the point of sale during the selected period.')}/> : null}</div>
         </div>
         <Quality data={sales.quality}/>
       </Panel>}
