@@ -14,16 +14,33 @@ const subscribe = () => () => undefined;
 const readyOnClient = () => true;
 const loadingOnServer = () => false;
 export const usePreOrderInteractive = () => useSyncExternalStore(subscribe, readyOnClient, loadingOnServer);
+export const preOrderReceiptTypes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+export type PreOrderReceipt = { name: string; size: number; data: string; image: boolean };
+export async function encodePreOrderReceipts(selection: FormDataEntryValue[], current: PreOrderReceipt[] = []) {
+  const files = selection.filter((item): item is File => item instanceof File && item.size > 0);
+  if (!files.length) throw new Error('Choose at least one receipt.');
+  if (current.length + files.length > 8) throw new Error('Choose up to eight receipts.');
+  if ([...current, ...files].reduce((total, file) => total + file.size, 0) > 6_000_000) throw new Error('Choose up to 6 MB of receipts.');
+  if (files.some(file => !preOrderReceiptTypes.includes(file.type))) throw new Error('Choose PNG, JPEG, WebP, or PDF receipts.');
+  return Promise.all(files.map(async file => ({
+    name: file.name, size: file.size, data: await readDataUrl(file), image: file.type !== 'application/pdf',
+  })));
+}
+
+function readDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not read the attachment.'));
+    reader.onerror = () => reject(new Error('Could not read the attachment.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function encodePreOrderImage(file: unknown) {
   if (!(file instanceof File) || !file.size || file.size > 1_500_000 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
     throw new Error('Choose a PNG, JPEG, or WebP image up to 1.5 MB.');
   }
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = () => reject(new Error('Could not read the image.'));
-    reader.readAsDataURL(file);
-  });
+  return (await readDataUrl(file)).split(',')[1];
 }
 
 export function Amount({ label, name, initial, required }: { label: string; name: string; initial?: number; required?: boolean }) {
@@ -119,9 +136,10 @@ export function PreOrderDetailActions({ row, edit, remove }: { row: PreOrderRow;
         <Confirm>I verified this payment.</Confirm>
       </PreOrderAction>}
       <PreOrderAction label="Attach payment receipt" action="receipt" id={id} closed button="Upload receipt" build={async data => ({
-        image: await encodePreOrderImage(data.get('image')), amount: fieldNumber(data, 'amount'), method: fieldText(data, 'method'), note: fieldText(data, 'note'),
+        files: (await encodePreOrderReceipts(data.getAll('image'))).map(file => file.data.split(',')[1]),
+        amount: fieldNumber(data, 'amount'), method: fieldText(data, 'method'), note: fieldText(data, 'note'),
       })}>
-        <label>Receipt image<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required /></label>
+        <label>Receipt files<input type="file" name="image" accept={preOrderReceiptTypes.join(',')} multiple required /></label>
         <Amount label="Receipt amount" name="amount" />
         <label>Receipt payment method<input name="method" maxLength={64} /></label>
         <label>Receipt note<input name="note" maxLength={500} /></label>

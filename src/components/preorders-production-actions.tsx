@@ -2,9 +2,10 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import Image from 'next/image';
+import { FileText, Plus, X } from 'lucide-react';
 import { preOrderItems, preOrderNumber, preOrderRequest, type PreOrderRow } from '@/lib/preorders';
-import { Amount, encodePreOrderImage, fieldNumber, fieldText, StatusSelect } from './preorders-actions';
+import { Amount, encodePreOrderImage, encodePreOrderReceipts, fieldNumber, fieldText, preOrderReceiptTypes, StatusSelect, type PreOrderReceipt } from './preorders-actions';
 import styles from './preorders.module.css';
 
 const actions = {
@@ -25,6 +26,8 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
   const titleId = useId();
   const batchId = useId();
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [receipts, setReceipts] = useState<PreOrderReceipt[]>([]);
   const [error, setError] = useState('');
   const [initialTitle, button] = actions[kind];
   const title = kind === 'bulk-dispatch' ? `Send ${ids.length} pre-orders to courier?` : initialTitle;
@@ -32,7 +35,7 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
   useEffect(() => { modal.current?.showModal(); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || reading) return;
     setBusy(true);
     setError('');
     const data = new FormData(event.currentTarget);
@@ -55,8 +58,11 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
       if (kind === 'bulk-batch') body = { ids, batch: fieldText(data, 'batch') };
       if (kind === 'bulk-dispatch') body = { ids };
       if (kind === 'sms') body = { message: fieldText(data, 'message') };
-      if (kind === 'receipt') body = { image: await encodePreOrderImage(data.get('image')), amount: fieldNumber(data, 'amount'),
-        method: fieldText(data, 'method'), note: fieldText(data, 'note') };
+      if (kind === 'receipt') {
+        if (!receipts.length) throw new Error('Choose at least one receipt.');
+        body = { files: receipts.map(file => file.data.split(',')[1]), amount: fieldNumber(data, 'amount'),
+          method: fieldText(data, 'method'), note: fieldText(data, 'note') };
+      }
       const result = await preOrderRequest<unknown>(kind, { id: row?._id }, body);
       const message = kind === 'bulk-dispatch' && Array.isArray(result)
         ? `Sent ${result.filter(value => value?.success === true).length}/${ids.length} to courier` : 'Saved.';
@@ -102,15 +108,41 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
       {kind === 'sms' && <label>Message to {row?.customer_phone}<textarea name="message" maxLength={600} required rows={4}/></label>}
       {kind === 'remove' && <p>This permanently deletes <strong>{row && preOrderNumber(row)}</strong>. This cannot be undone.</p>}
       {kind === 'receipt' && <>
-        <label>Upload payment proof<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required/></label>
-        <Amount label="Amount (optional)" name="amount"/>
-        <label>Method (optional)<input name="method" placeholder="bKash / Nagad / Cash" maxLength={64}/></label>
-        <label>Note (optional)<textarea name="note" maxLength={500}/></label>
+        <div className={styles.receiptFiles}>
+          {receipts.map((file, index) => <figure className={styles.receiptFile} key={file.name + index} title={file.name}>
+            {file.image ? <Image unoptimized src={file.data} alt={file.name} width={80} height={80}/>
+              : <span><FileText size={20}/> PDF</span>}
+            <button aria-label={'Remove ' + file.name} disabled={busy || reading} type="button"
+              onClick={() => setReceipts(receipts.filter((_, item) => item !== index))}><X size={12}/></button>
+          </figure>)}
+          <label className={styles.receiptPicker} title="Upload payment proof">
+            <Plus aria-hidden="true" size={20}/>
+            <input type="file" aria-label="Upload payment proof" accept={preOrderReceiptTypes.join(',')} multiple disabled={busy || reading}
+              onChange={async event => {
+                const selection = [...(event.currentTarget.files ?? [])];
+                event.currentTarget.value = '';
+                if (!selection.length) return;
+                setReading(true);
+                setError('');
+                try {
+                  const added = await encodePreOrderReceipts(selection, receipts);
+                  setReceipts([...receipts, ...added]);
+                } catch (reason) {
+                  setError(reason instanceof Error ? reason.message : 'Could not read the attachment.');
+                } finally { setReading(false); }
+              }}/>
+          </label>
+        </div>
+        <div className={styles.receiptGrid}>
+          <Amount label="Amount (optional)" name="amount"/>
+          <label>Method (optional)<input name="method" placeholder="bKash / Nagad / Cash" maxLength={64}/></label>
+        </div>
+        <label>Note (optional)<textarea name="note" maxLength={500} rows={2}/></label>
       </>}
       {error && <p role="alert">{error}</p>}
-      <div className={styles.dialogButtons}>
+      <div className={kind === 'receipt' ? styles.receiptGrid : styles.dialogButtons}>
         <button type="button" className={styles.control} disabled={busy} onClick={close}>{kind === 'remove' || kind.includes('dispatch') ? 'Cancel' : 'Close'}</button>
-        <button className={kind === 'remove' ? styles.danger : styles.primary} disabled={busy}>{busy ? 'Saving...' : button}</button>
+        <button className={kind === 'remove' ? styles.danger : styles.primary} disabled={busy || reading}>{busy ? 'Saving...' : button}</button>
       </div>
     </form>}
   </dialog>;

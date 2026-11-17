@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
+import { jsPDF } from 'jspdf';
 import { fixturePassword } from './fixture-password';
 
 const origin = process.env.GRIIP_ADMIN_TEST_PREORDER_ORIGIN;
@@ -70,7 +71,16 @@ test('pinned preorder routes support creation, row actions, editing and receipt 
   await page.getByRole('button', { name: 'Confirm Advance' }).click();
   await expect(page.getByText('Confirmed', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Upload Receipt' }).click();
-  await page.getByLabel('Upload payment proof').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: pixel });
+  const document = new jsPDF();
+  document.text('Synthetic preorder receipt', 20, 20);
+  document.addPage();
+  document.text('Synthetic receipt continued', 20, 20);
+  await page.getByLabel('Upload payment proof').setInputFiles([
+    { name: 'receipt.png', mimeType: 'image/png', buffer: pixel },
+    { name: 'receipt.pdf', mimeType: 'application/pdf', buffer: Buffer.from(document.output('arraybuffer')) },
+    { name: 'extra.png', mimeType: 'image/png', buffer: pixel },
+  ]);
+  await page.getByRole('button', { name: 'Remove extra.png' }).click();
   await page.getByRole('button', { name: 'Save Receipt' }).click();
   await page.getByRole('button', { name: 'View Receipt 1' }).click();
   await expect(page.getByRole('dialog', { name: 'Receipt 1' })).toBeVisible();
@@ -78,6 +88,12 @@ test('pinned preorder routes support creation, row actions, editing and receipt 
   const image = await page.request.get(origin + receiptPath);
   expect(image.headers()['content-type']).toBe('image/png');
   expect((await image.body()).subarray(0, 8)).toEqual(pixel.subarray(0, 8));
+  await page.getByRole('button', { name: 'Close image gallery' }).click();
+  await page.getByRole('button', { name: 'View Receipt 2' }).click();
+  const pdfPreview = await page.getByRole('dialog', { name: 'Receipt 2' }).getByRole('link').getAttribute('href');
+  const jpeg = await page.request.get(origin + pdfPreview);
+  expect(jpeg.headers()['content-type']).toBe('image/jpeg');
+  expect((await jpeg.body()).subarray(0, 3)).toEqual(Buffer.from([255, 216, 255]));
   await page.getByRole('button', { name: 'Close image gallery' }).click();
   await page.getByRole('link', { name: 'Edit', exact: true }).click();
   await expect(page).toHaveURL(/\/edit$/);

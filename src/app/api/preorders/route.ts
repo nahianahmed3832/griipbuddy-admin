@@ -34,8 +34,11 @@ async function forward(path: string, token: string, init?: RequestInit, download
   }
   if (download) {
     const isWorkbook = download === workbook;
-    return new Response(response.body, { headers: { ...headers, 'Content-Type': download,
-      'Content-Disposition': isWorkbook ? 'attachment; filename="pre-orders.xlsx"' : 'inline; filename="pre-order-receipt.png"' } });
+    const type = response.headers.get('Content-Type')?.split(';')[0] ?? '';
+    if (!isWorkbook && type !== 'image/png' && type !== 'image/jpeg') return reject('Unsupported receipt format.', 502);
+    const suffix = type === 'image/jpeg' ? '.jpg' : '.png';
+    return new Response(response.body, { headers: { ...headers, 'Content-Type': isWorkbook ? download : type,
+      'Content-Disposition': isWorkbook ? 'attachment; filename="pre-orders.xlsx"' : 'inline; filename="pre-order-receipt' + suffix + '"' } });
   }
   const envelope = obj(await response.json());
   return Response.json(envelope.data, { status: response.status, headers });
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
     const access = preOrderAccess(auth, getRegion(q.get('region') ?? undefined, auth.staff));
     const permitted = ['create', 'reference-create'].includes(action) ? access.create : action === 'remove' ? access.remove : access.update;
     if (!permitted) return reject('Access denied.', 403);
-    const maxSize = ['receipt', 'reference-create', 'reference-edit'].includes(action) ? 2_150_000 : 60_000;
+    const maxSize = action === 'receipt' ? 8_010_000 : ['reference-create', 'reference-edit'].includes(action) ? 2_150_000 : 60_000;
     if (!request.headers.get('content-type')?.startsWith('application/json') || Number(request.headers.get('content-length')) > maxSize) {
       return reject('Invalid pre-order request.', 400);
     }
