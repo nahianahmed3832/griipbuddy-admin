@@ -8,6 +8,7 @@ import { overviewQuery } from '@/lib/overview';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
+import { ProductionReportChart } from './production-report-chart';
 import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
 import './production-overview.css';
@@ -17,31 +18,42 @@ export function PageHeading({ eyebrow, title, description, children }: { eyebrow
 }
 
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-const count = (value: unknown) => number(value)?.toLocaleString('en') ?? '—';
-const percent = (value: unknown) => number(value) === undefined ? '—' : new Intl.NumberFormat('en', { style: 'percent', maximumFractionDigits: 1 }).format(value as number);
+const count = (value: unknown) => number(value)?.toLocaleString('en-IN') ?? '—';
+const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
+const percent = (value: unknown) => number(value) === undefined ? '—' : new Intl.NumberFormat('en', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value as number);
 const days = (value: unknown) => number(value) === undefined ? '—' : Number(value).toFixed(1) + ' d';
-const hours = (value: unknown) => number(value) === undefined ? '—' : Number(value) >= 24 ? days(Number(value) / 24) : Number(value).toFixed(1) + ' h';
+const hours = (value: unknown) => number(value) === undefined ? '—' : Number(value) >= 48 ? days(Number(value) / 24) : Math.round(Number(value)) + ' h';
 
-function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, href }: {
+type MetricTone = 'success' | 'warning' | 'danger';
+function rateTone(value: unknown, warn: number, alert: number): MetricTone | undefined {
+  return typeof value !== 'number' ? undefined : value >= alert ? 'danger' : value >= warn ? 'warning' : 'success';
+}
+
+function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, href, production, tone }: {
   title: string; value: string; detail?: string; current?: unknown; prior?: unknown; lowerIsBetter?: boolean;
-  definition?: string; href?: string;
+  definition?: string; href?: string; production?: boolean; tone?: MetricTone;
 }) {
   const baseline = number(prior);
   const actual = number(current);
   const change = baseline && actual !== undefined ? (actual - baseline) / Math.abs(baseline) : undefined;
-  return <article className="overview-card">
-    <div className="overview-metric-title"><h3>{href ? <Link href={href}>{title}</Link> : title}</h3>
-      {definition && <details className="overview-metric-help">
-        <summary aria-label="What does this mean?"><Info size={13} aria-hidden="true" /></summary>
-        <p>{definition}</p>
-      </details>}
+  const neutralChange = change !== undefined && Math.abs(change) < 0.0005;
+  const name = production ? <span>{title}</span> : <h3>{title}</h3>;
+  const body = <>
+    <div className="overview-metric-title">{name}
+      {definition && <span className="overview-metric-help">
+        <button type="button" aria-label="What does this mean?"><Info size={14} aria-hidden="true"/></button>
+        <span role="tooltip">{definition}</span>
+      </span>}
     </div><div className="overview-value"><strong>{value}</strong>
-      {change !== undefined && <span className={'overview-delta ' + (change === 0 ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
-        aria-label={percent(Math.abs(change)) + (change < 0 ? ' lower than previous period' : change > 0 ? ' higher than previous period' : ' change')}>
-        {change < 0 ? '↘ ' : change > 0 ? '↗ ' : ''}{percent(Math.abs(change))}
+      {change !== undefined && <span className={'overview-delta ' + (neutralChange ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
+        aria-label={percent(Math.abs(change)) + (neutralChange ? ' change' : change < 0 ? ' lower than previous period' : ' higher than previous period')}>
+        {neutralChange ? '− ' : change < 0 ? '↘ ' : '↗ '}{percent(Math.abs(change))}
       </span>}
     </div>{detail && <p>{detail}</p>}
-  </article>;
+  </>;
+  const className = 'overview-card' + (production ? ' overview-production-metric' : '') + (tone ? ' overview-metric-' + tone : '');
+  return href ? <article className={className}><Link className="overview-metric-link" href={href} aria-label={title}/>{body}</article>
+    : <article className={className}>{body}</article>;
 }
 
 function Panel({ title, detail, tone, icon, link, children, id, production = false }: {
@@ -69,12 +81,14 @@ function Bars({ title, bars }: { title: string; bars: Bar[] }) {
 }
 
 type Point = { key: string; booked: number; delivered: number };
-function SalesChart({ points, currency, production }: { points: Point[]; currency: string; production?: boolean }) {
+function SalesChart({ points, currency, unit, production }: { points: Point[]; currency: string; unit: 'day' | 'week' | 'month'; production?: boolean }) {
   const money = (value: number) => printable(value, 'money', currency);
   return <div className="overview-subpanel"><h3>Booked vs delivered</h3>
-    <TrendChart label="Booked value and delivered sales by period" showZero={production} lines={['Booked value','Delivered sales']} format={money}
+    {production ? <ProductionReportChart showSinglePoint points={points} unit={unit} currency={currency} lines={[
+      { key: 'booked', label: 'Booked value', color: '#4f46e5' }, { key: 'delivered', label: 'Delivered sales', color: '#059669' },
+    ]}/> : <TrendChart label="Booked value and delivered sales by period" lines={['Booked value','Delivered sales']} format={money}
       points={points.map(point => ({key:point.key,label:point.key,tick:point.key.length === 10 ? point.key.slice(5) : point.key,
-        values:[point.booked, point.delivered]}))}/>
+        values:[point.booked, point.delivered]}))}/>}
     {!production && points.length > 0 && <details className="chart-values"><summary>View chart data</summary>
       <div className="chart-values-scroll"><table><thead><tr><th scope="col">Period</th><th scope="col">Booked</th><th scope="col">Delivered</th></tr></thead>
         <tbody>{points.map(point => <tr key={point.key}><th scope="row">{point.key}</th><td>{money(point.booked)}</td><td>{money(point.delivered)}</td></tr>)}</tbody>
@@ -150,7 +164,8 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const formatMoney = (value: unknown, code: string) => {
     const amount = number(value);
     if (production && amount !== undefined) {
-      return new Intl.NumberFormat('en-GB', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(amount);
+      return new Intl.NumberFormat(code === 'BDT' ? 'en-IN' : 'en-US', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol',
+        maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(amount));
     }
     return printable(value, 'money', code) || '—';
   };
@@ -174,6 +189,8 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
     const delivered = number(row.deliveredValue);
     return str(row.key) && booked !== undefined && delivered !== undefined ? [{key:str(row.key),booked,delivered}] : [];
   });
+  const seriesUnit = obj(sales?.series).unit;
+  const unit = seriesUnit === 'week' || seriesUnit === 'month' ? seriesUnit : 'day';
   const bookings = obj(sales?.bookings);
   const delivered = obj(sales?.delivered);
   const stock = obj(actions?.stock);
@@ -223,14 +240,14 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const received = obj(finance?.stockReceived);
   const cod = obj(finance?.codWithCourier);
   const phases = obj(preorders?.phases);
-  const phaseCount = preorders ? ['request','chinaToBd','bdToCustomer','onHold'].reduce((sum,key) => sum + (number(phases[key]) ?? 0),0) : undefined;
+  const phaseCount = preorders ? ['request','chinaToBd','bdToCustomer', ...(production ? [] : ['onHold'])].reduce((sum,key) => sum + (number(phases[key]) ?? 0),0) : undefined;
   const bars = (rows: unknown, name: string, valueKey: string, suffix?: string, moneyFormat?: (value: unknown) => string): Bar[] =>
     arr(rows).map(obj).flatMap(row => {
       const amount = number(row[valueKey]);
       return amount === undefined ? [] : [{name:str(row[name]),value:amount,formatted:moneyFormat ? moneyFormat(amount) : count(amount),
         suffix:suffix && number(row[suffix]) !== undefined ? count(row[suffix]) + ' units' : undefined}];
     });
-  const productionMetric = (definition: string, href?: string) => production ? { definition, href } : {};
+  const productionMetric = (definition: string, href?: string, tone?: MetricTone) => production ? { definition, href, tone, production } : {};
   const description = [region === 'BD' ? 'Bangladesh' : 'International',currency,current,previous && 'compared with ' + previous].filter(Boolean).join(' · ');
   const asOfTime = asOf && Number.isFinite(Date.parse(asOf))
     ? new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Dhaka' }).format(new Date(asOf)) : undefined;
@@ -248,7 +265,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
       {authorized && <Link prefetch={false} className="button secondary" href={url('/desk/overview',{...scope,period,refresh:'1'})}><RefreshCw size={15}/> Refresh</Link>}
     </PageHeading>}
     {authorized ? <>
-      <OverviewFilters key={JSON.stringify([period,scope])} region={region} period={period} from={scope.from} to={scope.to} compare={scope.compare !== 'none'}
+      <OverviewFilters key={production ? region : JSON.stringify([period,scope])} region={region} period={period} from={scope.from} to={scope.to} compare={scope.compare !== 'none'}
         selected={scope.locations?.split(',') ?? []} currency={currency} locations={locations} production={production}/>
       {results.some(result => result.status === 'rejected') && <div className="notice warn"><CircleAlert size={17}/> Some overview sections could not load.</div>}
       {actions && <Panel id="work-queue" title="Needs attention" production={production}
@@ -261,11 +278,11 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             : item.title === 'Out of stock'
               ? [count(stock.lowStock) + ' running low (under 7 days of stock)', ...(depleted[0] ? ['e.g. ' + str(depleted[0].sku)] : [])] : item.notes;
           const showNotes = item.value !== 0 || production && ['Overdue with courier', 'Returns to handle'].includes(item.title);
-          const body = <><div className="attention-card-heading"><h3>{item.title}</h3>
+          const body = <><div className="attention-card-heading">{production ? <span className="attention-title">{item.title}</span> : <h3>{item.title}</h3>}
             <span className="attention-pill">{level === 'clear' ? 'All clear' : level === 'urgent' ? 'Act now' : 'Check'}</span></div>
             <strong>{count(item.value)}</strong>
             {showNotes && <>{item.images?.length ? <div className="overview-thumbnails">{item.images.slice(0,4).map((row,index) =>
-              <ProductThumbnail source={row.image} key={index}/>)}</div> : null}<p>{(production ? productionNotes : item.notes).map(note => <span key={note}>{note}</span>)}</p></>}
+              <ProductThumbnail source={row.image} key={index} size={production ? 28 : 32} emptyPlaceholder={production}/>)}</div> : null}<p>{(production ? productionNotes : item.notes).map(note => <span key={note}>{note}</span>)}</p></>}
           </>;
           return item.href ? <Link key={item.title} className={'overview-card attention-' + level} href={item.href}>{body}</Link>
             : <article key={item.title} className={'overview-card attention-' + level}>{body}</article>;
@@ -287,9 +304,9 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
           <Metric title="Average order value" value={money(delivered.avgOrderValue)} current={delivered.avgOrderValue} prior={obj(delivered.previous).avgOrderValue} detail={production ? undefined : 'Delivered orders'}
             {...productionMetric('Average order value for delivered orders.')}/>
           <Metric title="Cancelled before dispatch" value={production && number(bookings.cancellationRate) !== undefined ? (Number(bookings.cancellationRate) * 100).toFixed(1) + '%' : percent(bookings.cancellationRate)} current={bookings.cancellationRate} prior={obj(bookings.previous).cancellationRate}
-            detail={count(bookings.cancelledBeforeDispatch) + ' of ' + count(bookings.orders) + ' orders'} lowerIsBetter {...productionMetric('Orders cancelled before handoff to the courier.')}/>
+            detail={count(bookings.cancelledBeforeDispatch) + ' of ' + count(bookings.orders) + ' orders'} lowerIsBetter {...productionMetric('Share of orders placed in the period that were cancelled before dispatch.', undefined, rateTone(bookings.cancellationRate, 0.05, 0.15))}/>
         </div>
-        <div className="overview-split"><SalesChart points={points} currency={currency} production={production}/>
+        <div className="overview-split"><SalesChart points={points} currency={currency} unit={unit} production={production}/>
           <div className={'overview-stack' + (production ? ' production-overview-combined' : '')}>
             <Bars title="Booked value by category" bars={bars(sales.categoryMix,'name','value','units',money)}/>
             <Bars title="Orders by source" bars={bars(bookings.bySource,'source','orders').map(row => ({...row,name:row.name.replaceAll('_',' ').replace(/^./, c => c.toUpperCase())}))}/>
@@ -313,7 +330,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             {...productionMetric('Orders handed to a courier during the selected period.')}/>
           <Metric title="Delivery success" value={percent(success.successRate)}
             detail={count(success.delivered) + ' delivered · ' + count(success.returnedToSender) + ' returned to sender (' + percent(success.rtsRate) + ') · ' + count(success.pending) + ' still open' + (production ? '' : ' · ' + count(success.windowDays) + '-day dispatch window')}
-            {...productionMetric('Share of courier outcomes delivered to the customer.')}/>
+            {...productionMetric('Of orders dispatched in the last ' + count(success.windowDays) + ' days that reached a final state, the share that was delivered.', undefined, rateTone(success.rtsRate, 0.1, 0.2))}/>
           <Metric title="Delivery time" value={days(deliveryTime.medianDays)} detail={'90% within ' + days(deliveryTime.p90Days) + ' · ' + count(deliveryTime.measured) + ' orders measured'}
             {...productionMetric('Median time from dispatch to delivery.')}/>
         </div>
@@ -325,13 +342,18 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-metrics">
           <Metric title="Units on hand" value={count(position.units)} detail={count(position.skusInStock) + ' SKUs in stock'}
             {...productionMetric('Physical units in the selected locations.', grant('stock.view') ? '/dashboard/check-outlet-stocks' : undefined)}/>
-          {grant('purchase.price.view') && <Metric title="Value at cost" value={cost(value.costValue)} {...productionMetric('Purchase cost of units currently on hand.')}/>}
-          <Metric title="Value at selling price" value={money(value.retailValue)} detail={number(value.potentialMargin) !== undefined && grant('potential.profit.view') ? 'Potential margin ' + percent(value.potentialMargin) : undefined}
+          {grant('purchase.price.view') && <Metric title="Value at cost" value={cost(value.costValue)}
+            detail={production && (number(value.zeroCostUnits) ?? 0) > 0 ? counted(value.zeroCostUnits, 'unit') + ' without a recorded cost'
+              : production && str(value.retailCurrency) && value.retailCurrency !== 'BDT' ? 'Purchase costs are recorded in BDT' : undefined}
+            {...productionMetric('Remaining stock valued at the purchase cost of its lots, oldest lots first.')}/>}
+          <Metric title="Value at selling price" value={formatMoney(value.retailValue, production && str(value.retailCurrency) || currency)} detail={number(value.potentialMargin) !== undefined && grant('potential.profit.view') ? 'Potential margin ' + percent(value.potentialMargin) : undefined}
             {...productionMetric('Estimated selling value of units currently on hand.')}/>
           <Metric title="Older than 180 days" value={count(aging.over180Units)} detail={[grant('purchase.price.view') && cost(aging.over180Value) + ' at cost',count(aging.over90Units) + ' units over 90 days'].filter(Boolean).join(' · ')}
-            {...productionMetric('Units received more than 180 days ago.', link('inventory-aging','inventory_aging','Inventory aging')?.href)}/>
+            {...productionMetric('Units from lots received more than 180 days ago that are still in stock.', link('inventory-aging','inventory_aging','Inventory aging')?.href,
+              (number(aging.over180Units) ?? 0) > 0 ? 'warning' : 'success')}/>
           <Metric title={'No sale in ' + (number(dead.days) ?? 60) + ' days'} value={count(dead.skus)} detail={[count(dead.units) + ' units',grant('purchase.price.view') && cost(dead.value) + ' at cost'].filter(Boolean).join(' · ')}
-            {...productionMetric('SKUs with stock and no sales during the displayed number of days.', link('inventory-aging','inventory_aging','Inventory aging',{show:'dead'})?.href)}/>
+            {...productionMetric('SKUs with stock and no sales during the displayed number of days.', link('inventory-aging','inventory_aging','Inventory aging',{show:'dead'})?.href,
+              (number(dead.skus) ?? 0) > 0 ? 'danger' : 'success')}/>
         </div>
         <Bars title="Stock age (units)" bars={bars(aging.buckets,'bucket','units').map((row,index) => ({...row,name:(production ? row.name : row.name.replace('-', '–')) + ' days',
           suffix:grant('purchase.price.view') ? cost(obj(arr(aging.buckets)[index]).value) : undefined}))}/>
@@ -353,19 +375,22 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-split">
           <div className="overview-metrics overview-metrics-two">
             {finance.expenses ? <>
-              <Metric title="Operating expenses" value={money(expenses.total)} current={expenses.total} prior={obj(expenses.previous).total} lowerIsBetter detail={count(expenses.entries) + ' entries'}
+              <Metric title="Operating expenses" value={money(expenses.total)} current={expenses.total} prior={obj(expenses.previous).total} lowerIsBetter detail={counted(expenses.entries, 'entry', 'entries')}
                 {...productionMetric('Recorded operating expenses in the selected period.', grant('expense.view') ? '/dashboard/expense-report' : undefined)}/>
-              <Metric title="Ad spend" value={money(expenses.adSpend)} current={expenses.adSpend} prior={obj(expenses.previous).adSpend} detail={number(delivered.productValue) && number(expenses.adSpend) !== undefined ? percent(Number(expenses.adSpend) / Number(delivered.productValue)) + ' of delivered sales' : undefined}
+              <Metric title="Ad spend" value={money(expenses.adSpend)} current={expenses.adSpend} prior={obj(expenses.previous).adSpend} lowerIsBetter={production} detail={number(delivered.productValue) && number(expenses.adSpend) !== undefined ? percent(Number(expenses.adSpend) / Number(delivered.productValue)) + ' of delivered sales' : undefined}
                 {...productionMetric('Recorded advertising expenses during the selected period.')}/>
             </> : null}
             <Metric title="COD with courier" value={money(cod.amount)} detail={count(cod.orders) + (production && cod.orders === 1 ? ' parcel' : ' parcels')}
               {...productionMetric('Cash-on-delivery value of parcels still with the courier.', orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'))}/>
-            <Metric title="Stock received" value={grant('purchase.price.view') ? cost(received.cost) : count(received.units) + ' units'}
+            <Metric title="Stock received" value={number(received.cost) !== undefined && grant('purchase.price.view') ? cost(received.cost) : counted(received.units, 'unit')}
               current={grant('purchase.price.view') ? received.cost : received.units} prior={grant('purchase.price.view') ? obj(received.previous).cost : obj(received.previous).units}
               detail={count(received.purchases) + ' purchases · ' + count(received.units) + ' units'}
               {...productionMetric('New stock received in the selected period.', grant('purchase.view') ? '/dashboard/purchase/all' : undefined)}/>
           </div>
-          {finance.expenses ? <Bars title="Expenses by category" bars={bars(expenses.byCategory,'name','amount',undefined,money)}/> : null}
+          {finance.expenses ? <div className="overview-stack">
+            <Bars title="Expenses by category" bars={bars(expenses.byCategory,'name','amount',undefined,money)}/>
+            {production && arr(expenses.adsByChannel).length > 0 && <Bars title="Ad spend by channel" bars={bars(expenses.adsByChannel,'name','amount',undefined,money)}/>}
+          </div> : null}
         </div>
       </Panel>}
       {preorders && <Panel title="Pre-orders" production={production}
@@ -374,11 +399,11 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-metrics attention-metrics">
           <Metric title="In progress" value={count(phaseCount)} detail={count(phases.request) + ' quoting · ' + count(phases.chinaToBd) + ' China → BD · ' + count(phases.bdToCustomer) + ' BD → customer' + (phases.onHold ? ' · ' + count(phases.onHold) + ' on hold' : '')}
             {...productionMetric('Pre-orders currently active at any stage.', '/dashboard/pre-orders')}/>
-          <Metric title="Advances received" value={money(preorders.advancesReceived)} current={preorders.advancesReceived} prior={obj(preorders.previous).advancesReceived} detail={count(preorders.advancesCount) + ' pre-orders'}
+          <Metric title="Advances received" value={cost(preorders.advancesReceived)} current={preorders.advancesReceived} prior={obj(preorders.previous).advancesReceived} detail={count(preorders.advancesCount) + ' pre-orders'}
             {...productionMetric('Advance deposits collected on pre-orders.')}/>
-          <Metric title="Balance still due" value={money(preorders.outstandingDue)} detail={count(preorders.outstandingOrders) + ' pre-orders'}
+          <Metric title="Balance still due" value={cost(preorders.outstandingDue)} detail={count(preorders.outstandingOrders) + ' pre-orders'}
             {...productionMetric('Remaining balance to be collected on outstanding pre-orders.')}/>
-          <Metric title="Delivered" value={money(preorders.deliveredValue)} current={preorders.deliveredValue} prior={obj(preorders.previous).deliveredValue} detail={count(preorders.deliveredCount) + ' pre-orders'}
+          <Metric title="Delivered" value={cost(preorders.deliveredValue)} current={preorders.deliveredValue} prior={obj(preorders.previous).deliveredValue} detail={count(preorders.deliveredCount) + ' pre-orders'}
             {...productionMetric('Value of pre-orders delivered during the selected period.')}/>
         </div><Quality data={preorders.quality}/>
       </Panel>}

@@ -272,3 +272,28 @@
   .production-overview .overview-block-heading > div { flex: 1 1 180px; }
   .production-overview .overview-block-heading .button { margin-left: 0; }
 }
+
+.production-overview .overview-block-heading p { margin-top:0; }
+.production-overview .overview-attention .overview-card { gap:4px; }
+.production-overview .attention-title { color:#1d293d; font-size:14px; font-weight:600; line-height:20px; }
+.production-overview .overview-thumbnail-empty { background:var(--over-surface); border:1px solid #e2e8f0; }
+.production-overview .overview-production-metric { position:relative; display:block; }
+.production-overview .overview-production-metric .overview-metric-title { color:var(--over-copy); font-weight:500; }
+.production-overview .overview-production-metric .overview-value { margin-top:8px; align-items:baseline; }
+.production-overview .overview-production-metric > p { margin-top:4px; }
+.production-overview .overview-production-metric:has(.overview-metric-link):hover { box-shadow:0 4px 9px #0002; }
+.overview-metric-link { position:absolute; inset:0; z-index:1; border-radius:inherit; }
+.overview-metric-link:focus-visible { outline:2px solid var(--section-color); }
+.production-overview .overview-metric-help { z-index:2; }
+.overview-metric-help button { display:grid; place-items:center; color:inherit; cursor:help; }
+.overview-metric-help [role=tooltip] { display:none; position:absolute; z-index:3; inset-inline-start:-12px; top:calc(100% + 6px); width:min(260px,60vw); padding:8px; border-radius:8px; background:#172539; color:#fff; font-size:12px; line-height:17px; box-shadow:0 2px 8px #0002; }
+.overview-metric-help:is(:hover,:focus-within) [role=tooltip] { display:block; }
+.production-overview .overview-metric-success { border-left-color:#009966; }
+.production-overview .overview-metric-success .overview-value strong { color:#007a55; }
+.production-overview .overview-metric-warning { border-left-color:#fe9a00; }
+.production-overview .overview-metric-warning .overview-value strong { color:#bb4d00; }
+.production-overview .overview-metric-danger { border-left-color:#e7000b; }
+.production-overview .overview-metric-danger .overview-value strong { color:#c10007; }
+@media (max-width: 550px) { .overview-metric-help [role=tooltip] { inset-inline-start:auto; inset-inline-end:-8px; } }
+.production-overview-locations fieldset label[hidden] { display:none; }
+.production-overview-locations fieldset input[type=search] { padding:7px 10px; border:1px solid var(--over-border); border-radius:6px; }

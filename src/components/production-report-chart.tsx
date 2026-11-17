@@ -18,14 +18,15 @@ function tickLabel(key: string, unit: string) {
   return unit === 'week' ? 'Wk of ' + day : day;
 }
 
-export function ProductionReportChart({ points, lines, unit, currency, valueType = 'money' }: {
+export function ProductionReportChart({ points, lines, unit, currency, valueType = 'money', showSinglePoint = false }: {
   points: ReportPoint[];
   lines: ReportLine[];
   unit: string;
   currency: string;
   valueType?: string;
+  showSinglePoint?: boolean;
 }) {
-  if (points.length < 2 || !lines.length) return null;
+  if (points.length < (showSinglePoint ? 1 : 2) || !lines.length) return null;
   const label = (value: unknown) => tickLabel(String(value), unit);
   return <div style={{ height: 260, width: '100%' }}>
     <ResponsiveContainer width="100%" height="100%">

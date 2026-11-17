@@ -5,6 +5,7 @@ import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabl
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
+import { ProductionClassicOverview } from '@/components/production-classic-overview';
 import { ClassicDashboard } from '@/components/classic-dashboard';
 import { Reports, reportShortcuts } from '@/components/reports';
 import { ResourceDetail, ResourcePage } from '@/components/resources';
@@ -134,7 +135,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     if (sectionId === 'operations') content = await OperationsDesk({ auth, region, view, query: {
       from: param(q, 'from'), to: param(q, 'to'), q: param(q, 'q'), state: param(q, 'state'), proposal: param(q, 'proposal'),
     } });
-    else if (sectionId === 'overview' && view.length === 1 && view[0] === 'classic') content = await ClassicDashboard({auth,q,region});
+    else if (sectionId === 'overview' && view.length === 1 && view[0] === 'classic') content = production ? await ProductionClassicOverview({auth,q,region}) : await ClassicDashboard({auth,q,region});
     else if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region,production:Boolean(production)});
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({ auth, id: view[0], q, region, production: Boolean(production) });
     else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
