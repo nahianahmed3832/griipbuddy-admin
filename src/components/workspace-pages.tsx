@@ -3,6 +3,7 @@ import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type Session } fr
 import { loadCategoryTree } from '@/lib/catalog-list';
 import { advancedEnabled, loadLocations, paymentAccounts, reference } from '@/lib/advanced';
 import { has, type Region } from '@/lib/sections';
+import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
 import { ContentEditor } from './content-editor';
 import { PageHeading } from './dashboard';
 import { PosEditor, type SaleDraft } from './pos-editor';
@@ -35,20 +36,24 @@ export async function SaleWorkspace({ auth, id, region }: { auth: Session; id?: 
   </>;
 }
 
-export async function ContentWorkspace({ auth, section, region }: { auth: Session; section?: string; region: Region }) {
+export async function ContentWorkspace({ auth, section, region, production = false }: { auth: Session; section?: string; region: Region; production?: boolean }) {
   if (region !== 'BD' || !has(auth.staff, 'cms.view')) throw new ApiError(403);
   const [doc, categories] = await Promise.all([
     api('/cms/admin/workspace', auth.token).then(obj),
     !section || section === 'homepage.shop_by_category' ? loadCategoryTree(auth).catch(() => []) : [],
   ]);
-  const carouselEnabled = process.env.GRIIP_ADMIN_TARGET === 'integration';
+  const carouselEnabled = !production && process.env.GRIIP_ADMIN_TARGET === 'integration';
+  const allowUploads = production ? pinnedAdminGatewayConfigured() : carouselEnabled && Boolean(process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR);
+  const writable = advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'cms.update');
+  if (production) return <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories}
+    carouselEnabled={false} production allowProductSearch={has(auth.staff, 'product.view')} allowUploads={allowUploads} writable={writable}/>;
   return <>
     <PageHeading eyebrow="STOREFRONT / CONTENT" title={section ? ({hero_section:carouselEnabled ? 'Homepage carousel' : 'Hero section', 'homepage.shop_by_category':'Shop by category', 'homepage.best_selling':'Best selling', 'homepage.new_arrivals':'New arrivals', 'homepage.leather_section':'Leather section', banners:'Banners', featured_products:'Featured products'}[section] ?? 'Storefront content') : 'Content and SEO'}
       description="Edit store content and homepage merchandising.">
       <Link className="button secondary" prefetch={false} href={url("/desk/content/" + (section ? (Object.entries(contentViews).find(([, key]) => key === section)?.[0] ?? "workspace") : "workspace"), {region, refresh: String(Date.now())})}>Refresh</Link>
     </PageHeading>
     <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories} carouselEnabled={carouselEnabled}
-      allowProductSearch={has(auth.staff, 'product.view')} allowUploads={carouselEnabled && Boolean(process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR)} writable={advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'cms.update')}/>
+      allowProductSearch={has(auth.staff, 'product.view')} allowUploads={allowUploads} writable={writable}/>
   </>;
 }
 

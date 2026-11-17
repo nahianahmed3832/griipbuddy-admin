@@ -1,0 +1,16 @@
+.page { display: grid; gap: 24px; color: #111114; }
+.heading h1 { margin: 0 0 2px; font-size: 24px; line-height: 1.4; font-weight: 600; }
+.heading p { margin: 0; color: #71717f; font-size: 14px; }
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: fit-content; padding: 3px; border-radius: 8px; background: #e8e8ed; }
+.tabs button { min-height: 32px; padding: 4px 12px; border-color: transparent; border-radius: 6px; box-shadow: none; font-weight: 500; }
+.tabs button[aria-pressed='true'] { background: white; color: #111114; box-shadow: 0 1px 2px #0001; }
+.form { min-width: 0; }
+.form > h2 { margin: 0; font-size: 18px; line-height: 1.4; }
+.form fieldset { margin: 0; padding: 20px 24px; background: white; border: 1px solid #e0e0e4; border-radius: 16px; box-shadow: 0 1px 2px #0002; }
+.form fieldset input:not([type='file']), .form fieldset select, .form fieldset textarea { border: 1px solid #e0e0e4; border-radius: 8px; background: white; }
+.form fieldset :global(.cms-preview) { max-height: 270px; object-fit: contain; object-position: left center; }
+.form :global(.page-actions) button { min-height: 36px; padding: 0 12px; border-radius: 8px; font-weight: 500; }
+.form :global(.page-actions) button:global(.primary) { background: #009b68; color: white; border-color: #009b68; }
+.form .upload { display: grid; justify-items: center; padding: 18px 12px; border: 2px dashed #dedee3; border-radius: 8px; color: #55555f; cursor: pointer; }
+.upload input { max-width: 100%; }
+@media (max-width: 600px) { .form fieldset { padding: 16px; } }

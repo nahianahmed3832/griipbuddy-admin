@@ -96,11 +96,39 @@ test('hidden sales and plan routes preserve their visible behavior', async ({pag
   await expect(page.getByRole('heading',{name:'Renew Subscription Feature Coming Soon!',level:1})).toBeVisible();
 });
 
+test('Header Management edits and toggles a fixture announcement', async ({page, request}) => {
+  await signIn(page);
+  await page.goto(origin + '/dashboard/header');
+  await expect(page.getByRole('heading', { name: 'Header Management', level: 1 })).toBeVisible();
+
+  const message = 'Fixture announcement ' + Date.now();
+  const input = page.getByLabel('Message Text', { exact: true });
+  await input.fill(message);
+  await page.getByRole('switch', { name: 'Show on website', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Message', exact: true }).click();
+  const entry = page.getByText(message, { exact: true }).locator('../..');
+  await expect(entry.getByRole('switch')).not.toBeChecked();
+  await entry.getByRole('switch').click();
+  await expect(entry.getByRole('switch')).toBeChecked();
+
+  await entry.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Edit message text').fill(message + ' updated');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const updated = page.getByText(message + ' updated', { exact: true });
+  await expect(updated).toBeVisible();
+  await updated.locator('../..').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(updated).toHaveCount(0);
+
+  expect((await request.post(origin + '/api/production-header', {
+    headers: { Origin: origin }, data: { action: 'create', message, enabled: false },
+  })).status()).toBe(401);
+});
+
 test('the best-selling editor selects a catalog product and saves the section', async ({page}) => {
   await signIn(page);
   await page.goto(origin + '/dashboard/homepage/best-selling');
-  await expect(page.getByRole('heading',{name:'Best selling',level:1})).toBeVisible();
-  await page.getByRole('button',{name:'Add entry'}).click();
+  await expect(page.getByRole('heading',{name:'Best Selling Products',level:1})).toBeVisible();
+  await page.getByRole('button',{name:'Add Product'}).click();
   const entry = page.getByRole('group',{name:/^Entry \d+$/}).last();
   await entry.getByLabel('Find products').fill('Fixture domestic case');
   await entry.getByRole('button',{name:'Search products',exact:true}).click();
@@ -108,7 +136,7 @@ test('the best-selling editor selects a catalog product and saves the section', 
   const id = await entry.getByLabel('Product reference',{exact:true}).inputValue();
   expect(id).toMatch(/^[a-f0-9]{24}$/i);
   const saved = page.waitForResponse(response => response.url().endsWith('/api/workspace') && response.request().method() === 'POST');
-  await page.getByRole('button',{name:'Save content'}).click();
+  await page.getByRole('button',{name:'Save Changes'}).click();
   expect((await saved).status()).toBe(200);
   await page.reload();
   await expect(page.getByLabel('Product reference',{exact:true}).last()).toHaveValue(id);

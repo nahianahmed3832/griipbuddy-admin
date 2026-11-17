@@ -3,7 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
+import { productionCmsPreview } from '@/lib/production-cms-media';
 import { ContentProductPicker } from './content-product-picker';
+import styles from './production-content.module.css';
 
 type Row = Record<string, unknown>;
 type Category = { id: string; name: string; children: Category[] };
@@ -44,7 +46,10 @@ function set(row: Row, path: string, value: unknown) {
 }
 function sectionRows(doc: Row, section: Section): Row[] {
   const value = get(doc, section.id);
-  return section.max ? (Array.isArray(value) ? value.map(object) : []) : [object(value)];
+  if (!section.max) return [object(value)];
+  const rows = Array.isArray(value) ? value.map(object) : [];
+  return section.fields.some(([name]) => name === 'position')
+    ? rows.sort((left, right) => Number(left.position) - Number(right.position)) : rows;
 }
 
 const carousel: Section = { id:'hero_section', label:'Homepage carousel', max:5, fields:[
@@ -52,11 +57,39 @@ const carousel: Section = { id:'hero_section', label:'Homepage carousel', max:5,
   ['button.enabled','Show button','toggle'], ['button.text','Button label','optional'], ['button.redirect_route','Button path','optional'],
 ] };
 
-export function ContentEditor({ doc, writable, initialSection, allowProductSearch, allowUploads, categories, carouselEnabled }: { doc: Row; writable: boolean; initialSection?: string; allowProductSearch: boolean; allowUploads: boolean; categories: Category[]; carouselEnabled: boolean }) {
-  const availableSections = carouselEnabled ? sections.map(item => item.id === carousel.id ? carousel : item) : sections;
+const copies: Record<string, { title: string; description?: string; add?: string }> = {
+  banners: { title: 'Desktop Banners', add: 'Add Banner' },
+  mobile_banners: { title: 'Mobile Banners', add: 'Add Banner' },
+  featured_products: { title: 'Featured Products', add: 'Add New Featured Product' },
+  hero_section: { title: 'Hero Section Management', description: 'Manage hero video sliders (max 3 videos) with titles, buttons, and fallback images.', add: 'Add New Video' },
+  'homepage.shop_by_category': { title: 'Shop by Category', description: 'Manage top 3 categories displayed on the homepage', add: 'Add New Category' },
+  'homepage.best_selling': { title: 'Best Selling Products', add: 'Add Product' },
+  'homepage.new_arrivals': { title: 'New Arrivals', description: 'Manage new arrival groups (e.g., Tech, Bags, Fashion) with products', add: 'Add New Group' },
+  'homepage.leather_section': { title: 'Leather Section', description: 'Manage the leather products section displayed on homepage' },
+};
+const banners = ['banners', 'mobile_banners', 'featured_products'];
+const positionLabel = ['hero_section', 'homepage.shop_by_category'];
+
+function productionSection(section: Section): Section {
+  if (section.id === 'hero_section') return { ...section, fields: [
+    ['position','Position (1-3)','number'], ['title','Title'], ['video_url','Video File'], ['thumbnail_url','Fallback Image (Optional)','optional'],
+    ['button.enabled','Show Button','toggle'], ['button.text','Button Text','optional'], ['button.redirect_route','Redirect Route','optional'],
+  ] };
+  if (section.id === 'homepage.shop_by_category' || section.id === 'homepage.new_arrivals') {
+    return { ...section, fields: [...section.fields, ['position',positionLabel.includes(section.id) ? 'Position (1-3)' : 'Position','number']] };
+  }
+  if (section.id === 'homepage.leather_section') return { ...section, fields: [...section.fields, ['position','Section Position','number']] };
+  return section;
+}
+
+export function ContentEditor({ doc, writable, initialSection, allowProductSearch, allowUploads, categories, carouselEnabled, production = false }: { doc: Row; writable: boolean; initialSection?: string; allowProductSearch: boolean; allowUploads: boolean; categories: Category[]; carouselEnabled: boolean; production?: boolean }) {
+  const availableSections = production ? sections.map(productionSection)
+    : carouselEnabled ? sections.map(item => item.id === carousel.id ? carousel : item) : sections;
   const initial = availableSections.find(item => item.id === initialSection) ?? availableSections[0];
   const [section, setSection] = useState(initial);
   const isCarousel = carouselEnabled && section.id === carousel.id;
+  const copy = production ? copies[section.id] : undefined;
+  const positionInput = section.fields.some(([name]) => name === 'position');
   const [rows, setRows] = useState(() => sectionRows(doc, initial));
   const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -84,9 +117,17 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
     setUploading(true);
     setFeedback('');
     try {
-      const response = await fetch(adminPath('/api/carousel-media'), {
-        method: 'POST', headers: { 'X-Griip-Media-Kind': field === 'video_url' ? 'video' : 'photo' }, body: file,
-      });
+      const video = field === 'video_url';
+      let response;
+      if (production) {
+        const limit = video ? 50 : 5;
+        if (file.size > limit * 1024 * 1024) throw new Error(`The file can be up to ${limit} MB.`);
+        const body = new FormData();
+        body.set('file', file);
+        response = await fetch(adminPath('/api/media/upload?kind=' + (video ? 'video' : 'image')), { method: 'POST', body });
+      } else {
+        response = await fetch(adminPath('/api/carousel-media'), { method: 'POST', headers: { 'X-Griip-Media-Kind': video ? 'video' : 'photo' }, body: file });
+      }
       const result = object(await response.json().catch(() => ({})));
       if (!response.ok || typeof result.url !== 'string') {
         throw new Error(typeof result.error === 'string' ? result.error : 'Upload unavailable. Use a direct media URL.');
@@ -116,7 +157,7 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
       const records = rows.map((row, index) => {
         let result: Row = { ...(section.max && row._id ? { _id: row._id } : {}), ...(positioned ? { position: index + 1 } : {}) };
         for (const [name,,kind] of section.fields) {
-          const value = get(row, name);
+          const value = get(row, name) ?? (name === 'position' ? index + 1 : undefined);
           if (kind === 'optional' && !value) continue;
           const input = kind === 'ids' ? (Array.isArray(value) ? value : String(value ?? '').split(/[\s,]+/).filter(Boolean))
             : kind === 'toggle' ? value === true : kind === 'number' ? Number(value) : String(value ?? '').trim();
@@ -138,26 +179,30 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
     finally { submitting.current = false; setBusy(false); }
   }
 
-  return <section className="panel padded">
-    {!initialSection && <div className="tabs" aria-label="Content sections">{availableSections.map(item =>
+  const bannerTabs = production && initialSection === 'banners';
+  const sectionTabs = bannerTabs ? availableSections.filter(item => banners.includes(item.id)) : availableSections;
+  return <section className={production ? styles.page : 'panel padded'}>
+    {copy && <header className={styles.heading}><h1>{bannerTabs ? 'Banner Update' : copy.title}</h1>{copy.description && <p>{copy.description}</p>}</header>}
+    {(!initialSection || bannerTabs) && <div className={bannerTabs ? styles.tabs : 'tabs'} aria-label="Content sections">{sectionTabs.map(item =>
       <button className={'button ' + (section.id === item.id ? 'primary' : 'subtle')} key={item.id} type="button"
-        aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{item.label}</button>)}</div>}
-    <form className="stack-form" onSubmit={save}>
-      <h2>{section.label}</h2>
+        aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{bannerTabs && item.id === 'featured_products' ? 'Featured Banners' : production ? copies[item.id]?.title ?? item.label : item.label}</button>)}</div>}
+    <form className={production ? `${styles.form} stack-form` : 'stack-form'} onSubmit={save}>
+      {(!copy || bannerTabs || section.id === 'homepage.leather_section') && <h2>{section.id === 'homepage.leather_section' && production ? 'Section Settings' : copy?.title ?? section.label}</h2>}
       {isCarousel && <p>Add up to five slides. {allowUploads && 'Upload a photo (JPG, PNG, WebP or AVIF, up to 6 MB) or video (MP4 or WebM, up to 24 MB), or '}use a direct media URL. A video may have a cover photo.</p>}
       {section.id === 'seo' && <p>Use / for the homepage or a storefront route such as /bd/products. The storefront keeps its canonical URL and indexing policy.</p>}
       {!rows.length && <p>No entries yet.</p>}
       {rows.map((row, index) => <fieldset className="editor-fieldset" key={index} disabled={!writable || busy || uploading}>
         <legend>{isCarousel ? 'Slide' : 'Entry'} {index + 1}</legend>
         <div className="editor-grid">{section.fields.map(([name, label, kind]) => {
-          const value = get(row, name);
+          const value = get(row, name) ?? (name === 'position' ? index + 1 : undefined);
           const change = (input: unknown) => update(rows.map((item, position) => position === index ? set(item, name, input) : item));
           const text = Array.isArray(value) ? value.join('\n') : String(value ?? '');
           const media = /(?:image|thumbnail|banner|video)_url$/.test(name);
           const isProduct = /^(?:products_id|product_ids|product_id)$/.test(name);
-          let safePreview = text.startsWith('/') && !text.startsWith('//') && !/[\\\s]/.test(text);
+          const preview = production && media ? productionCmsPreview(text) : text;
+          let safePreview = preview.startsWith('/') && !preview.startsWith('//') && !/[\\\s]/.test(preview);
           try {
-            const source = new URL(text);
+            const source = new URL(preview);
             safePreview ||= source.protocol === 'https:' && !source.username && !source.password;
           } catch { /* Address may still be a local asset. */ }
           const taxonomy = name === 'category_id' ? categories : name === 'subcategory_id'
@@ -174,14 +219,15 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
             </select> : kind === 'ids' || kind === 'long' ? <textarea rows={3} value={text} maxLength={kind === 'long' ? 170 : 1500}
               onChange={event => change(event.target.value)} required={kind === 'long'}/>
               : <input value={text} type={kind === 'number' ? 'number' : 'text'} required={kind !== 'optional'}
+                min={kind === 'number' ? 1 : undefined} max={kind === 'number' ? (positionLabel.includes(section.id) ? 3 : 100) : undefined}
                 maxLength={isCarousel && name === 'title' ? 120 : 1000} onChange={event => change(event.target.value)}/>}
           </label>
           {isProduct && writable && allowProductSearch && <ContentProductPicker multiple={kind === 'ids'} value={text} update={change}/>}
           {media && safePreview && (name === 'video_url'
-            ? <video className="cms-preview" controls preload="metadata" src={text} aria-label={label}/>
+            ? <video className="cms-preview" controls preload="metadata" src={preview} aria-label={label}/>
             // eslint-disable-next-line @next/next/no-img-element
-            : <img className="cms-preview" src={text} alt="" loading="lazy" referrerPolicy="no-referrer"/>)}
-          {media && writable && allowUploads && <label>Upload {label.toLowerCase()}<input type="file"
+            : <img className="cms-preview" src={preview} alt="" loading="lazy" referrerPolicy="no-referrer"/>)}
+          {media && writable && allowUploads && <label className={production ? styles.upload : undefined}>{production ? (name === 'video_url' ? 'Click to upload video' : 'Click to upload') : 'Upload ' + label.toLowerCase()}<input type="file"
             accept={name === 'video_url' ? 'video/mp4,video/webm' : 'image/png,image/jpeg,image/webp,image/avif'}
             onChange={event => {
               const file = event.currentTarget.files?.[0];
@@ -191,12 +237,12 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
           </div>;
         })}</div>
         {section.max && writable && <div className="page-actions">
-          {index > 0 && <button className="button subtle" type="button" onClick={() => {
+          {!positionInput && index > 0 && <button className="button subtle" type="button" onClick={() => {
             const next = [...rows];
             [next[index - 1], next[index]] = [next[index], next[index - 1]];
             update(next);
           }}>Move up</button>}
-          {index + 1 < rows.length && <button className="button subtle" type="button" onClick={() => {
+          {!positionInput && index + 1 < rows.length && <button className="button subtle" type="button" onClick={() => {
             const next = [...rows];
             [next[index + 1], next[index]] = [next[index], next[index + 1]];
             update(next);
@@ -206,13 +252,13 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
       </fieldset>)}
       {writable && <div className="page-actions">
         {section.max && <button className="button secondary" type="button" disabled={busy || uploading || rows.length >= section.max}
-          onClick={() => update([...rows, {}])}>{isCarousel ? 'Add slide' : 'Add entry'}</button>}
+          onClick={() => update([...rows, {}])}>{copy?.add ?? (isCarousel ? 'Add slide' : 'Add entry')}</button>}
         {dirty && <button className="button subtle" type="button" disabled={busy || uploading} onClick={() => {
           setRows(sectionRows(doc, section));
           setDirty(false);
           setFeedback('');
         }}>Reset form</button>}
-        <button className="button primary" disabled={!dirty || busy || uploading}>{busy ? 'Saving…' : 'Save content'}</button>
+        <button className="button primary" disabled={!dirty || busy || uploading}>{busy ? 'Saving…' : production ? 'Save Changes' : 'Save content'}</button>
       </div>}
       {uploading && <p role="status">Uploading media…</p>}
       {feedback && <p className={error ? 'notice warn' : 'notice'} role={error ? 'alert' : 'status'}>{feedback}</p>}

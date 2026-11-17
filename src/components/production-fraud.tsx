@@ -8,10 +8,12 @@ import styles from './production-fraud.module.css';
 type Courier = {
   courierName?: string; courierKey?: string; totalOrders?: number;
   totalParcels?: number; totalDelivered?: number; totalCancelled?: number; lastCourierSyncAt?: string;
+  successRate?: number;
 };
 type Summary = {
   successRate: number; statusTag?: string;
-  totalParcels?: number; totalDelivered?: number; totalCancel?: number; apis?: Courier[];
+  totalOrders?: number; totalParcels?: number; totalDelivered?: number;
+  totalCancelled?: number; totalCancel?: number; apis?: Courier[];
 };
 
 export function ProductionFraudChecker({ header = false, className, resultClassName }: {
@@ -66,7 +68,9 @@ export function ProductionFraudChecker({ header = false, className, resultClassN
 }
 
 function FraudResults({ result }: { result: Summary }) {
-  const { totalParcels: total = 0, totalDelivered: delivered = 0, totalCancel: cancelled = 0 } = result;
+  const total = result.totalOrders ?? result.totalParcels ?? 0;
+  const delivered = result.totalDelivered ?? 0;
+  const cancelled = result.totalCancelled ?? result.totalCancel ?? 0;
   return <div className={styles.summary}>
     <h2>Summary</h2>
     <p>Status: <strong>{result.statusTag || 'N/A'}</strong></p>
@@ -82,14 +86,14 @@ function FraudResults({ result }: { result: Summary }) {
       <h3>Courier Performance</h3>
       {result.apis.map((courier, index) => {
         const delivered = courier.totalDelivered ?? 0;
-        const orders = courier.totalOrders ?? 0;
-        const rate = orders > 0 ? delivered / orders * 100 : 0;
+        const orders = courier.totalOrders ?? courier.totalParcels ?? 0;
+        const rate = courier.successRate ?? (orders > 0 ? delivered / orders * 100 : 0);
         const syncTime = Date.parse(courier.lastCourierSyncAt ?? '');
         return <article key={courier.courierKey ?? index}>
           <header><strong>{courier.courierName}</strong><span>{rate.toLocaleString('en', { maximumFractionDigits: 2 })}%</span></header>
           <Rate value={rate}/>
           <dl className={styles.courierMetrics}>
-            <div><dt>Total</dt><dd>{courier.totalParcels ?? 0}</dd></div>
+            <div><dt>Total</dt><dd>{orders}</dd></div>
             <div><dt>Delivered</dt><dd>{delivered}</dd></div>
             <div><dt>Cancelled</dt><dd>{courier.totalCancelled ?? 0}</dd></div>
           </dl>
