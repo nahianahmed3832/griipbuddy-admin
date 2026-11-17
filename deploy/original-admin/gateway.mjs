@@ -1,5 +1,6 @@
 import { createServer, request } from 'node:http';
 import { allowedOriginalApiPath, requiredOriginalMutationPermission } from './api-policy.mjs';
+import { catalogMediaPrefix } from './catalog-media.mjs';
 import { readMedia, readPublishedCatalogMedia, uploadMedia } from './media.mjs';
 import { serveStorefrontContent, storefrontHost, storefrontPrefix } from './storefront-content.mjs';
 
@@ -118,8 +119,11 @@ export function createGateway({ origin, backend, app, staffPhone, staffEmail, re
 
     const isApi = path.startsWith(`${apiPrefix}/`);
     const isFraud = path === `${prefix}/api/fraud-check`;
-    const isMedia = path.startsWith(`${prefix}/api/media/`);
-    if (isApi || isFraud || isMedia) {
+    const image = path === `${prefix}/_next/image` ? new URL(target, origin).searchParams.get('url') : null;
+    // The standalone Next optimizer cannot read media owned by this gateway.
+    const mediaPath = image?.startsWith(catalogMediaPrefix) && validPath(image) ? image :
+      path.startsWith(`${prefix}/api/media/`) ? path : null;
+    if (isApi || isFraud || mediaPath) {
       if (isApi && !allowedOriginalApiPath(path.slice(prefix.length), incoming.method)) {
         return json(outgoing, 404, { success: false, message: 'Not found.' });
       }
@@ -166,9 +170,9 @@ export function createGateway({ origin, backend, app, staffPhone, staffEmail, re
         const payload = await uploadMedia(incoming, origin, mediaDirectory, path);
         return payload ? json(outgoing, 200, payload) : json(outgoing, 400, { success: false, message: 'Upload file is invalid.' });
       }
-      if (isMedia) {
-        if (await readMedia(incoming, outgoing, mediaDirectory, path)) return;
-        if (await readPublishedCatalogMedia(incoming, outgoing, fraudOrigin, path)) return;
+      if (mediaPath) {
+        if (await readMedia(incoming, outgoing, mediaDirectory, mediaPath)) return;
+        if (await readPublishedCatalogMedia(incoming, outgoing, fraudOrigin, mediaPath)) return;
       }
       if (isApi) {
         const apiPath = path.slice(prefix.length);
