@@ -97,16 +97,17 @@
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding: 0 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--report-pill-border, #a3b3c9);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--report-pill-border, #a3b3c9);
   color: var(--report-pill-text, #314158);
   background: var(--report-pill-bg, #f1f5f9);
   font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
+  font-weight: 600;
+  line-height: 16px;
 }
-.production-report-page .report-status { line-height: 16px; white-space: nowrap; }
+.production-report-page .report-status { white-space: nowrap; }
 .production-report-page .report-status::before,
 .production-report-page .report-domain::before { background: var(--report-tone, var(--section-color)); }
 .production-report-page .report-title h1 { margin: 0; line-height: 32px; }

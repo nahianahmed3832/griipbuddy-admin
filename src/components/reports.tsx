@@ -300,8 +300,8 @@ export async function Reports({ auth, id, q, region, production = false }: {
   return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
       <div className="report-header-copy">
-      <Link className="table-link report-back" href={url(reportBase,{region})}><ArrowLeft size={16}/> All reports</Link>
-      <div className="report-title"><span className="overview-block-icon"><domain.icon size={22}/></span>
+      <Link className="table-link report-back" href={url(reportBase,{region})}><ArrowLeft size={production ? 14 : 16}/> All reports</Link>
+      <div className="report-title"><span className="overview-block-icon"><domain.icon size={production ? 20 : 22}/></span>
         <div><span className="report-domain">{domain.name}</span><h1>{str(report.title)}</h1></div>
       </div>
       <p className="report-description">{str(report.description)}</p>
