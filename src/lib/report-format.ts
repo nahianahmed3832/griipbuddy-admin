@@ -34,3 +34,26 @@ export function reportRange(from: unknown, to: unknown) {
   const start = reportValue(from,'date','BDT');
   return from === to || typeof to !== 'string' ? start : start + ' – ' + reportValue(to,'date','BDT');
 }
+
+const productionCurrencySymbols: Record<string, string> = { BDT: '৳', USD: '$', EUR: '€', AUD: 'A$' };
+const productionCount = new Intl.NumberFormat('en-IN');
+const productionNumber = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
+export function productionReportValue(value: unknown, type: unknown, currency: string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (type === 'text' || typeof type !== 'string') return String(value);
+  if (type === 'date' || type === 'datetime') return reportValue(value, type, currency);
+  const number = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(number)) return '—';
+  if (type === 'money' || type === 'cost' || type === 'currency') {
+    const code = type === 'cost' ? 'BDT' : currency;
+    const formatted = Math.abs(Math.round(number)).toLocaleString(code === 'BDT' ? 'en-IN' : 'en-US');
+    return (Math.round(number) < 0 ? '-' : '') + (productionCurrencySymbols[code] ?? code + ' ') + formatted;
+  }
+  if (type === 'percent') return (number * 100).toFixed(1) + '%';
+  if (type === 'hours') return number < 48 ? Math.round(number) + ' h' : (number / 24).toFixed(1) + ' d';
+  if (type === 'days') return (Number.isInteger(number) ? productionCount.format(number) : number.toFixed(1)) + ' d';
+  if (type === 'count') return productionCount.format(number);
+  if (type === 'number') return productionNumber.format(number);
+  return String(value);
+}
