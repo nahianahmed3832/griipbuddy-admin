@@ -214,3 +214,6 @@
   .pairedFields { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 767px) { .dangerZone .saveActions { justify-content: flex-start; } }
+.editor[data-update="true"] .specs summary { font-size: 16px; font-weight: 400; line-height: 24px; }
+.variantHeading h2, .matrix h2, .dialogHeading h3 { font-family: inherit; }
+.updateAction { border-width: 0; }
