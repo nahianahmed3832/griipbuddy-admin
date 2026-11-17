@@ -118,7 +118,7 @@ const outcomes = [
 
 function Funnel({ data, production }: { data: RecordData; production?: boolean }) {
   const total = number(data.total) ?? 0;
-  return <div className="overview-subpanel"><h3>Where the orders placed in this period are now</h3>
+  return <div className={"overview-subpanel" + (production ? " production-overview-funnel" : "")}><h3>Where the orders placed in this period are now</h3>
     <p className="muted">{production ? 'Orders a customer returned after delivery count as delivered; returned to sender means it never reached them.' :
       'Customer returns after delivery count as delivered. Returned to sender means the parcel never reached the customer.'}</p>
     {total > 0 && <div className="overview-funnel" aria-hidden="true">{outcomes.map(([key,,tone]) =>

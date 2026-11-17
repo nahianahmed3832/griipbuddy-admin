@@ -308,3 +308,10 @@
 .production-attention-notes { margin-top:6px; color:#314158; font-size:12px; font-weight:500; line-height:16px; }
 .production-attention-notes > div + div { margin-top:2px; }
 .production-overview .overview-card strong { font-weight:700; letter-spacing:-.025em; }
+
+.production-overview .overview-subpanel h3 { margin-bottom:8px; }
+.production-overview .overview-bars li { gap:4px 8px; font-size:14px; }
+.production-overview .overview-bars li > span:first-child { font-weight:500; color:#1d293d; }
+.production-overview .overview-bars li > span:last-of-type { font-weight:600; color:#0f172b; }
+.production-overview .production-overview-funnel > p:not(.overview-funnel-empty) { margin-top:-4px; margin-bottom:8px; font-size:12px; line-height:16px; }
+.production-overview .production-overview-funnel > .overview-funnel-empty { margin-top:0; font-size:14px; line-height:20px; }
