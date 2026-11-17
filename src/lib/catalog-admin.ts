@@ -3,6 +3,7 @@ import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, str,
 import { reference } from './advanced';
 import { currencies, productFields, registries, type EditorFields, type Registry } from './catalog-edit-fields';
 import { has, superAdmin, type Region } from './sections';
+import { cmsMediaKey } from './production-cms-media';
 
 const invalid = (message: string) => new ApiError(400, message);
 const routes = {
@@ -40,6 +41,11 @@ function safeUrl(value: string) {
   try { const address = new URL(value); return ['https:', 'http:'].includes(address.protocol) && !address.username && !address.password; }
   catch { return false; }
 }
+function safeProductMedia(value: string) {
+  if (safeUrl(value) || cmsMediaKey(value)) return true;
+  const prefix = '/admin/api/media/catalog/';
+  return value.startsWith(prefix) && cmsMediaKey(value.slice(prefix.length));
+}
 function validateFields(values: RecordData, fields: EditorFields) {
   const result: RecordData = {};
   for (const rule of fields) {
@@ -69,7 +75,7 @@ function validateFields(values: RecordData, fields: EditorFields) {
         if (!rule.choices?.some(choice => choice.value === text)) throw invalid('Choose a value for ' + rule.label.toLowerCase() + '.');
         result[rule.name] = text; break;
       case 'url':
-        if (text && !safeUrl(text)) throw invalid('Use an HTTP or HTTPS URL for ' + rule.label.toLowerCase() + '.');
+        if (text && !(rule.name === 'thumbnail' ? safeProductMedia(text) : safeUrl(text))) throw invalid('Use an HTTP or HTTPS URL for ' + rule.label.toLowerCase() + '.');
         result[rule.name] = text; break;
       case 'json':
         if (!text) { result[rule.name] = []; break; }
@@ -181,7 +187,7 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
     const images = arr(row.images).map(str), videos = arr(row.videos).map(str);
     const image = str(row.image).trim(), colorImage = str(row.color_image).trim();
     const imageSource = str(row.image_based_on).trim();
-    if ([...images, ...videos, image, colorImage].filter(Boolean).some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS URLs for variant media.');
+    if ([...images, ...videos, image, colorImage].filter(Boolean).some(value => !safeProductMedia(value))) throw invalid('Choose a valid URL or catalog media file for each variant.');
     return { ...(mongoId(str(row._id)) ? { _id: row._id } : {}), ...(row.serial !== undefined && { serial: index + 1 }), sku,
       attribute_values: Object.fromEntries(attributes.map((name, index) => [name, values[index]])),
       ...base, image, images, videos, color_image: colorImage, color_code: str(row.color_code).slice(0, 32), prices,
@@ -202,7 +208,7 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
   const countries = [...new Set((region === 'INTERNATIONAL' || values.next_region !== undefined ? arr(values.available_countries) : arr(previous.available_countries).map(reference)).map(str))];
   if (countries.some(value => !mongoId(value)) || countries.length > 250) throw invalid('Choose existing countries.');
   const clips = arr(short_videos).map(str);
-  if ([...clips, ...arr(product.slider_images).map(str)].some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS links for product media.');
+  if ([...clips, ...arr(product.slider_images).map(str)].some(value => !safeProductMedia(value))) throw invalid('Choose a valid URL or catalog media file.');
   const existingClips = arr(previous.short_videos).map(obj);
   function videoDetails() {
     if (values.short_video_details === undefined) return [];
