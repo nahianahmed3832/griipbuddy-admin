@@ -319,3 +319,5 @@
 .production-overview .overview-funnel-labels { display:flex; flex-wrap:wrap; gap:4px 16px; }
 .production-overview .overview-funnel-labels li { display:inline-flex; align-items:center; gap:6px; color:#314158; font-size:12px; font-weight:500; line-height:16px; }
 .production-overview .overview-funnel-labels b { color:#0f172b; font-weight:700; }
+.production-overview .overview-bars strong { font:600 14px/20px "DM Sans", "DM Sans Fallback", sans-serif; }
+.production-overview .overview-bars small { font-size:12px; font-weight:400; line-height:16px; }
