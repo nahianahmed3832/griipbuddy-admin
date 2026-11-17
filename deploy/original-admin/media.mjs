@@ -4,17 +4,18 @@ import { mkdir, stat, unlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { catalogMediaKey, forwardCatalogMedia } from './catalog-media.mjs';
+import { catalogMediaKey, catalogMediaPrefix, forwardCatalogMedia } from './catalog-media.mjs';
 
 const require = createRequire(resolve(process.env.GRIIP_ORIGINAL_ADMIN_APP ?? '/app', 'package.json'));
 const multipart = require('next/dist/compiled/busboy');
 
 const mediaTypes = new Map([
   ['image/jpeg', 'jpg'], ['image/png', 'png'], ['image/webp', 'webp'], ['image/gif', 'gif'],
+  ['image/avif', 'avif'], ['image/apng', 'apng'], ['image/bmp', 'bmp'], ['image/tiff', 'tiff'],
+  ['image/heic', 'heic'], ['image/heif', 'heif'],
   ['image/svg+xml', 'svg'], ['image/x-icon', 'ico'], ['image/vnd.microsoft.icon', 'ico'], ['application/pdf', 'pdf'],
   ['video/mp4', 'mp4'], ['video/webm', 'webm'], ['video/ogg', 'ogv'], ['video/quicktime', 'mov'],
 ]);
-const mediaPrefix = '/admin/api/media/catalog/';
 const uploadFileLimit = 500 * 1024 * 1024;
 
 export async function uploadMedia(incoming, origin, directory, path) {
@@ -55,7 +56,7 @@ export async function uploadMedia(incoming, origin, directory, path) {
     await Promise.all(keys.map(key => unlink(join(directory, key)).catch(() => {})));
     return null;
   }
-  if (cloudinary) return { secure_url: new URL(`${mediaPrefix}${keys[0]}`, origin).href };
+  if (cloudinary) return { secure_url: new URL(`${catalogMediaPrefix}${keys[0]}`, origin).href };
   return {
     success: true,
     statusCode: 200,
@@ -65,8 +66,8 @@ export async function uploadMedia(incoming, origin, directory, path) {
 }
 
 export async function readMedia(incoming, outgoing, directory, path) {
-  if (!path.startsWith(mediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
-  const key = path.slice(mediaPrefix.length);
+  if (!path.startsWith(catalogMediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
+  const key = path.slice(catalogMediaPrefix.length);
   if (!/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\.[a-z\d]{3,4}$/.test(key)) return false;
   const type = [...mediaTypes].find(([, extension]) => extension === key.split('.')[1])?.[0];
   if (!type) return false;
@@ -91,8 +92,8 @@ export async function readMedia(incoming, outgoing, directory, path) {
 }
 
 export function readPublishedCatalogMedia(incoming, outgoing, provider, path) {
-  if (!provider || !path.startsWith(mediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
-  const key = path.slice(mediaPrefix.length);
+  if (!provider || !path.startsWith(catalogMediaPrefix) || !['GET', 'HEAD'].includes(incoming.method)) return false;
+  const key = path.slice(catalogMediaPrefix.length);
   if (!catalogMediaKey(key)) return false;
   return forwardCatalogMedia(incoming, outgoing, new URL(`/catalog-media/${key}`, provider), key);
 }

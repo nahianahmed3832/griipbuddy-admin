@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyBasePath } from './base-path.mjs';
+import { rewriteOriginalCatalogMedia, rewriteOriginalHeroVideo } from './catalog-media.mjs';
 
 const app = process.argv[2];
 if (!app) throw new Error('An original admin artifact directory is required');
@@ -28,12 +29,11 @@ for (const root of ['static', 'server']) {
     if (!/\.(?:js|html|json|rsc|txt)$/.test(relative)) continue;
     const file = join(directory, relative);
     const source = readFileSync(file, 'utf8');
-    let updated = source.replaceAll(originalLoginChunk, loginChunk)
+    let updated = rewriteOriginalCatalogMedia(source).replaceAll(originalLoginChunk, loginChunk)
       .replaceAll('https://api.griipbuddy.com/api/v1', api)
       .replaceAll('__NEXT_PUBLIC_BASE_SERVER_API__', api)
       .replaceAll('__NEXT_PUBLIC_FILE_UPLOAD_API_KEY__', 'fixture-upload')
       .replaceAll('https://api.cloudinary.com/v1_1/dxqzawk38', '/admin/api/media')
-      .replaceAll('https://d11ml80zmgyrxk.cloudfront.net/', '/admin/api/media/catalog/')
       .replaceAll('sameSite:"None",path:"/"', 'sameSite:"Strict",path:"/admin"')
       .replaceAll('remove(e,{path:"/"})', 'remove(e,{path:"/admin"})');
     const loginScript = (root === 'static' && relative === 'chunks/app/' + originalLoginChunk) ||
@@ -45,6 +45,12 @@ for (const root of ['static', 'server']) {
     if (loginScript || (root === 'server' && relative === 'app/index.html')) {
       updated = updated.replaceAll('Phone Number', 'Phone Number or Email')
         .replaceAll('Enter your phone number', 'Enter your phone number or email');
+    }
+    if (relative.endsWith('/hero-section/page-6812248b81ef63b9.js') ||
+        (root === 'server' && relative.endsWith('/hero-section/page.js'))) {
+      const hero = rewriteOriginalHeroVideo(updated);
+      if (hero === updated) throw new Error('Unexpected hero video player in ' + relative);
+      updated = hero;
     }
     if (source !== updated) writeFileSync(file, updated);
   }
