@@ -1,4 +1,4 @@
-function ManagedShipment({ order, hooks, element }) {
+export function ManagedShipment({ order, hooks, element }) {
   const [open, setOpen] = hooks.useState(false);
   const [data, setData] = hooks.useState(null);
   const [warehouseId, setWarehouse] = hooks.useState('');
@@ -78,6 +78,10 @@ function ManagedShipment({ order, hooks, element }) {
     return element('input', { name, className: field, ...options }, name);
   }
 
+  function quantity(name, max) {
+    return input(name, { type: 'number', required: true, min: 0, max, step: 1, defaultValue: 0 });
+  }
+
   function idempotency(path, body) {
     const signature = JSON.stringify([path, body]);
     if (!keys.current.has(signature)) keys.current.set(signature, crypto.randomUUID());
@@ -148,17 +152,27 @@ function ManagedShipment({ order, hooks, element }) {
       type: 'button', className: button, disabled: saving, children: 'Mark packed',
       onClick: () => void save(path + '/pack', {}, 'Shipment packed.'),
     }, 'actions');
-    const canReturn = row.state === 'exception' ||
-      (row.state === 'delivered' && ['PENDING_RETURN', 'RETURN_REQUESTED'].includes(data.current.status));
-    if (!canReturn || data.shipments.some(entry => entry.direction === 'return' && String(entry.parent) === String(row._id))) return null;
+    const canReturn = data.current.status !== 'RETURNED' && (row.state === 'exception' ||
+      (row.state === 'delivered' && ['PENDING_RETURN', 'RETURN_REQUESTED', 'PARTIAL'].includes(data.current.status)));
+    const returnable = row.returnableLines?.filter(line => line.quantity > 0) || [];
+    if (!canReturn || !returnable.length) return null;
     return element('form', {
       className: 'flex flex-col gap-2',
+      'aria-label': 'Record return shipment',
       onSubmit: event => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
+        const selected = returnable.map(line => ({ id: line.id, quantity: Number(form.get('quantity-' + line.id)) }));
+        const lines = selected.filter(line => line.quantity > 0);
+        if (!lines.length || selected.some((line, index) => !Number.isInteger(line.quantity) ||
+            line.quantity < 0 || line.quantity > returnable[index].quantity)) {
+          setMessage('Enter the quantity to return for each applicable product.');
+          return;
+        }
         const body = {
           tracking: String(form.get('tracking') || '').trim(),
           evidence: String(form.get('evidence') || '').trim(),
+          lines,
         };
         if (!body.tracking || !body.evidence) {
           setMessage('Enter the return tracking number and handoff reference.');
@@ -170,38 +184,69 @@ function ManagedShipment({ order, hooks, element }) {
       children: [
         label('Return tracking number', input('tracking', { required: true, maxLength: 128 })),
         label('Verified return handoff reference', input('evidence', { required: true, maxLength: 128 })),
+        ...returnable.map(line => label(
+          'Return quantity for ' + line.sku + ' (' + line.quantity + ' available)',
+          quantity('quantity-' + line.id, line.quantity), line.id
+        )),
         element('button', { type: 'submit', className: button, disabled: saving, children: 'Record return shipment' }, 'return'),
       ],
-    }, 'actions');
+    }, 'actions-' + JSON.stringify(returnable.map(line => [line.id, line.quantity])));
   }
 
   function receiveAction(row) {
-    const outbound = data.shipments.filter(entry => entry.direction === 'outbound' && entry.state !== 'cancelled');
-    if (row.receivedAt || outbound.length !== 1 || String(outbound[0]._id) !== String(row.parent) ||
+    if (row.receivedAt || !row.lines?.length || !row.tracking ||
+        !['PENDING_RETURN', 'RETURN_REQUESTED', 'IN_TRANSIT', 'DELIVERED', 'PARTIAL'].includes(data.current.status) ||
         !['dispatched', 'in-transit', 'out-for-delivery', 'delivered', 'returned'].includes(row.state)) return null;
-    const tracked = row.lines.some(line => line.barcodes?.length);
     return element('form', {
       className: 'flex flex-col gap-2',
+      'aria-label': 'Receive return',
       onSubmit: event => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         const evidence = String(form.get('evidence') || '').trim();
-        const scans = String(form.get('barcodes') || '').split(/\s+/).filter(Boolean);
-        if (!evidence || !form.has('sellable') || (tracked && !scans.length) || scans.length > 200 || new Set(scans).size !== scans.length) {
-          setMessage('Confirm inspection, enter the warehouse receipt reference, and scan each tracked unit once.');
+        const scans = name => String(form.get(name) || '').split(/\s+/).filter(Boolean);
+        const lines = row.lines.map(line => ({
+          id: line.id,
+          sellable: Number(form.get('sellable-' + line.id)),
+          damaged: Number(form.get('damaged-' + line.id)),
+          ...(line.tracked && {
+            sellableBarcodes: scans('sellable-barcodes-' + line.id),
+            damagedBarcodes: scans('damaged-barcodes-' + line.id),
+          }),
+        }));
+        if (!evidence || lines.some((line, index) => !Number.isInteger(line.sellable) ||
+            !Number.isInteger(line.damaged) || line.sellable < 0 || line.damaged < 0 ||
+            line.sellable + line.damaged !== row.lines[index].quantity)) {
+          setMessage('Enter the warehouse receipt reference and classify all returned units as sellable or damaged.');
+          return;
+        }
+        const barcodes = lines.flatMap(line => [...(line.sellableBarcodes || []), ...(line.damagedBarcodes || [])]);
+        if (lines.some((line, index) => line.sellableBarcodes &&
+            (line.sellableBarcodes.length !== line.sellable || line.damagedBarcodes.length !== line.damaged ||
+             [...line.sellableBarcodes, ...line.damagedBarcodes].some(code => !row.lines[index].barcodes?.includes(code)))) ||
+            barcodes.length > 200 || new Set(barcodes).size !== barcodes.length) {
+          setMessage('Scan each tracked unit once in its matching sellable or damaged field.');
           return;
         }
         const path = global + '/shipments/' + encodeURIComponent(row._id) + '/receive';
-        void save(path, { evidence, sellable: true, barcodes: scans }, 'Return received.');
+        void save(path, { evidence, lines }, 'Return received.');
       },
       children: [
         label('Verified warehouse receipt reference', input('evidence', { required: true, maxLength: 128 })),
-        tracked && label('Returned unit barcodes', element('textarea', {
-          name: 'barcodes', className: field, maxLength: 6000, rows: 2, required: true,
-        }, 'barcodes')),
-        label('I inspected all returned units and confirmed they are sellable.', element('input', {
-          type: 'checkbox', name: 'sellable', required: true, className: 'size-4',
-        }, 'sellable')),
+        ...row.lines.map(line => element('fieldset', {
+          className: 'flex flex-col gap-2',
+          children: [
+            element('legend', { children: line.sku + ' (' + line.quantity + ' returned)' }, 'sku'),
+            label('Sellable quantity', quantity('sellable-' + line.id, line.quantity)),
+            label('Damaged quantity', quantity('damaged-' + line.id, line.quantity)),
+            ...(line.tracked ? ['sellable', 'damaged'].map(disposition => {
+              const name = disposition + '-barcodes-' + line.id;
+              return label((disposition === 'sellable' ? 'Sellable' : 'Damaged') + ' unit barcodes', element('textarea', {
+                name, className: field, rows: 2, maxLength: 26000,
+              }, name));
+            }) : []),
+          ],
+        }, line.id)),
         element('button', { type: 'submit', className: button, disabled: saving, children: 'Receive return' }, 'receive'),
       ],
     }, 'actions');
@@ -222,6 +267,10 @@ function ManagedShipment({ order, hooks, element }) {
             children: [
               element('p', { children: (row.direction === 'return' ? 'Return: ' : 'Shipment: ') + row.state }, 'state'),
               row.tracking && element('p', { children: 'Tracking number: ' + row.tracking }, 'tracking'),
+              row.receiptLines?.map(line => element('p', {
+                children: (row.lines?.find(item => item.id === line.id)?.sku || line.id) +
+                  ': ' + line.sellable + ' sellable, ' + line.damaged + ' damaged',
+              }, 'receipt-' + line.id)),
               row.direction === 'outbound' ? shipmentActions(row) : receiveAction(row),
             ],
           }, row._id)),
