@@ -4,6 +4,7 @@ import { preOrderApiParams, preOrderQuery } from '@/lib/preorders';
 import { preOrderAccess, preOrderProducts } from '@/lib/preorders-server';
 
 const root = '/pre-order';
+const bulkLimit = 100;
 const workbook = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const writes: Record<string, { path: string; method: string }> = {
   edit: { path: '', method: 'PUT' },
@@ -96,8 +97,8 @@ export async function POST(request: NextRequest) {
       path = '/workspace/' + (action === 'reference-create' ? 'create' : 'edit') + '/reference-images';
     } else if (Object.hasOwn(bulk, action)) {
       const ids = body.ids;
-      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 25 || ids.some(value => typeof value !== 'string' || !mongoId(value))) {
-        return reject('Select up to 25 pre-orders.', 400);
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > bulkLimit || ids.some(value => typeof value !== 'string' || !mongoId(value))) {
+        return reject(`Select up to ${bulkLimit} pre-orders.`, 400);
       }
       body.ids = [...new Set(ids)];
       ({ path, method } = bulk[action]);

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { randomBytes } from 'node:crypto';
 import { fixturePassword } from './fixture-password';
 
 const origin = process.env.GRIIP_ADMIN_TEST_PREORDER_ORIGIN;
@@ -83,4 +84,14 @@ test('pinned preorder routes support creation, row actions, editing and receipt 
   await page.getByRole('textbox', { name: 'Address *', exact: true }).fill('Updated synthetic lane');
   await page.getByRole('button', { name: 'Save Changes' }).click();
   await expect(page.getByText('Updated synthetic lane', { exact: true })).toBeVisible();
+
+  const bulk = origin + prefix + '/api/preorders?action=bulk-status';
+  const ids = Array.from({ length: 101 }, () => randomBytes(12).toString('hex'));
+  const bulkStatus = (selected: string[]) => page.request.post(bulk, {
+    headers: { origin }, data: { ids: selected, status: 'QUOTED' },
+  });
+  const accepted = await bulkStatus(ids.slice(0, 100));
+  expect(accepted.status()).toBe(200);
+  expect(await accepted.json()).toMatchObject({ modified: 0 });
+  expect((await bulkStatus(ids)).status()).toBe(400);
 });
