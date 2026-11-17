@@ -1,9 +1,11 @@
 import { NextRequest } from 'next/server';
+import * as XLSX from 'xlsx';
 import { ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
 import { canManage } from '@/lib/managed';
+import { loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { canEditManagedOrderContact, managedOrderContext } from '@/lib/order-managed-server';
 import { has } from '@/lib/sections';
-import { orderFilterKeys } from '@/lib/website-orders';
+import { addressLabel, orderFilterKeys, type Listing } from '@/lib/website-orders';
 
 const root = '/order/workspace';
 const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail'];
@@ -20,6 +22,24 @@ const actions: Record<string, { path: string; method: string }> = {
   handover: { path: '/handover', method: 'POST' },
 };
 const reject = (message: string, status: number) => new Response(message, { status, headers: { 'Cache-Control': 'private, no-store' } });
+function workbook({ rows }: Listing) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Order', 'Invoice', 'Date', 'Status', 'SKUs and quantities', 'Customer', 'Phone', 'Address', 'Currency', 'COD',
+      'Paid by courier', 'Total paid', 'Order total', 'Called', 'Staff note', 'Parcel ID', 'Tracking code', 'Created by'],
+    ...rows.map(row => [row.order_serial_id || undefined, row.invoice_number, row.order_date || row.createdAt, row.status,
+      row.products.map(line => `${line.sku || line.name || 'Item'} × ${line.quantity || 0}`).join(', ').slice(0, 30000),
+      row.customer_name, row.customer_phone, addressLabel(row.delivery_address), row.currency,
+      row.COD, row.paid_by_courier, row.paid_amount, row.total_amount, row.checkoutProjection ? undefined : row.is_called ? 'Yes' : 'No',
+      row.latestNote, row.consignment_id || undefined, row.tracking_code, row.user?.full_name || row.order_by]),
+  ]);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, 'Website Orders');
+  return new Response(XLSX.write(book, { bookType: 'xlsx', type: 'buffer', compression: true }), { headers: {
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': 'attachment; filename="website-orders.xlsx"',
+    'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+  } });
+}
 async function forward(path: string, token: string, init?: RequestInit, attachment?: string, resource = root) {
   const response = await requestApi(resource + path, token, init);
   if (!response.ok) {
@@ -55,8 +75,11 @@ export async function GET(request: NextRequest) {
         barcode: q.get('barcode')?.slice(0, 64) }), auth.token);
     }
     if (!has(auth.staff, 'order.view')) return reject('Access denied.', 403);
-    if (action === 'export') return await forward(url('/export', { region,
-      ...Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)])) }), auth.token, undefined, 'xlsx');
+    if (action === 'export') {
+      const filters = Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)]));
+      const listing = q.get('checkout') === '1' ? await loadWebsiteOrders(auth, region, filters, undefined, 'all', { exportOrders: true }) : null;
+      return listing ? workbook(listing) : await forward(url('/export', { region, ...filters }), auth.token, undefined, 'xlsx');
+    }
     if (!reads.includes(action) || !mongoId(id)) return reject('Order request not found.', 404);
     return await forward(url('/orders/' + id + (action === 'detail' ? '' : '/' + action), { region, page: q.get('page') || undefined }), auth.token);
   } catch (error) {

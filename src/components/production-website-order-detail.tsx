@@ -28,7 +28,7 @@ type Props = {
 };
 
 function Invoice({ order, region, openPayment, payment }: {
-  order: OrderDetail; region: Region; openPayment: () => void; payment?: ReactNode;
+  order: OrderDetail; region: Region; openPayment?: () => void; payment?: ReactNode;
 }) {
   const currency = currencyFor(order.currency, region);
   const amount = (value?: number) => currency === 'BDT' ? `${value ?? ''} TK`.trim() : money(value, currency);
@@ -69,7 +69,7 @@ function Invoice({ order, region, openPayment, payment }: {
       <div><p>Payment Type:</p><p>{order.payment_type?.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</p></div>
     </div>
     {payment ?? (order.payment && <section className={styles.payment}>
-      <button type="button" onClick={openPayment}>Payment Info:</button>
+      {openPayment ? <button type="button" onClick={openPayment}>Payment Info:</button> : <strong>Payment Info:</strong>}
       <p>Payment Amount: {money(order.payment.amount, currency)}</p>
       <p>Payment Date: {order.payment.date ? orderDate(order.payment.date, region) : 'N/A'}</p>
       <p>Transaction Id: {order.payment.reference}</p>
@@ -128,14 +128,14 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
     <div className={styles.return}><Link href={back}><ChevronLeft size={16}/> Back to Orders</Link></div>
     {!!(managed.notice || notice) && <p role="status" className="notice">{managed.notice || notice}</p>}
     <div className={styles.grid}>
-      <Invoice order={order} region={region} openPayment={() => setDialog('payment')}
+      <Invoice order={order} region={region} openPayment={order.checkoutProjection ? undefined : () => setDialog('payment')}
         payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
           priorReference={order.payment?.reference} priorDate={transactionDate && orderDate(transactionDate, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
         <section className={styles.card}>
           <div className={styles.actions}>
             <h2>Actions</h2>
-            <button type="button" onClick={() => setDialog('actions')}>Order Actions</button>
+            {!order.checkoutProjection && <button type="button" onClick={() => setDialog('actions')}>Order Actions</button>}
             <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
           </div>
         </section>
@@ -155,7 +155,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         {!managedOperations && (integrations.shipments || integrations.payments || integrations.receipt) && <section className={styles.card}>
           <h2 className={styles.cardHeading}>Fulfillment</h2>
           <div className={styles.integrations}>
-            {integrations.shipments && <Link href={integrations.shipments}>Manage shipments</Link>}
+            {integrations.shipments && <Link href={integrations.shipments}>{order.checkoutProjection ? 'Open checkout order' : 'Manage shipments'}</Link>}
             {integrations.payments && <Link href={integrations.payments}>Manage payments</Link>}
             {integrations.receipt && <Link href={integrations.receipt}>Review checkout receipt</Link>}
           </div>

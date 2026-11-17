@@ -4,6 +4,7 @@ import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, url, 
 import { param, type Query } from '@/lib/data';
 import { canOperate } from '@/lib/operations';
 import { canManage } from '@/lib/managed';
+import { getHybridOrder, hybridOrderId, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { has, superAdmin, type Region } from '@/lib/sections';
 import { orderActions, orderFilterKeys, orderListQuery, ordersApi, ordersPath, statuses, type Listing, type OrderAccess, type OrderDetail, type OrderFilters,
   type OrderLocation, type ProductListing, type WebsiteOrderDraft } from '@/lib/website-orders';
@@ -55,7 +56,8 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
   const limit = productionLayout && requestedLimit && productionPageSizes.includes(requestedLimit) ? requestedLimit : undefined;
   const dateDefaults = productionLayout && !filters.from && !filters.to ? { from: '1970-01-01', to: today } : {};
   const results = await Promise.allSettled([
-    api(url('/order/workspace/orders', { region, ...filters, ...dateDefaults, page, limit }), auth.token) as Promise<Listing>,
+    productionLayout && !executive ? loadWebsiteOrders(auth, region, { ...filters, ...dateDefaults }, page, limit) :
+      api(url('/order/workspace/orders', { region, ...filters, ...dateDefaults, page, limit }), auth.token) as Promise<Listing>,
     api(url('/order/workspace/creators', { region }), auth.token) as Promise<{ _id: string; label: string }[]>,
     has(auth.staff, 'business_locations.view') ? loadOrderLocations(auth, region) : Promise.resolve([]),
   ] as const);
@@ -74,6 +76,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
     </>;
   }
   const listing = results[0].value;
+  if (!listing) throw new ApiError(503);
   if (productionLayout) return <ProductionWebsiteOrders key={region} listing={listing} filters={filters} region={region}
     creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit}/>;
   return <>
@@ -98,6 +101,16 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
   auth: Session; q: Query; region: Region; id: string; productionLayout?: boolean;
 }) {
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
+  const hybrid = hybridOrderId(id);
+  if (productionLayout && hybrid && param(q, 'draft') !== '1' && param(q, 'edit') !== '1') {
+    const order = await getHybridOrder(hybrid, auth, region);
+    const size = param(q, 'limit');
+    const back = '/dashboard/orders' + orderListQuery(region, selectedFilters(q), param(q, 'page'))
+      + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
+    return <ProductionWebsiteOrderDetail order={order} region={region} back={back}
+      access={{ update: false, fraud: false, return: false, pick: false, handover: false, dispatch: false }}
+      locations={[]} integrations={{ shipments: 'https://dev.griipbuddy.com/staff/orders/' + hybrid }}/>;
+  }
   if (!mongoId(id)) throw new ApiError(404);
   const access = accessFor(auth, region);
   const [order, locations, checkout] = await Promise.all([

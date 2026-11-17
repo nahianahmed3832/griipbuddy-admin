@@ -28,6 +28,7 @@ export type Order = {
   order_by?: string; user?: { full_name?: string; role?: string }; assigned_business_location?: { _id?: string; name?: string; business_location_name?: string };
   is_called?: boolean; latestCall?: { called_by_name?: string; called_at?: string }; latestNote?: string;
   tracking_code?: string; consignment_id?: number; transfer_to_courier?: boolean; managed?: boolean; scanReturn?: boolean;
+  checkoutProjection?: boolean;
 };
 export type OrderNote = { text?: string; at?: string; by?: string };
 export type OrderDetail = Order & {
@@ -50,6 +51,7 @@ export type OrderMutation = 'edit' | 'update-status' | 'note' | 'sms' | 'pick' |
 export type OrderAction = { kind: OrderMutation; label: string; group: 'Order' | 'Fulfillment' | 'Exceptions' };
 
 export function orderActions(order: Order, access: OrderAccess, region: Region): OrderAction[] {
+  if (order.checkoutProjection) return [];
   const actions: OrderAction[] = [];
   const add = (kind: OrderMutation, label: string, group: OrderAction['group'] = 'Order') => actions.push({ kind, label, group });
   const bd = region === 'BD';
@@ -83,7 +85,7 @@ export function orderListQuery(region: Region, filters: OrderFilters = {}, page?
   if (page && /^\d{1,5}$/.test(page)) query.set('page', page);
   return '?' + query;
 }
-export type Listing = { rows: Order[]; counts: Record<string, number>; total: number; page: number; size: number };
+export type Listing = { rows: Order[]; counts: Record<string, number>; total: number; page: number; size: number; hybridUnavailable?: boolean };
 export type ProductListing = { rows: Variant[]; total: number; page: number; size: number };
 export type CustomerHistory = {
   name?: string; phone?: string; orders: Order[];
@@ -106,7 +108,7 @@ export function addressLabel(address?: Address) {
   return [...new Set([address?.address, address?.thana, address?.district, address?.division,
     address?.city, address?.state, address?.postal_code, address?.country].filter(Boolean))].join(', ');
 }
-export const canSync = (order: Order) => !order.managed && order.transfer_to_courier === true && !!order.tracking_code && courierStatuses.includes(order.status);
+export const canSync = (order: Order) => !order.checkoutProjection && !order.managed && order.transfer_to_courier === true && !!order.tracking_code && courierStatuses.includes(order.status);
 
 export function ordersApi(action: string, region: Region, values: Record<string, string | undefined> = {}) {
   const q = new URLSearchParams({ action, region });

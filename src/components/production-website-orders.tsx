@@ -200,7 +200,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             disabled={!syncIds.length} onClick={() => setDialog({ kind: 'sync', ids: syncIds })}>
             <Truck size={16}/> Sync with Courier
           </button>}
-          <a className={styles.outlineAction} href={ordersApi('export', region, exportFilters)} download>
+          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: '1' })} download>
             <FileSpreadsheet size={16}/> Download Excel
           </a>
         </div>}
@@ -270,6 +270,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
     </section>
     {issue && <p role="alert" className={styles.notice}>{issue === 'too-many'
       ? 'Narrow the filters to show at most 10,000 orders at once.' : 'Review the date range and try again.'}</p>}
+    {listing?.hybridUnavailable && <p role="alert" className={styles.notice}>Checkout orders are temporarily unavailable.</p>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     <nav className={`${styles.panel} ${styles.statuses}`} aria-label="Filter orders by status">
       {visibleStatuses.map(([key, label]) => <Link key={key} href={path({ ...formFilters, filter: key })}
@@ -288,13 +289,14 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const destinationQuery = query(region, formFilters, page, pageSize);
             const href = '/dashboard/order-details/' + order._id + destinationQuery +
               (assigned ? (destinationQuery ? '&' : '?') + 'source=assigned' : '');
+            const projected = order.checkoutProjection;
             const newCall = access.update && !deferred.includes(order._id);
             const date = orderDateParts(order.order_date || order.createdAt, region);
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id}>
-              <td><button type="button" className={styles.iconButton} aria-label={'Actions for ' + number} aria-haspopup="dialog"
+              <td>{projected ? '—' : <button type="button" className={styles.iconButton} aria-label={'Actions for ' + number} aria-haspopup="dialog"
                 onClick={() => void openActions(order, href)}>
-                <MoreHorizontal size={18}/></button></td>
+                <MoreHorizontal size={18}/></button>}</td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
                 <small>Customer Note: {order.order_note ?? ''}</small></td>
               <td><span className={styles.dateCell}>{date.day}</span>{date.time && <span>{date.time}</span>}</td>
@@ -302,17 +304,17 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                 <OrderThumbnail src={line.image}/><span><strong>{line.sku || line.name || 'Item'}</strong>
                   <small>Order Qty:</small><span className={styles.orderQuantity}>{line.quantity ?? '—'} pair/pcs</span></span>
               </div>)}</div></td>
-              <td><button className={styles.customerLink} onClick={() => open('history', order)}>{order.customer_name || 'Customer details'}
-                {order.customer_phone ? ' - ' + order.customer_phone : ''}</button>
+              <td>{!projected && <button className={styles.customerLink} onClick={() => open('history', order)}>{order.customer_name || 'Customer details'}
+                {order.customer_phone ? ' - ' + order.customer_phone : ''}</button>}
                 <span>{address || '-'}</span>
                 {access.fraud && order.customer_phone && <button className={styles.fraudLink} onClick={() => open('fraud', order)}>Fraud Check</button>}</td>
               <td className={styles.nowrap}>{orderMoney(order.COD, currency)}</td>
               <td>{order.paid_by_courier == null ? '-' : orderMoney(order.paid_by_courier, currency)}</td>
-              <td><button className={styles.customerLink} aria-label="Pay Info" title="Pay Info" onClick={() => open('payment', order)}>
-                {orderMoney(order.paid_amount, currency)}</button></td>
+              <td>{projected ? orderMoney(order.paid_amount, currency) : <button className={styles.customerLink} aria-label="Pay Info" title="Pay Info" onClick={() => open('payment', order)}>
+                {orderMoney(order.paid_amount, currency)}</button>}</td>
               <td><span className={styles.orderStatus} data-status={order.status}>{order.status.replaceAll('_', ' ')}</span>
-                <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button></td>
-              <td>{order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
+                {!projected && <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button>}</td>
+              <td>{projected ? '—' : order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
                 <small>{orderDate(order.latestCall?.called_at, region)}</small></>
                 : newCall ? <><small>Have you called?</small><div className={styles.callActions}>
                   <button className={styles.smallButton} aria-label={'Mark ' + number + ' as called'} onClick={() => open('called', order)}>Yes</button>
@@ -322,8 +324,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
               <td><span className={styles.muted}>Last Note:</span>{order.latestNote || 'N/A'}</td>
               <td>{order.assigned_business_location && <small>{order.assigned_business_location.name || order.assigned_business_location.business_location_name}</small>}
                 {order.consignment_id ? <span>Parcel Id: {order.consignment_id}</span> : null}
-                {order.tracking_code && <button className={styles.textLink} onClick={() => open('track', order)}>Track Order</button>}
-                {(order.tracking_code || order.transfer_to_courier || order.managed) &&
+                {order.tracking_code && (projected ? <span>{order.tracking_code}</span>
+                  : <button className={styles.textLink} onClick={() => open('track', order)}>Track Order</button>)}
+                {!projected && (order.tracking_code || order.transfer_to_courier || order.managed) &&
                   <button className={styles.textLink} onClick={() => open('tracking', order)}>Tracking Logs</button>}</td>
               <td>{order.user?.full_name || (order.order_by === 'GUEST' ? 'Guest customer' : order.order_by === 'USER' ? 'Registered customer' : order.order_by || '—')}
                 {order.user?.role && <small className={styles.createdRole}>{order.user.role}</small>}</td>
