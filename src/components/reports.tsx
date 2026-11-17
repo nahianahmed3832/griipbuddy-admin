@@ -48,7 +48,12 @@ function recordLink(key: string, raw: unknown, auth: Session, region: Region, pr
   if (key === 'product' && parts[2] === 'product-details' && has(auth.staff, 'product.view')) return url((production ? '/dashboard/product-details/' : '/desk/catalog/products/') + id, {region});
 }
 
-function ReportMetrics({ kpis, currency }: { kpis: RecordData[]; currency: string }) {
+const reportDisplayValue = (value: unknown, type: unknown, currency: string, production?: boolean) =>
+  production && typeof value === 'number' && type === 'percent'
+    ? new Intl.NumberFormat('en', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
+    : reportValue(value, type, currency);
+
+function ReportMetrics({ kpis, currency, production }: { kpis: RecordData[]; currency: string; production?: boolean }) {
   if (!kpis.length) return null;
   return <div className="report-metrics" style={{'--report-columns': kpis.length > 6 ? 4 : kpis.length} as React.CSSProperties}>
     {kpis.map(kpi => {
@@ -60,16 +65,16 @@ function ReportMetrics({ kpis, currency }: { kpis: RecordData[]; currency: strin
       return <article className={'panel overview-card report-metric ' + tone(kpi.tone)} key={str(kpi.key)}>
         <div className="report-metric-heading"><h2>{label}</h2>
           {str(kpi.definition) && <details className="report-definition">
-            <summary aria-label={'About ' + label}><Info size={15}/></summary><p>{str(kpi.definition)}</p>
+            <summary aria-label={production ? 'What does this mean?' : 'About ' + label}><Info size={production ? 13 : 15}/></summary><p>{str(kpi.definition)}</p>
           </details>}
         </div>
-        <div className="overview-value"><strong>{reportValue(kpi.value,kpi.type,currency)}</strong>
+        <div className="overview-value"><strong>{reportDisplayValue(kpi.value, kpi.type, currency, production)}</strong>
           {delta !== 0 && <span className={'overview-delta ' + (improved ? 'good' : 'bad')}
             aria-label={formatPercentage(Math.abs(delta)) + (delta > 0 ? ' higher' : ' lower')}>
             {delta > 0 ? '↗' : '↘'} {formatPercentage(Math.abs(delta))}
           </span>}
         </div>
-        {previous !== null && <p>Previous period · {reportValue(previous,kpi.type,currency)}</p>}
+        {previous !== null && <p>Previous period{production ? ': ' : ' · '}{reportDisplayValue(previous, kpi.type, currency, production)}</p>}
         {str(kpi.estimated) && <span className="report-status report-tone-warning" title={str(kpi.estimated)}>Estimated</span>}
       </article>;
     })}
@@ -94,8 +99,8 @@ function ReportChart({ series, currency, production }: { series: RecordData; cur
   </section>;
 }
 
-function ReportTable({ table, auth, region, currency, path, query, production }: {
-  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>; production?: boolean;
+function ReportTable({ table, auth, region, currency, path, query, production, showCaption }: {
+  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>; production?: boolean; showCaption?: boolean;
 }) {
   const columns = arr(table.columns).map(obj);
   const rows = arr(table.rows).map(obj);
@@ -109,8 +114,8 @@ function ReportTable({ table, auth, region, currency, path, query, production }:
   const previous = page !== null && page > 1;
   const next = page !== null && limit !== null && total !== null && page * limit < total;
   return <section className="panel report-panel" aria-label={name}>
-    <div className="report-table-caption"><h2>{name}</h2>{str(table.description) && <p className="muted">{str(table.description)}</p>}</div>
-    {rows.length ? <div className="table-scroll report-table-scroll" tabIndex={0} role="region" aria-label={name + ' table'}>
+    {(!production || showCaption) && <div className="report-table-caption"><h2>{name}</h2>{str(table.description) && <p className="muted">{str(table.description)}</p>}</div>}
+    {rows.length || production ? <div className="table-scroll report-table-scroll" tabIndex={0} role="region" aria-label={name + ' table'}>
       <table><thead><tr>{columns.map(col => {
         const key = str(col.key);
         const active = sort.key === key;
@@ -126,7 +131,7 @@ function ReportTable({ table, auth, region, currency, path, query, production }:
         </th>;
       })}</tr></thead><tbody>{rows.map((row,index) => <tr key={index}>{columns.map(col => {
         const key = str(col.key);
-        const value = reportValue(row[key],col.type,currency);
+        const value = reportDisplayValue(row[key], col.type, currency, production);
         const href = recordLink(key,obj(row._links)[key],auth,region,production);
         const flag = tone(obj(row._tones)[key]);
         const content = href ? <Link className="table-link" href={href}>{value}</Link> : value;
@@ -135,11 +140,15 @@ function ReportTable({ table, auth, region, currency, path, query, production }:
           {col.image === true ? <div className="overview-product"><ProductThumbnail source={row._image}/>{content}</div>
             : flag ? <span className={'report-status ' + flag}>{content}</span> : content}
         </td>;
-      })}</tr>)}</tbody>
-      {totals && <tfoot><tr>{columns.map((col,index) => index === 0
-        ? <th key={str(col.key)} scope="row">{reportValue(totals[str(col.key)],col.type,currency)}</th>
+      })}</tr>)}
+        {production && !rows.length && <tr><td className="production-report-table-empty" colSpan={Math.max(1, columns.length)}>
+          {str(table.emptyText) || 'No records in this view'}
+        </td></tr>}
+      </tbody>
+      {totals && (!production || rows.length > 0) && <tfoot><tr>{columns.map((col,index) => index === 0
+        ? <th key={str(col.key)} scope="row">{reportDisplayValue(totals[str(col.key)], col.type, currency, production)}</th>
         : <td key={str(col.key)} className={numericTypes.includes(str(col.type)) ? 'report-numeric' : undefined}>
-          {reportValue(totals[str(col.key)],col.type,currency)}</td>)}</tr></tfoot>}
+          {reportDisplayValue(totals[str(col.key)], col.type, currency, production)}</td>)}</tr></tfoot>}
       </table>
     </div> : <Empty detail={str(table.emptyText) || undefined}/>}
     {page !== null && (previous || next) && <div className="pagination">
@@ -203,7 +212,7 @@ export async function Reports({ auth, id, q, region, production = false }: {
   }
   if (!reportIds.includes(id)) throw new ApiError(404);
   const path = reportBase + '/' + id;
-  const { period, from, to } = periodRange(q,id === 'sales-summary' ? '30' : 'today');
+  const { period, from, to } = periodRange(q, production || id === 'sales-summary' ? '30' : 'today');
   const scope = reportQuery({...q,from,to},region);
   const page = param(q,'page');
   const refresh = param(q,'refresh') === '1' ? '1' : undefined;
@@ -227,7 +236,7 @@ export async function Reports({ auth, id, q, region, production = false }: {
   const basis = str(report.dateBasis);
   const window = reportRange(meta.from,meta.to) || (basis.startsWith('Right now') ? '' : 'Right now');
   const context = [region === 'BD' ? 'Bangladesh' : 'International',currency,window,
-    previous && 'Compared with ' + previous,basis].filter(Boolean).join(' · ');
+    previous && (production ? 'compared with ' : 'Compared with ') + previous,basis].filter(Boolean).join(' · ');
 
   const filterInputs = <>
       <input type="hidden" name="region" value={region}/>
@@ -251,6 +260,8 @@ export async function Reports({ auth, id, q, region, production = false }: {
       : <ComparisonField compare={scope.compare !== 'none'}/>)}
   </>;
   const filterKey = JSON.stringify([period, query]);
+  const tableEntries = arr(data.tables).map(obj);
+  const actionsBelow = id === 'sales-summary' || id === 'pending-fulfilment';
   return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
       <Link className="table-link report-back" href={url(reportBase,{region})}><ArrowLeft size={16}/> All reports</Link>
@@ -259,7 +270,7 @@ export async function Reports({ auth, id, q, region, production = false }: {
       </div>
       <p className="report-description">{str(report.description)}</p>
       <p className="muted">{context}</p>
-      <div className="page-actions report-actions" data-period={dates}>
+      <div className="page-actions report-actions" data-stacked={actionsBelow}>
         {asOf && <time className="muted" dateTime={generatedAt}>Data as of {asOf}{!production && ' Dhaka'}</time>}
         <a className="button secondary" href={adminPath(url(path,{...query,page,period:dates ? period : undefined,refresh:'1'}))}><RefreshCw size={15}/> Refresh</a>
         <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'csv'}))}><ArrowDownToLine size={16}/> CSV</a>
@@ -274,10 +285,10 @@ export async function Reports({ auth, id, q, region, production = false }: {
           <Link className="button subtle" href={url(path,{region})}>Reset</Link></div>
       </form>)}
     {arr(data.restricted).length > 0 && <p className="notice">Some cost or margin figures are hidden by your permissions.</p>}
-    <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency}/>
+    <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency} production={production}/>
     <ReportChart series={obj(data.series)} currency={currency} production={production}/>
-    {arr(data.tables).map(obj).map(table => <ReportTable key={str(table.id)} table={table} auth={auth} region={region}
-      currency={currency} path={path} query={{...query,period:dates ? period : undefined}} production={production}/>)}
+    {tableEntries.map(table => <ReportTable key={str(table.id)} table={table} auth={auth} region={region}
+      currency={currency} path={path} query={{...query,period:dates ? period : undefined}} production={production} showCaption={tableEntries.length > 1}/>)}
     {arr(data.quality).map(obj).map((flag,index) => <div className="notice warn" key={index}><CircleAlert size={17}/>
       <p>{str(flag.message)}{reportNumber(flag.affected) !== null && reportNumber(flag.total) !== null &&
         <> ({String(flag.affected)} of {String(flag.total)})</>}</p></div>)}

@@ -93,7 +93,7 @@
   font-size: 12px;
   font-weight: 500;
 }
-.production-report-page .report-title { grid-column: 1 / -1; margin: 5px 0 2px; gap: 12px; }
+.production-report-page .report-title { grid-column: 1 / -1; margin: 3px 0 2px; gap: 12px; }
 .production-report-page .report-domain {
   gap: 6px;
   padding: 0 7px;
@@ -104,6 +104,9 @@
 }
 .production-report-page .report-title h1 { margin: 0; line-height: 30px; }
 .production-report-page .report-description { grid-row: 3; color: var(--report-copy); font-size: 14px; }
+.production-report-page .report-header:has(.report-actions[data-stacked="true"]) > :is(.report-description, p.muted) { grid-column: 1 / -1; }
+.production-report-page .report-header:has(.report-actions[data-stacked="true"]) .report-description { max-width: 750px; }
+.production-report-page.overview-sales .report-header:has(.report-actions[data-stacked="true"]) .report-description { max-width: none; }
 .production-report-page .report-header > p.muted { grid-row: 4; color: var(--report-muted); font-size: 12px; }
 .production-report-page .report-actions {
   grid-column: 2;
@@ -113,7 +116,7 @@
   color: oklch(55.2% .016 285.938);
   margin: 0;
 }
-.production-report-page .report-actions[data-period="true"] { grid-column: 1 / -1; grid-row: 5; margin-top: 7px; }
+.production-report-page .report-actions[data-stacked="true"] { grid-column: 1 / -1; grid-row: 5; margin-top: 7px; }
 .production-report-page .report-actions :is(.button, button),
 .production-report-page .production-report-submit {
   display: inline-flex;
@@ -217,7 +220,7 @@
 }
 .production-report-page .report-metrics { gap: 12px; }
 .production-report-page .report-metric {
-  gap: 7px;
+  gap: 4px;
   padding: 16px;
   border-color: var(--report-border);
   border-left: 4px solid var(--report-tone, var(--section-color));
@@ -228,6 +231,16 @@
 .production-report-page .report-metric h2 { font-weight: 500; color: var(--report-copy); font-size: 14px; }
 .production-report-page .report-metric strong { font-family: inherit; font-size: 24px; line-height: 32px; font-weight: 700; }
 .production-report-page .report-metric p { color: var(--report-copy); }
+.production-report-page .report-definition summary { color: #90a4bf; }
+.production-report-page .report-table-caption { padding: 0 0 14px; border: 0; margin: 0; }
+.production-report-page .report-table-caption h2 { font-weight: 600; font-size: 18px; }
+.production-report-page .report-table-scroll .production-report-table-empty {
+  height: 100px;
+  color: #71717a;
+  text-align: center;
+  vertical-align: middle;
+}
+.production-report-page .report-table-scroll th[aria-sort] > a { color: #0069a8; }
 .production-report-page .report-panel { box-shadow: var(--report-shadow); border-radius: 14px; padding: 16px; }
 .production-report-page .report-table-scroll { border: 1px solid var(--report-border); border-radius: 11px; }
 .production-report-page .report-table-scroll :is(th,td) { padding: 8px; color: #1d293d; font-size: 14px; }
