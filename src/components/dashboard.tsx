@@ -18,8 +18,7 @@ export function PageHeading({ eyebrow, title, description, children }: { eyebrow
 }
 
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-const count = (value: unknown) => number(value)?.toLocaleString('en-IN') ?? '—';
-const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
+const formatCount = (value: unknown, production = false) => number(value)?.toLocaleString(production ? 'en-IN' : 'en-US') ?? '—';
 const percent = (value: unknown) => number(value) === undefined ? '—' : new Intl.NumberFormat('en', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value as number);
 const days = (value: unknown) => number(value) === undefined ? '—' : Number(value).toFixed(1) + ' d';
 const hours = (value: unknown) => number(value) === undefined ? '—' : Number(value) >= 48 ? days(Number(value) / 24) : Math.round(Number(value)) + ' h';
@@ -106,7 +105,7 @@ function ProductTable({ products, currency, region, canOpen, production }: { pro
       const id = str(row.productId);
       return <tr key={index}><td><div className="overview-product"><ProductThumbnail source={row.image}/>
         {canOpen && mongoId(id) ? <Link className="table-link" href={url((production ? '/dashboard/product-details/' : '/desk/catalog/products/') + id, {region})}>{name}</Link> : name}</div></td>
-        <td>{str(row.sku) || '—'}</td><td>{count(row.units)}</td><td>{printable(row.value,'money',currency) || '—'}</td></tr>;
+        <td>{str(row.sku) || '—'}</td><td>{formatCount(row.units, production)}</td><td>{printable(row.value,'money',currency) || '—'}</td></tr>;
     })}</tbody></table></div> : <p className="muted">{production ? 'No orders placed in this period' : 'No booked products in this period'}</p>}
   </div>;
 }
@@ -126,11 +125,13 @@ function Funnel({ data, production }: { data: RecordData; production?: boolean }
       <span key={key} className={'outcome-' + tone} style={{ width: ((number(data[key]) ?? 0) / total * 100) + '%' }}/>)}</div>}
     {production && total === 0 ? <p className="muted overview-funnel-empty">No orders placed in this period</p> :
       <ul className="overview-funnel-labels">{visible.filter(([key]) => key !== 'other' || number(data.other)).map(([key,label,tone]) =>
-        <li key={key}><i className={'outcome-' + tone}/>{label}{production ? ': ' : ' '}<b>{count(data[key])}</b>{total > 0 && <small>{production ? '(' + Math.round((number(data[key]) ?? 0) / total * 100) + '%)' : percent((number(data[key]) ?? 0) / total)}</small>}</li>)}</ul>}
+        <li key={key}><i className={'outcome-' + tone}/>{label}{production ? ': ' : ' '}<b>{formatCount(data[key], production)}</b>{total > 0 && <small>{production ? '(' + Math.round((number(data[key]) ?? 0) / total * 100) + '%)' : percent((number(data[key]) ?? 0) / total)}</small>}</li>)}</ul>}
   </div>;
 }
 
 export async function Dashboard({ auth, q, region, production = false }: { auth: Session; q: Query; region: Region; production?: boolean }) {
+  const count = (value: unknown) => formatCount(value, production);
+  const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
   const grant = (permission: string) => has(auth.staff,permission);
   const authorized = grant('overview.view');
   const { period, scope, refresh } = overviewQuery(q,region);
