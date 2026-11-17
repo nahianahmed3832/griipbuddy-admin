@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyBasePath } from './base-path.mjs';
 import { rewriteOriginalCatalogMedia, rewriteOriginalHeroVideo } from './catalog-media.mjs';
+import { patchManagedReceipt } from './managed-receipt.mjs';
 
 const app = process.argv[2];
 if (!app) throw new Error('An original admin artifact directory is required');
@@ -13,12 +14,17 @@ applyBasePath(app, '/admin');
 const next = join(app, '.next');
 const originalLoginChunk = 'page-4a794a36ace8264e.js';
 const loginChunk = 'page-4a794a36ace8264e-email.js';
+const originalOrderChunk = 'page-ed397c6f7e77af22.js';
+const orderChunk = 'page-ed397c6f7e77af22-receipt.js';
+const orderDirectory = 'chunks/app/(dashboard)/dashboard/(orders)/order-details/[id]/';
 const originalLoginValidation = '.min(11,"Phone number should be 11 digits").max(11,"Phone number should be 11 digits")';
 const loginValidation = '.trim().refine(value=>/^\\+?\\d{8,16}$/.test(value)||/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value),"Enter a phone number or email address")';
 const manifestPath = join(next, 'app-build-manifest.json');
 const manifest = readFileSync(manifestPath, 'utf8');
-if (!manifest.includes(originalLoginChunk)) throw new Error('Unexpected original login chunk');
-writeFileSync(manifestPath, manifest.replaceAll(originalLoginChunk, loginChunk));
+if (!manifest.includes(originalLoginChunk) || !manifest.includes(originalOrderChunk)) {
+  throw new Error('Unexpected preserved login or order chunk');
+}
+writeFileSync(manifestPath, manifest.replaceAll(originalLoginChunk, loginChunk).replaceAll(originalOrderChunk, orderChunk));
 
 // Browser traffic goes through the protected gateway. Server rendering uses
 // the same private API directly, as the original standalone build does.
@@ -30,6 +36,7 @@ for (const root of ['static', 'server']) {
     const file = join(directory, relative);
     const source = readFileSync(file, 'utf8');
     let updated = rewriteOriginalCatalogMedia(source).replaceAll(originalLoginChunk, loginChunk)
+      .replaceAll(originalOrderChunk, orderChunk)
       .replaceAll('https://api.griipbuddy.com/api/v1', api)
       .replaceAll('__NEXT_PUBLIC_BASE_SERVER_API__', api)
       .replaceAll('__NEXT_PUBLIC_FILE_UPLOAD_API_KEY__', 'fixture-upload')
@@ -52,10 +59,15 @@ for (const root of ['static', 'server']) {
       if (hero === updated) throw new Error('Unexpected hero video player in ' + relative);
       updated = hero;
     }
+    if ((root === 'static' && relative === orderDirectory + originalOrderChunk) ||
+        (root === 'server' && relative === 'app/(dashboard)/dashboard/(orders)/order-details/[id]/page.js')) {
+      updated = patchManagedReceipt(updated, root === 'server');
+    }
     if (source !== updated) writeFileSync(file, updated);
   }
 }
 renameSync(join(next, 'static/chunks/app', originalLoginChunk), join(next, 'static/chunks/app', loginChunk));
+renameSync(join(next, 'static', orderDirectory, originalOrderChunk), join(next, 'static', orderDirectory, orderChunk));
 
 const actions = JSON.parse(readFileSync(join(app, '.next/server/server-reference-manifest.json'), 'utf8'));
 if (Object.keys(actions.node).length || Object.keys(actions.edge).length) {
