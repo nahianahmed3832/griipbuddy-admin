@@ -87,7 +87,7 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
   const showEvidence = payment.evidenceSubmitted;
   const amount = (form: FormData) => Math.round(numeric(form, 'amount') * scale);
   const display = (minor: number) => money(minor / scale, payment.currency);
-  const transaction = detail.captureId || detail.providerId || priorReference || detail.evidence?.reference;
+  const transaction = detail.captureId || detail.transactionReference || priorReference || detail.providerId || detail.evidence?.reference;
   const moneyInput = (maximum: number) => <label>Verified amount ({payment.currency})
     <input name="amount" type="number" min={1 / scale} max={maximum / scale} step={1 / scale} required/>
   </label>;

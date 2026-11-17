@@ -3,6 +3,7 @@ import { adminPath } from './paths';
 export type ManagedPayment = {
   payment: { id: string; provider: string; currency: string; amount: number; captured: number; status: string; evidenceSubmitted: boolean };
   providerId?: string; captureId?: string; evidence?: { reference?: string };
+  transactionReference?: string; transactionAt?: string;
   collection?: { amount: number }; refund?: { amount: number; requiresReference: boolean };
 };
 export type ReviewLot = { id: string; lotNumber: string; available: number; sellableAvailable: number };

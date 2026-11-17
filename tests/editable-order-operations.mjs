@@ -135,6 +135,7 @@ try {
   await pay.getByLabel('Verified amount (BDT)').fill(String((await context()).payment.collection.amount / 100));
   await pay.getByLabel('Verified collection reference').fill('EDITABLE-COD-RECEIVED');
   await act(pay, 'Record collection', 'Collection recorded.');
+  await expect(pay.getByText('Transaction Id: EDITABLE-COD-RECEIVED')).toBeVisible({ timeout });
   await pay.locator('summary').filter({ hasText: 'Record refund' }).click();
   await pay.getByLabel('Verified amount (BDT)').fill('1');
   await pay.getByLabel('Refund reason').fill('Isolated workflow test');

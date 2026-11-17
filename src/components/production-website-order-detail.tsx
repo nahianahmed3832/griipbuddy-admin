@@ -123,13 +123,14 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
     ['Name:', order.customer_name], ['Phone:', order.customer_phone], ['District:', order.delivery_address?.district],
     ['Thana:', order.delivery_address?.thana], ['Full Address:', order.delivery_address?.address],
   ];
+  const transactionDate = managed.data?.payment?.transactionAt || order.payment?.date;
   return <div className={styles.detail}>
     <div className={styles.return}><Link href={back}><ChevronLeft size={16}/> Back to Orders</Link></div>
     {!!(managed.notice || notice) && <p role="status" className="notice">{managed.notice || notice}</p>}
     <div className={styles.grid}>
       <Invoice order={order} region={region} openPayment={() => setDialog('payment')}
         payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
-          priorReference={order.payment?.reference} priorDate={order.payment?.date && orderDate(order.payment.date, region)}/> : undefined}/>
+          priorReference={order.payment?.reference} priorDate={transactionDate && orderDate(transactionDate, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
         <section className={styles.card}>
           <div className={styles.actions}>

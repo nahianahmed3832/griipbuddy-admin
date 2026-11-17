@@ -1,6 +1,6 @@
 import { api, ApiError, arr, mongoId, obj, str, type Session } from './api';
 import { marketCode } from './managed';
-import type { ManagedOrder } from './order-managed';
+import type { ManagedOrder, ManagedPayment } from './order-managed';
 
 export async function managedOrderContext(id: string, auth: Session) {
   const [orderValue, managedValue] = await Promise.all([
@@ -20,6 +20,18 @@ export function canEditManagedOrderContact({ order, shipments }: Awaited<ReturnT
     !order.is_return_product_scan && shipments.length === 0;
 }
 
+async function readManagedPayment(id: string, auth: Session): Promise<ManagedPayment> {
+  const details = await api('/global/admin/payments/' + id, auth.token) as ManagedPayment & { events?: unknown[] };
+  const transaction = arr(details.events).map(obj).reverse().find(event => {
+    const fact = obj(event.details);
+    return event.kind === 'collected' || event.kind === 'staff_review' && fact.decision === 'approve' ||
+      (event.kind === 'webhook' || event.kind === 'provider_observed') && fact.state === 'captured';
+  });
+  return { payment: details.payment, providerId: details.providerId, captureId: details.captureId, evidence: details.evidence,
+    collection: details.collection, refund: details.refund, transactionAt: str(transaction?.createdAt),
+    transactionReference: str(obj(transaction?.details).reference) };
+}
+
 export async function readManagedOrder(id: string, auth: Session): Promise<ManagedOrder> {
   const context = await managedOrderContext(id, auth);
   const { order, shipments, paymentId, payment } = context;
@@ -32,7 +44,7 @@ export async function readManagedOrder(id: string, auth: Session): Promise<Manag
     !order.is_assigned_to_business_location && !order.transfer_to_courier && ['authorized', 'captured'].includes(str(payment?.status)) &&
     (payment?.provider === 'cod' || Number(payment?.captured) > 0) && !payment?.reconciliation;
   const [details, settings, locations] = await Promise.all([
-    mongoId(paymentId) ? api('/global/admin/payments/' + paymentId, auth.token) as Promise<ManagedOrder['payment']> : undefined,
+    mongoId(paymentId) ? readManagedPayment(paymentId, auth) : undefined,
     mayPlan ? api('/global/admin/shipment-services/' + market, auth.token).catch(error => {
       if (error instanceof ApiError && [404, 422].includes(error.status)) return undefined;
       throw error;
