@@ -29,7 +29,7 @@ function selectedFilters(q: Query) {
   return filters;
 }
 
-function accessFor(auth: Session, region: Region): OrderAccess {
+export function accessFor(auth: Session, region: Region): OrderAccess {
   const write = canWrite(auth.staff);
   const update = write && has(auth.staff, 'order.update');
   return { update, fraud: write && region === 'BD', return: canOperate(auth.staff, 'order-return'), pick: canOperate(auth.staff, 'order-pick'),
@@ -114,7 +114,8 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
   const direct = productionLayout ? '/dashboard/order-details/' + id + regionQuery : ordersPath + '/' + id;
   const size = productionLayout ? param(q, 'limit') : undefined;
-  const back = (productionLayout ? '/dashboard/orders' : ordersPath)
+  const assigned = productionLayout && param(q, 'source') === 'assigned';
+  const back = (productionLayout ? assigned ? '/dashboard/assigned-orders' : '/dashboard/orders' : ordersPath)
     + orderListQuery(region, selectedFilters(q), param(q, 'page'))
     + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
   const draft = mayDraft ? await api('/order/workspace/orders/' + id + '/draft?region=BD', auth.token).catch((error: unknown) => {
@@ -147,8 +148,9 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
     payments: manageOrder ? url('/desk/payments/payment-desk', {region, order:id}) : undefined,
     receipt: checkout?.hasReceipt === true ? url('/desk/payments/checkout', {region, receipt:id}) : undefined,
   };
-  if (productionLayout) return <ProductionWebsiteOrderDetail order={order} access={access} locations={locations}
+  if (productionLayout) return <ProductionWebsiteOrderDetail key={order._id} order={order} access={access} locations={locations}
     region={region} integrations={order.managed ? integrations : {}} openEdit={param(q, 'edit') === '1'}
+    managedOperations={order.managed === true && manageOrder}
     editHref={draft ? '/dashboard/orders/edit/' + id : undefined} back={back}/>;
   return <WebsiteOrderDetail order={order} access={access} locations={locations} region={region} canEditDraft={!!draft}
     integrations={integrations} openEdit={param(q, 'edit') === '1'} back={back}/>;

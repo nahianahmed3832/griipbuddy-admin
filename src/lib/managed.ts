@@ -90,7 +90,7 @@ const recordActions: ManagedAction[] = ['list-update', 'price-versions', 'campai
   'listing-variant', 'listing-price', 'listing-coverage', 'listing-transition', 'import-retry', 'bin-new', 'lot-bin',
   'purchase-receive', 'purchase-cancel', 'shipment-action', 'payment-action', 'refund-reconcile', 'taxonomy-edit'];
 const keyedActions: ManagedAction[] = ['purchase-new','purchase-receive'];
-const shipSteps = ['pick','pack','cancel','dispatch','tracking','sync','return'];
+const shipSteps = ['pick','pack','cancel','dispatch','tracking','sync','return','receive'];
 const paymentSteps = ['review','collect','reconcile','refunds','disputes/notes'];
 
 export function canManageAction(auth: Session, action: ManagedAction) {

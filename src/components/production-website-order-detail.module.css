@@ -138,3 +138,24 @@
   .invoice { padding: 0; box-shadow: none; }
   .lineItems thead th, .totals div:last-child { print-color-adjust: exact; }
 }
+
+.paymentHeading { color: #09090b; }
+.payment a { width: fit-content; text-decoration: underline; }
+.payment summary, .card > summary { cursor: pointer; }
+.card > summary { font-size: 18px; font-weight: 500; }
+.shipmentOperations { display: grid; gap: 16px; padding: 16px; }
+.shipmentRecord { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--order-border); border-radius: 8px; }
+.operationForm { display: grid; gap: 8px; padding-top: 8px; color: #09090b; }
+.operationForm label, .operationForm fieldset { display: grid; gap: 4px; }
+.operationForm fieldset { padding: 8px; border: 1px solid var(--order-border); border-radius: 6px; margin: 0; min-width: 0; }
+.operationForm input, .operationForm select, .operationForm textarea {
+  width: 100%; min-width: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--order-border); border-radius: 6px;
+  background: var(--order-panel); color: #09090b; font: inherit;
+}
+.operationForm textarea { min-height: 52px; }
+.operationButtons { display: flex; gap: 8px; flex-wrap: wrap; }
+.operationButton { justify-self: start; min-height: 36px; padding: 6px 12px; border: 0; border-radius: 7px;
+  color: white; background: var(--order-accent); font: inherit; }
+.operationButton:disabled { opacity: .55; }
+.parcelFields { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1024px) { .shipmentOperations { padding-inline: 24px; } }

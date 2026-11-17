@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import {
@@ -12,6 +12,7 @@ import {
   type OrderAccess, type OrderDetail, type OrderLocation,
 } from '@/lib/website-orders';
 import { OrderDialog, type OrderDialogKind } from './website-orders-dialog';
+import { ProductionManagedPayment, ProductionManagedShipments, useManagedOrder } from './production-order-operations';
 import styles from './production-website-order-detail.module.css';
 
 type Props = {
@@ -22,11 +23,12 @@ type Props = {
   back: string;
   openEdit?: boolean;
   editHref?: string;
+  managedOperations?: boolean;
   integrations: { shipments?: string; payments?: string; receipt?: string };
 };
 
-function Invoice({ order, region, openPayment }: {
-  order: OrderDetail; region: Region; openPayment: () => void;
+function Invoice({ order, region, openPayment, payment }: {
+  order: OrderDetail; region: Region; openPayment: () => void; payment?: ReactNode;
 }) {
   const currency = currencyFor(order.currency, region);
   const amount = (value?: number) => currency === 'BDT' ? `${value ?? ''} TK`.trim() : money(value, currency);
@@ -66,13 +68,13 @@ function Invoice({ order, region, openPayment }: {
       {order.order_date && <div><p>Order Date:</p><p>{orderDate(order.order_date, region)}</p></div>}
       <div><p>Payment Type:</p><p>{order.payment_type?.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</p></div>
     </div>
-    {order.payment && <section className={styles.payment}>
+    {payment ?? (order.payment && <section className={styles.payment}>
       <button type="button" onClick={openPayment}>Payment Info:</button>
       <p>Payment Amount: {money(order.payment.amount, currency)}</p>
       <p>Payment Date: {order.payment.date ? orderDate(order.payment.date, region) : 'N/A'}</p>
       <p>Transaction Id: {order.payment.reference}</p>
       <p>Transaction Status: {order.payment.status}</p>
-    </section>}
+    </section>)}
     <div className={styles.tableScroll}>
       <table className={styles.lineItems}>
         <thead><tr>{['Product', 'Quantity', 'Unit Price', 'Amount'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
@@ -106,9 +108,11 @@ function Invoice({ order, region, openPayment }: {
   </section>;
 }
 
-export function ProductionWebsiteOrderDetail({ order, access, locations, region, back, openEdit, editHref, integrations }: Props) {
+export function ProductionWebsiteOrderDetail({ order, access, locations, region, back, openEdit, editHref, integrations, managedOperations = false }: Props) {
   const router = useRouter();
+  const managed = useManagedOrder(order._id, managedOperations);
   const actions = orderActions(order, access, region);
+  if (access.update && managed.data?.contactEditable) actions.unshift({ kind: 'edit', label: 'Edit Order', group: 'Order' });
   const [dialog, setDialog] = useState<OrderDialogKind | undefined>(openEdit && actions.some(action => action.kind === 'edit') ? 'edit' : undefined);
   const [notice, setNotice] = useState('');
   function selectAction(kind: OrderDialogKind) {
@@ -121,9 +125,11 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
   ];
   return <div className={styles.detail}>
     <div className={styles.return}><Link href={back}><ChevronLeft size={16}/> Back to Orders</Link></div>
-    {!!notice && <p role="status" className="notice">{notice}</p>}
+    {!!(managed.notice || notice) && <p role="status" className="notice">{managed.notice || notice}</p>}
     <div className={styles.grid}>
-      <Invoice order={order} region={region} openPayment={() => setDialog('payment')}/>
+      <Invoice order={order} region={region} openPayment={() => setDialog('payment')}
+        payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
+          priorReference={order.payment?.reference} priorDate={order.payment?.date && orderDate(order.payment.date, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
         <section className={styles.card}>
           <div className={styles.actions}>
@@ -132,6 +138,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
             <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
           </div>
         </section>
+        {managedOperations && <ProductionManagedShipments operations={managed} editable={access.update} canReturn={access.return}/>}
         <section className={styles.card}>
           <h2 className={styles.cardHeading}>Customer Info</h2>
           <div className={styles.contact}>
@@ -144,7 +151,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
             <p>{note.text}</p><div><small>Added By: {note.by || 'System'}</small><small>{orderDate(note.at, region)}</small></div>
           </article>) : <p>No Note Found!</p>}</div>
         </section>
-        {(integrations.shipments || integrations.payments || integrations.receipt) && <section className={styles.card}>
+        {!managedOperations && (integrations.shipments || integrations.payments || integrations.receipt) && <section className={styles.card}>
           <h2 className={styles.cardHeading}>Fulfillment</h2>
           <div className={styles.integrations}>
             {integrations.shipments && <Link href={integrations.shipments}>Manage shipments</Link>}

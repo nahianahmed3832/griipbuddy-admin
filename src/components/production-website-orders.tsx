@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import {
-  addressLabel, canSync, currencyFor, money, orderActions, orderDate, orderFilterKeys, orderNumber, ordersApi,
+  addressLabel, canSync, currencyFor, money, orderActions, orderDate, orderFilterKeys, orderNumber, orderRequest, ordersApi,
   type Listing, type Order, type OrderAccess, type OrderFilters, type OrderLocation,
 } from '@/lib/website-orders';
 import { OrderDateRangeCalendar, type OrderDateRange } from './order-date-range-calendar';
@@ -15,7 +15,6 @@ import { OrderDialog, type DialogState, type OrderDialogKind } from './website-o
 import { OrderThumbnail } from './website-orders-table';
 import styles from './production-website-orders.module.css';
 
-const listPath = '/dashboard/orders';
 const statusTabs = [
   ['', 'All'], ['PLACED', 'Placed'], ['ACCEPTED', 'Accepted'], ['IN_REVIEW', 'In Review'],
   ['HANDED_OVER_TO_COURIER', 'Handed over to courier'], ['IN_TRANSIT', 'In Transit'], ['DELIVERED', 'Delivered'],
@@ -109,10 +108,12 @@ type Props = {
   pageSizes: readonly string[];
   selectedSize?: string;
   issue?: 'dates' | 'too-many';
+  assigned?: boolean;
 };
 
-export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue }: Props) {
+export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false }: Props) {
   const router = useRouter();
+  const listPath = assigned ? '/dashboard/assigned-orders' : '/dashboard/orders';
   const filterId = useId();
   const [formFilters, setFormFilters] = useState(filters);
   const [expanded, setExpanded] = useState(true);
@@ -151,7 +152,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
     };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
-  }, []);
+  }, [listPath]);
 
   function submit(value: OrderFilters, delay = 0) {
     clearTimeout(searchTimer.current);
@@ -179,13 +180,22 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
     ? [...statusTabs, [status, status.replaceAll('_', ' ').toLowerCase()]]
     : statusTabs;
 
-  return <section className={styles.orders} aria-label="Website orders">
-    <h1>All Orders ({total.toLocaleString('en')})</h1>
+  async function openActions(order: Order, href: string) {
+    try {
+      const current = assigned ? await orderRequest<Order>('detail', region, { query: { id: order._id } }) : order;
+      setDialog({ kind: 'actions', order: current, href, actions: orderActions(current, access, region) });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not open the order actions.');
+    }
+  }
+
+  return <section className={styles.orders} aria-label={assigned ? 'Assigned orders' : 'Website orders'}>
+    <h1>{assigned ? 'Assigned Orders' : 'All Orders'} ({total.toLocaleString('en')})</h1>
     <section className={styles.panel}>
       <div className={styles.panelHeader}>
         <button type="button" className={styles.filterToggle} aria-expanded={expanded} aria-controls={filterId}
           onClick={() => setExpanded(value => !value)}><Filter size={20}/> Filter</button>
-        <div className={styles.headerActions}>
+        {!assigned && <div className={styles.headerActions}>
           {region === 'BD' && access.update && <button type="button" className={styles.outlineAction}
             disabled={!syncIds.length} onClick={() => setDialog({ kind: 'sync', ids: syncIds })}>
             <Truck size={16}/> Sync with Courier
@@ -193,7 +203,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           <a className={styles.outlineAction} href={ordersApi('export', region, exportFilters)} download>
             <FileSpreadsheet size={16}/> Download Excel
           </a>
-        </div>
+        </div>}
       </div>
       {expanded && <form id={filterId} className={styles.filters} action={adminPath(listPath)} onSubmit={onSearch}>
         {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
@@ -241,19 +251,19 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
               {locations.map(location => <option key={location.value} value={location.value}>{location.label}</option>)}
             </SelectField>
           </label>
-          <label className={styles.narrowField}>Created By
+          {!assigned && <label className={styles.narrowField}>Created By
             <SelectField name="Created By" value={formFilters.creator ?? ''} onChange={creator => submit({ ...formFilters, creator })}>
               <option value="">All</option>
               {formFilters.creator && !creators.some(item => item._id === formFilters.creator) &&
                 <option value={formFilters.creator}>Selected creator</option>}
               {creators.map(creator => <option key={creator._id} value={creator._id}>{creator.label || 'Staff member'}</option>)}
             </SelectField>
-          </label>
-          <label className={styles.narrowField}>Called?
+          </label>}
+          {!assigned && <label className={styles.narrowField}>Called?
             <SelectField name="Called?" value={formFilters.called ?? ''} onChange={called => submit({ ...formFilters, called })}>
               <option value="">All</option><option value="true">Called (Yes)</option><option value="false">Not Called (No)</option>
             </SelectField>
-          </label>
+          </label>}
         </div>
         <button className={styles.primary} type="button" onClick={() => { submit({}); setCalendar(false); setCustomPreset(false); }}>Clear Filter</button>
       </form>}
@@ -275,13 +285,15 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           <tbody>{rows.length ? rows.map(order => {
             const number = orderNumber(order);
             const currency = currencyFor(order.currency, region);
-            const href = '/dashboard/order-details/' + order._id + query(region, formFilters, page, pageSize);
+            const destinationQuery = query(region, formFilters, page, pageSize);
+            const href = '/dashboard/order-details/' + order._id + destinationQuery +
+              (assigned ? (destinationQuery ? '&' : '?') + 'source=assigned' : '');
             const newCall = access.update && !deferred.includes(order._id);
             const date = orderDateParts(order.order_date || order.createdAt, region);
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id}>
               <td><button type="button" className={styles.iconButton} aria-label={'Actions for ' + number} aria-haspopup="dialog"
-                onClick={() => setDialog({ kind: 'actions', order, href, actions: orderActions(order, access, region) })}>
+                onClick={() => void openActions(order, href)}>
                 <MoreHorizontal size={18}/></button></td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
                 <small>Customer Note: {order.order_note ?? ''}</small></td>
@@ -329,10 +341,10 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
       </SelectField>
       <span>{total ? Math.min((page - 1) * size + 1, total) : 0} - {Math.min(page * size, total)} of {total}</span>
       <div className={styles.pageLinks}>
-        {pageSize !== 'all' && page > 1 ? <Link className={styles.primary} href={path(formFilters, page - 1)} scroll={false}><ChevronLeft size={18}/><span>Previous</span></Link>
-          : <button type="button" className={styles.primary} disabled><ChevronLeft size={18}/><span>Previous</span></button>}
-        {pageSize !== 'all' && page * size < total ? <Link className={styles.primary} href={path(formFilters, page + 1)} scroll={false}><ChevronRight size={18}/><span>Next</span></Link>
-          : <button type="button" className={styles.primary} disabled><ChevronRight size={18}/><span>Next</span></button>}
+        {pageSize !== 'all' && page > 1 ? <Link className={styles.primary} href={path(formFilters, page - 1)} scroll={false}>{!assigned && <ChevronLeft size={18}/>}<span>Previous</span></Link>
+          : <button type="button" className={styles.primary} disabled>{!assigned && <ChevronLeft size={18}/>}<span>Previous</span></button>}
+        {pageSize !== 'all' && page * size < total ? <Link className={styles.primary} href={path(formFilters, page + 1)} scroll={false}>{!assigned && <ChevronRight size={18}/>}<span>Next</span></Link>
+          : <button type="button" className={styles.primary} disabled>{!assigned && <ChevronRight size={18}/>}<span>Next</span></button>}
       </div>
     </nav>
     {dialog && <OrderDialog key={dialog.kind} state={dialog} region={region} locations={locations} close={() => setDialog(undefined)}

@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
-import { ApiError, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { canManage } from '@/lib/managed';
+import { canEditManagedOrderContact, managedOrderContext } from '@/lib/order-managed-server';
 import { has } from '@/lib/sections';
 import { orderFilterKeys } from '@/lib/website-orders';
 
 const root = '/order/workspace';
-const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes'];
+const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail'];
 const actions: Record<string, { path: string; method: string }> = {
   called: { path: '/called', method: 'PATCH' },
   edit: { path: '/details', method: 'PATCH' },
@@ -18,8 +20,8 @@ const actions: Record<string, { path: string; method: string }> = {
   handover: { path: '/handover', method: 'POST' },
 };
 const reject = (message: string, status: number) => new Response(message, { status, headers: { 'Cache-Control': 'private, no-store' } });
-async function forward(path: string, token: string, init?: RequestInit, attachment?: string) {
-  const response = await requestApi(root + path, token, init);
+async function forward(path: string, token: string, init?: RequestInit, attachment?: string, resource = root) {
+  const response = await requestApi(resource + path, token, init);
   if (!response.ok) {
     const data = obj(await response.json().catch(() => ({})));
     const error = str(data.message);
@@ -34,6 +36,7 @@ async function forward(path: string, token: string, init?: RequestInit, attachme
       'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
     } });
   }
+  if (resource === '/order') return Response.json({}, { headers: { 'Cache-Control': 'private, no-store' } });
   return Response.json(obj(await response.json()).data, { status: response.status, headers: { 'Cache-Control': 'private, no-store' } });
 }
 
@@ -55,7 +58,7 @@ export async function GET(request: NextRequest) {
     if (action === 'export') return await forward(url('/export', { region,
       ...Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)])) }), auth.token, undefined, 'xlsx');
     if (!reads.includes(action) || !mongoId(id)) return reject('Order request not found.', 404);
-    return await forward(url('/orders/' + id + '/' + action, { region, page: q.get('page') || undefined }), auth.token);
+    return await forward(url('/orders/' + id + (action === 'detail' ? '' : '/' + action), { region, page: q.get('page') || undefined }), auth.token);
   } catch (error) {
     return reject('The order request could not be completed.', error instanceof ApiError ? error.status : 503);
   }
@@ -84,6 +87,27 @@ export async function POST(request: NextRequest) {
     if (action === 'create') {
       if (!has(auth.staff, 'order.create') || !has(auth.staff, 'product.view')) return reject('Access denied.', 403);
       path = '/orders';
+    } else if (action === 'edit-managed') {
+      if (region !== 'BD' || !canManage(auth.staff) || !has(auth.staff, 'order.view') || !has(auth.staff, 'order.update')) return reject('Access denied.', 403);
+      if (!mongoId(id)) return reject('Order not found.', 404);
+      const context = await managedOrderContext(id, auth);
+      if (!canEditManagedOrderContact(context)) return reject('This order is already in fulfillment.', 409);
+      const { order } = context;
+      const customer_name = str(body.customer_name).trim();
+      const customer_phone = str(body.customer_phone).trim();
+      const order_note = str(body.order_note).trim();
+      const address = str(obj(body.delivery_address).address).trim();
+      if (!customer_name || customer_name.length > 120 || !/^(?:\+?88)?01\d{9}$/.test(customer_phone) ||
+          order_note.length > 1000 || !address || address.length > 450) return reject('Check the contact and address fields.', 400);
+      const location = obj(order.delivery_address);
+      const lineDiscount = arr(order.products).reduce<number>((sum, line) => sum + (Number(obj(line).total_discount) || 0), 0);
+      const discount = Math.max(0, (Number(order.total_discount) || 0) - lineDiscount);
+      return await forward('/' + id, auth.token, { method: 'PUT', body: JSON.stringify({
+        customer_name, customer_phone, order_note, delivery_address: {
+          address, division: str(location.division), district: str(location.district), thana: str(location.thana),
+        }, sub_total: order.sub_total, payment_type: order.payment_type, paid_amount: order.paid_amount || 0,
+        overall_discount_amount: discount, ...(discount && { overall_discount_type: 'FLAT' }),
+      }) }, undefined, '/order');
     } else if (action === 'fraud-check') {
       if (process.env.GRIIP_ADMIN_FRAUD_LOOKUP !== '1') return reject('Courier history lookup is disabled in this workspace.', 503);
       if (region !== 'BD' || !has(auth.staff, 'order.view')) return reject('Access denied.', 403);

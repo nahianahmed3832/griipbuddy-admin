@@ -189,7 +189,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         const data = await orderRequest<Fraud>(kind, region, { query: { id }, values: {} });
         setLoad({ page, data });
       } else if (mutationMessage[kind]) {
-        const action = targets[kind] ? 'update-status' : kind;
+        const action = targets[kind] ? 'update-status' : kind === 'edit' && order?.managed ? 'edit-managed' : kind;
         const values = kind === 'edit' ? { customer_name: fields.customer_name, customer_phone: fields.customer_phone, order_note: fields.order_note,
           delivery_address: { address: fields.address, thana: fields.thana, district: fields.district, division: fields.division } }
           : kind === 'sms' ? { message: fields.message, phone: order?.customer_phone }
@@ -249,13 +249,14 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       {kind === 'edit' && <>
         <div className="website-form-grid">
           <label>Customer name<input name="customer_name" defaultValue={order?.customer_name} maxLength={120} required/></label>
-          <label>Customer phone<input name="customer_phone" type="tel" defaultValue={order?.customer_phone} pattern="01[0-9]{9}" required/></label>
+          <label>Customer phone<input name="customer_phone" type="tel" defaultValue={order?.customer_phone}
+            pattern={order?.managed ? String.raw`(?:\+?88)?01[0-9]{9}` : '01[0-9]{9}'} required/></label>
         </div>
         <label>Delivery address<textarea name="address" defaultValue={order?.delivery_address?.address} maxLength={450} required/></label>
         <div className="website-form-grid three">
-          <label>Division<input name="division" defaultValue={order?.delivery_address?.division} maxLength={80}/></label>
-          <label>District<input name="district" defaultValue={order?.delivery_address?.district} maxLength={80}/></label>
-          <label>Thana<input name="thana" defaultValue={order?.delivery_address?.thana} maxLength={80}/></label>
+          <label>Division<input name="division" defaultValue={order?.delivery_address?.division} maxLength={80} readOnly={order?.managed}/></label>
+          <label>District<input name="district" defaultValue={order?.delivery_address?.district} maxLength={80} readOnly={order?.managed}/></label>
+          <label>Thana<input name="thana" defaultValue={order?.delivery_address?.thana} maxLength={80} readOnly={order?.managed}/></label>
         </div>
         <label>Delivery notes<textarea name="order_note" defaultValue={order?.order_note} maxLength={1000}/></label>
       </>}
