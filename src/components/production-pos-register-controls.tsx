@@ -4,7 +4,7 @@ import { CalendarDays, ChevronDown, File, FileSpreadsheet, MoreHorizontal, Penci
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
-import { dateLabel, posColumns, posMoney, posRegisterPath, type PosColumn, type PosRegisterRow } from '@/lib/pos';
+import { dateLabel, posColumns, posMoney, posRanges, posRegisterPath, type PosColumn, type PosRegisterRow } from '@/lib/pos';
 import type { PosReturnDetails } from '@/lib/production-pos';
 import styles from './production-pos-register.module.css';
 
@@ -28,14 +28,13 @@ export function PosRegisterFilterForm({ children }: { children: ReactNode }) {
 
 export function PosRangeFilter({ from, to, range }: { from: string; to: string; range: string }) {
   const [selected, setSelected] = useState(range);
-  const [custom, setCustom] = useState(range === 'Custom');
-  const options = ['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'All Time', 'Custom'];
+  const [custom, setCustom] = useState(range === 'Custom Range');
   return <fieldset className={styles.range}>
     <legend>Date Range</legend>
-    <select name="range" value={selected} aria-label="Date Range" onChange={event => { setSelected(event.target.value); setCustom(event.target.value === 'Custom'); }}>
-      {options.map(option => <option key={option}>{option}</option>)}
+    <select name="selectedOption" value={selected} aria-label="Date Range" onChange={event => { setSelected(event.target.value); setCustom(event.target.value === 'Custom Range'); }}>
+      {posRanges.map(option => <option key={option}>{option}</option>)}
     </select>
-    {selected !== 'All Time' && <button className={styles.dateButton} type="button" onClick={() => { setCustom(!custom); if (!custom) setSelected('Custom'); }}>
+    {selected !== 'All Time' && <button className={styles.dateButton} type="button" onClick={() => { setCustom(!custom); if (!custom) setSelected('Custom Range'); }}>
       <CalendarDays size={15}/> {dateLabel(from, true)} – {dateLabel(to, true)}
     </button>}
     {custom && <div className={styles.dates}><input type="date" name="from" aria-label="Start date" required defaultValue={from}/>

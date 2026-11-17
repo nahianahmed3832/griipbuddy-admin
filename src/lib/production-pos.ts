@@ -3,7 +3,7 @@ import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Sessi
 import { loadLocations, reference, requireWrite } from './advanced';
 import { param, type Query } from './data';
 import { locationInRegion } from './operations';
-import { dateLabel, posDay, posMoney, posTimeZone, validPosDay, type PosItem, type PosRegisterRow } from './pos';
+import { dateLabel, posDay, posMoney, posRangeDates, posRanges, posTimeZone, type PosItem, type PosRange, type PosRegisterRow } from './pos';
 import { has, superAdmin } from './sections';
 
 const paymentNumbers = ['paid', 'discount', 'total', 'due'] as const;
@@ -23,19 +23,17 @@ export async function posRegisterFilters(q: Query, auth: Session) {
   if (!has(auth.staff, 'pos.view')) throw new ApiError(403);
   const locations = has(auth.staff, 'business_locations.view') ? await loadLocations(auth, 'BD') : [];
   const assigned = superAdmin(auth.staff) ? undefined : auth.staff.assignedLocation;
-  const location = assigned || param(q, 'location') || '';
+  const location = assigned || param(q, 'businessLocation') || param(q, 'location') || '';
   if (location && (!mongoId(location) || (location !== assigned && !locations.some(row => row.value === location)))) throw new ApiError(403);
   const today = posDay();
-  const selectedRange = param(q, 'range');
-  const range = param(q, 'from') || param(q, 'to') ? 'Custom' : selectedRange ?? 'Today';
-  const daysBefore = (days: number) => new Date(Date.parse(today) - days * 86400000).toISOString().slice(0, 10);
-  const from = range === 'All Time' ? '' : range === 'Yesterday' ? daysBefore(1) : range === 'Last 7 Days' ? daysBefore(6)
-    : range === 'Last 30 Days' ? daysBefore(29) : validPosDay(param(q, 'from')) ? param(q, 'from')! : today;
-  const to = range === 'All Time' ? '' : range === 'Yesterday' ? daysBefore(1) : validPosDay(param(q, 'to')) ? param(q, 'to')! : today;
-  const creator = param(q, 'creator') || '';
+  const requestedRange = param(q, 'selectedOption') ?? param(q, 'range');
+  const range = posRanges.find(option => option === requestedRange) ??
+    (param(q, 'from') || param(q, 'to') ? 'Custom Range' : 'Today');
+  const [from, to] = posRangeDates(range as PosRange, today, param(q, 'from'), param(q, 'to'));
+  const creator = param(q, 'createdBy') || param(q, 'creator') || '';
   const canViewStaff = has(auth.staff, 'user.view');
   if (creator && (!canViewStaff || !mongoId(creator))) throw new ApiError(403);
-  const serial = (param(q, 'serial') ?? '').trim().slice(0, 15);
+  const serial = (param(q, 'saleSerialId') ?? param(q, 'serial') ?? '').trim().slice(0, 15);
   const page = Math.max(1, Math.min(100000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const requestedSize = Number(param(q, 'size'));
   const size = posPageSizes.includes(requestedSize) ? requestedSize : 20;

@@ -23,7 +23,8 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
   ]);
   const { serial, location, creator, range, from, to, page, size, today } = filters;
   const active = {
-    serial, location, creator, range, from: range === 'Custom' ? from : '', to: range === 'Custom' ? to : '', size: String(size),
+    saleSerialId: serial, businessLocation: location, createdBy: creator, selectedOption: range,
+    from: range === 'Custom Range' ? from : '', to: range === 'Custom Range' ? to : '', size: String(size),
   };
   const writable = advancedEnabled() && canWrite(auth.staff);
   return <section className={styles.root}>
@@ -32,13 +33,13 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
       <summary><Filter size={19}/> Filter</summary>
       <PosRegisterFilterForm>
         <input type="hidden" name="size" value={size}/>
-        <label>Business Location<select name="location" defaultValue={location} disabled={Boolean(filters.assigned)} aria-label="Business Location">
+        <label>Business Location<select name="businessLocation" defaultValue={location} disabled={Boolean(filters.assigned)} aria-label="Business Location">
           <option value="">All</option>
           {filters.locations.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}
           {filters.assigned && !filters.locations.some(row => row.value === filters.assigned) && <option value={filters.assigned}>Assigned location</option>}
         </select></label>
-        <label>Sale Serial Id<input type="search" name="serial" defaultValue={serial} placeholder="Search by sale id" inputMode="numeric" pattern="[0-9]*"/></label>
-        {filters.canViewStaff && <label>Sale Created By<select name="creator" defaultValue={creator} aria-label="Sale Created By">
+        <label>Sale Serial Id<input type="search" name="saleSerialId" defaultValue={serial} placeholder="Search by sale id" inputMode="numeric" pattern="[0-9]*"/></label>
+        {filters.canViewStaff && <label>Sale Created By<select name="createdBy" defaultValue={creator} aria-label="Sale Created By">
           <option value="">All</option>{staff.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select></label>}
         <PosRangeFilter from={from || today} to={to || today} range={range}/>
