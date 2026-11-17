@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { hybridFulfillmentActions, hybridStatusLabels, type HybridCommand, type HybridFulfillment, type HybridTrackingStep } from '@/lib/hybrid-fulfillment';
 import { adminPath } from '@/lib/paths';
 import { money, orderDate } from '@/lib/website-orders';
@@ -9,9 +9,13 @@ import styles from './production-website-order-detail.module.css';
 
 const field = (form: FormData, name: string) => String(form.get(name) ?? '').trim();
 const confirmed = (form: FormData) => form.get('confirm') === 'yes';
+const subscribeHydration = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 export function ProductionHybridFulfillment({ orderId, state }: { orderId: string; state: HybridFulfillment }) {
   const router = useRouter();
+  const ready = useSyncExternalStore(subscribeHydration, clientReady, serverReady);
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ error: boolean; message: string }>();
@@ -24,7 +28,7 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
 
   async function submit(event: FormEvent<HTMLFormElement>, request: (data: FormData) => HybridCommand) {
     event.preventDefault();
-    if (pending.current) return;
+    if (!ready || pending.current) return;
     const command = request(new FormData(event.currentTarget));
     pending.current = true;
     setBusy(true);
@@ -63,62 +67,62 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
         ? `${receipt.restockedUnits} ${receipt.restockedUnits === 1 ? 'unit' : 'units'} returned to stock.` : 'Stock held for inspection.'}</p>}
       {receipt?.note && <p className={styles.hybridEvidence}>Warehouse note: {receipt.note}</p>}
       {notice && <p role={notice.error ? 'alert' : 'status'} className="notice">{notice.message}</p>}
-      {next && <form className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
+      {next && <form method="post" className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
         ...(next === 'SHIPPED' && (simulatedHandoff ? { simulate: true }
           : { carrier: field(fields, 'carrier'), trackingReference: field(fields, 'trackingReference') })) }))}>
         {next === 'SHIPPED' && <>
-          <label className={styles.hybridChoice}><input type="checkbox" checked={simulatedHandoff} disabled={busy}
+          <label className={styles.hybridChoice}><input type="checkbox" checked={simulatedHandoff} disabled={!ready || busy}
             onChange={event => setSimulatedHandoff(event.target.checked)}/> Use demo courier</label>
           {!simulatedHandoff && <>
-            <label>Carrier<input name="carrier" maxLength={60} required disabled={busy}/></label>
-            <label>Tracking reference<input name="trackingReference" maxLength={80} required disabled={busy}/></label>
+            <label>Carrier<input name="carrier" maxLength={60} required disabled={!ready || busy}/></label>
+            <label>Tracking reference<input name="trackingReference" maxLength={80} required disabled={!ready || busy}/></label>
           </>}
         </>}
-        <button type="submit" className={styles.operationButton} disabled={busy}>Mark {hybridStatusLabels[next].toLowerCase()}</button>
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Mark {hybridStatusLabels[next].toLowerCase()}</button>
       </form>}
-      {actions.track.length > 0 && <form className={styles.operationForm} key={shipment?.status} onSubmit={event => void submit(event, fields => ({ action: 'track',
+      {actions.track.length > 0 && <form method="post" className={styles.operationForm} key={shipment?.status} onSubmit={event => void submit(event, fields => ({ action: 'track',
         status: field(fields, 'status') as HybridTrackingStep, ...(!simulated && { evidence: field(fields, 'evidence') }) }))}>
-        <label>Tracking status<select name="status" required disabled={busy} defaultValue="">
+        <label>Tracking status<select name="status" required disabled={!ready || busy} defaultValue="">
           <option value="" disabled>Select status</option>
           {actions.track.map(status => <option value={status} key={status}>{hybridStatusLabels[status]}</option>)}
         </select></label>
-        {!simulated && <label>Courier evidence reference<input name="evidence" minLength={3} maxLength={200} required disabled={busy}/></label>}
-        <button type="submit" className={styles.operationButton} disabled={busy}>Record tracking status</button>
+        {!simulated && <label>Courier evidence reference<input name="evidence" minLength={3} maxLength={200} required disabled={!ready || busy}/></label>}
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Record tracking status</button>
       </form>}
-      {actions.receive && <form className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'receive',
+      {actions.receive && <form method="post" className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'receive',
         disposition: field(fields, 'disposition') === 'RESTOCK' ? 'RESTOCK' : 'HOLD', note: field(fields, 'note') }))}>
-        <label>Returned stock<select name="disposition" required disabled={busy} defaultValue="">
+        <label>Returned stock<select name="disposition" required disabled={!ready || busy} defaultValue="">
           <option value="" disabled>Select stock disposition</option><option value="RESTOCK">Return items to stock</option>
           <option value="HOLD">Hold for inspection</option>
         </select></label>
-        <label>Warehouse note<textarea name="note" minLength={3} maxLength={500} required disabled={busy}/></label>
-        <button type="submit" className={styles.operationButton} disabled={busy}>Receive refused parcel</button>
+        <label>Warehouse note<textarea name="note" minLength={3} maxLength={500} required disabled={!ready || busy}/></label>
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Receive refused parcel</button>
       </form>}
-      {actions.collect && <form className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'collect', confirm: confirmed(fields) }))}>
-        <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={busy}/>
+      {actions.collect && <form method="post" className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'collect', confirm: confirmed(fields) }))}>
+        <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={!ready || busy}/>
           Confirm the courier collected {amount}.</label>
-        <button type="submit" className={styles.operationButton} disabled={busy}>Record collection</button>
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Record collection</button>
       </form>}
-      {actions.cancel && <form className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'cancel', confirm: confirmed(fields) }))}>
-        <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={busy}/>
+      {actions.cancel && <form method="post" className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'cancel', confirm: confirmed(fields) }))}>
+        <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={!ready || busy}/>
           Cancel this order and return its items to stock.</label>
-        <button type="submit" className={styles.operationButton} disabled={busy}>Cancel order</button>
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Cancel order</button>
       </form>}
       {actions.manualPayment && <>
-        <form className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'approve-wallet', amountMinor: Math.round(Number(field(fields, 'amount')) * 100),
+        <form method="post" className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'approve-wallet', amountMinor: Math.round(Number(field(fields, 'amount')) * 100),
           transaction: field(fields, 'transaction'), confirm: confirmed(fields) }))}>
-          <label>Amount received (BDT)<input name="amount" type="number" min="0.01" max="21474836.47" step="0.01" required disabled={busy}/></label>
+          <label>Amount received (BDT)<input name="amount" type="number" min="0.01" max="21474836.47" step="0.01" required disabled={!ready || busy}/></label>
           <label>Verified transaction ID<input name="transaction" defaultValue={actions.manualPayment.transaction ?? ''}
-            minLength={6} maxLength={32} required disabled={busy}/></label>
-          <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={busy}/>
+            minLength={6} maxLength={32} required disabled={!ready || busy}/></label>
+          <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={!ready || busy}/>
             Confirm test verification.</label>
-          <button type="submit" className={styles.operationButton} disabled={busy}>Approve wallet payment</button>
+          <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Approve wallet payment</button>
         </form>
-        <form className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'decline-wallet', note: field(fields, 'note'), confirm: confirmed(fields) }))}>
-          <label>Reason for declining<textarea name="note" minLength={3} maxLength={300} required disabled={busy}/></label>
-          <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={busy}/>
+        <form method="post" className={styles.operationForm} onSubmit={event => void submit(event, fields => ({ action: 'decline-wallet', note: field(fields, 'note'), confirm: confirmed(fields) }))}>
+          <label>Reason for declining<textarea name="note" minLength={3} maxLength={300} required disabled={!ready || busy}/></label>
+          <label className={styles.hybridChoice}><input name="confirm" value="yes" type="checkbox" required disabled={!ready || busy}/>
             Cancel the order and return its items to stock.</label>
-          <button type="submit" className={styles.operationButton} disabled={busy}>Decline and cancel order</button>
+          <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Decline and cancel order</button>
         </form>
       </>}
     </div>
