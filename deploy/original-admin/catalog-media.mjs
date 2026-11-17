@@ -17,6 +17,7 @@ const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'
 const videoTypes = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']);
 const sources = [[`${cdn}/`, ''], [legacyBucket, legacyRoute]];
 const rows = value => Array.isArray(value) ? value : [];
+const honorDrafts = new Set(['69b6305d482d3ab6681a8d63', '69c40990a03432725fa1cc9b', '69c4c09f036e5c54d2c2e5a9']);
 
 export function rewriteOriginalCatalogMedia(source) {
   // The preserved Next build has two versions of its media URL helper.
@@ -95,7 +96,14 @@ function addProductReferences(products, add) {
   }
 }
 
-const publicReferences = [
+function addHonorDraftReferences(homepage, add) {
+  const group = rows(homepage?.new_arrivals).find(row => row._id === '69b6ee5c482d3ab6681a93b0' && row.slug === 'honor-200');
+  for (const product of rows(group?.product_ids)) {
+    if (honorDrafts.has(product?._id) && product.is_published === false) add(product.thumbnail);
+  }
+}
+
+const mediaReferences = [
   ['category', addTaxonomyReferences],
   ['cms/banners', (data, add) => [...rows(data?.banners), ...rows(data?.mobile_banners)].forEach(banner => add(banner?.banner_url))],
   ['cms/hero-section', (data, add) => rows(data).forEach(slide => {
@@ -105,6 +113,8 @@ const publicReferences = [
   ['cms/homepage', (data, add) => {
     if (data?.leather_section?.enabled === true) add(data.leather_section.banner_image_url);
   }],
+  // Only the authenticated admin uses this sidecar. The public storefront bridge never proxies it.
+  ['cms/homepage?populate=full', addHonorDraftReferences],
 ];
 
 export async function forwardCatalogMedia(incoming, outgoing, url, key, request = fetch) {
@@ -182,7 +192,7 @@ export function createCatalogMedia(request = fetch) {
   async function refreshKeys() {
     const published = new Set();
     const add = value => addReference(published, value);
-    const reads = await Promise.allSettled([readProducts(add), ...publicReferences.map(async ([path, collect]) => {
+    const reads = await Promise.allSettled([readProducts(add), ...mediaReferences.map(async ([path, collect]) => {
       collect(await readPublicList(path), add);
     })]);
     keys = published;

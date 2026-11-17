@@ -13,6 +13,7 @@ const categoryKey = 'uploads/55555555-5555-4555-8555-555555555555.webp';
 const heroKey = 'uploads/66666666-6666-4666-8666-666666666666.mp4';
 const bannerKey = 'uploads/77777777-7777-4777-8777-777777777777.webp';
 const leatherKey = 'uploads/88888888-8888-4888-8888-888888888888.jpg';
+const honorKey = 'uploads/99999999-9999-4999-8999-999999999999.jpg';
 const legacyBucket = 'https://ggbook.s3.us-east-1.amazonaws.com/rs-leather-bd/';
 const cdn = 'https://d11ml80zmgyrxk.cloudfront.net/';
 
@@ -22,6 +23,12 @@ test('proxies only media referenced by the public catalog, taxonomy and CMS and 
     requests.push(url.href);
     assert.equal(options.redirect, 'error');
     if (url.hostname === 'api.griipbuddy.com') {
+      if (url.pathname === '/api/v1/cms/homepage' && url.search === '?populate=full') {
+        return Response.json({ data: { new_arrivals: [{ _id: '69b6ee5c482d3ab6681a93b0', slug: 'honor-200', product_ids: [
+          { _id: '69b6305d482d3ab6681a8d63', thumbnail: honorKey, is_published: false },
+          { _id: '69b6305d482d3ab6681a8d64', thumbnail: privateKey, is_published: false },
+        ] }] } });
+      }
       const path = url.pathname;
       const publicData = {
         '/api/v1/category': { data: [{ subcategories: [{ sub_subcategories: [{
@@ -62,12 +69,12 @@ test('proxies only media referenced by the public catalog, taxonomy and CMS and 
   assert.equal((await fetch(origin + unpublishedKey)).status, 404);
   assert.equal((await fetch(origin + bannerKey)).status, 404);
   assert.equal((await fetch(origin + 'legacy-s3/' + privateKey)).status, 404);
-  assert.equal(requests.length, 6);
+  assert.equal(requests.length, 7);
 
   const picture = await fetch(origin + publicKey, { method: 'HEAD' });
   assert.equal(picture.status, 200);
   assert.equal(picture.headers.get('content-type'), 'image/jpeg');
-  for (const key of [categoryKey, leatherKey, 'legacy-s3/' + bannerKey]) {
+  for (const key of [categoryKey, leatherKey, 'legacy-s3/' + bannerKey, honorKey]) {
     assert.equal((await fetch(origin + key, { method: 'HEAD' })).status, 200);
   }
   for (const key of [videoKey, heroKey]) {
@@ -76,7 +83,7 @@ test('proxies only media referenced by the public catalog, taxonomy and CMS and 
     assert.equal(video.headers.get('content-range'), 'bytes 0-2/18');
     assert.equal(await video.text(), 'abc');
   }
-  assert.equal(requests.length, 12);
+  assert.equal(requests.length, 14);
 });
 
 test('maps configured absolute media URLs in both compiled image helpers', () => {
