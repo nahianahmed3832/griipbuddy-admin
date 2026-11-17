@@ -35,7 +35,7 @@ const fixtureIds = {
   '/dashboard/product-faqs/[slug]': 'fixture-bd',
   '/dashboard/update-category/[slug]': 'fixture-category',
   '/dashboard/update-country/[id]': String(ids.country),
-  '/dashboard/update-product/[slug]': 'fixture-bd',
+  '/dashboard/update-product/[slug]': String(ids.bdProduct),
   '/dashboard/update-role/[slug]': String(ids.adminRole),
   '/dashboard/update-staff/[slug]': String(ids.limitedStaff),
   '/dashboard/update-sub-category/[slug]': 'fixture-subcategory',

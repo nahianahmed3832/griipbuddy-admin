@@ -11,7 +11,7 @@
 .results, .attributes { padding: 0; list-style: none; }
 .results button { width: 100%; justify-content: flex-start; }
 .card fieldset { display: grid; gap: 12px; border: 0; margin: 16px 0 0; padding: 0; }
-.attributes, .actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.attributes, .actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .attributes li { display: inline-flex; align-items: center; padding: 0 4px 0 10px; background: #edf6f2; border-radius: 8px; }
 .table { overflow: auto; }
 .table table { width: 100%; }
