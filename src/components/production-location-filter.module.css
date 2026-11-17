@@ -13,7 +13,7 @@
 .actions svg { margin-inline: 8px; }
 .actions > [role="button"] { display: inline-flex; cursor: pointer; }
 .separator { align-self: stretch; width: 1px; min-height: 24px; background: #e4e4e7; }
-.menu { z-index: 50; width: auto; padding: 0; border: 1px solid #e4e4e7; border-radius: 8px; background: white; color: #18181b; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%); outline: none; }
+.menu { z-index: 50; width: auto; padding: 0; border: 1px solid #e4e4e7; border-radius: 8px; background: white; color: #18181b; font-family: 'DM Sans', 'DM Sans Fallback', sans-serif; font-size: 14px; line-height: 20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%); outline: none; }
 .command { display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; border-radius: 8px; background: white; color: #18181b; }
 .search { display: flex; align-items: center; gap: 8px; height: 36px; padding-inline: 12px; border-bottom: 1px solid #e4e4e7; }
 .search > svg { flex-shrink: 0; opacity: .5; }
@@ -22,9 +22,9 @@
 .list { max-height: 300px; overflow-x: hidden; overflow-y: auto; scroll-padding-block: 4px; }
 .empty { padding-block: 24px; text-align: center; font-size: 14px; line-height: 20px; }
 .group { overflow: hidden; padding: 4px; }
-.item { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; color: inherit; font-size: 14px; line-height: 20px; outline: none; user-select: none; cursor: pointer; }
+.item { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; color: inherit; font-size: 14px; line-height: 20px; outline: none; user-select: none; cursor: pointer; }
 .item[data-selected="true"] { background: #f4f4f5; }
-.checkbox { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #009e69; border-radius: 4px; opacity: .5; }
+.checkbox { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #009e69; border-radius: 6px; opacity: .5; }
 .checkbox svg { visibility: hidden; color: white; }
 .checkbox[data-checked="true"] { background: #009e69; opacity: 1; }
 .checkbox[data-checked="true"] svg { visibility: visible; }
