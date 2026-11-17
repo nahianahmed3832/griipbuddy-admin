@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronDown, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import * as Select from '@radix-ui/react-select';
+import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { productionReportPeriods } from '@/lib/production-report-period';
 
@@ -9,15 +10,28 @@ type Option = { value: string; label: string };
 export type ReportFilter = { key: string; label: string; type: string; options: Option[]; fallback: string };
 
 function FilterSelect({ label, value, options, change }: { label: string; value: string; options: readonly Option[]; change: (value: string) => void }) {
-  return <label className="production-report-field">
-    <span>{label}</span>
-    <span className="production-report-select">
-      <select value={value} onChange={event => change(event.currentTarget.value)}>
-        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-      <ChevronDown size={16} aria-hidden="true"/>
-    </span>
-  </label>;
+  const labelId = useId();
+  return <div className="production-report-field">
+    <span id={labelId}>{label}</span>
+    <Select.Root value={value || '__all__'} onValueChange={value => change(value === '__all__' ? '' : value)}>
+      <Select.Trigger className="production-report-select" aria-labelledby={labelId}>
+        <Select.Value/>
+        <Select.Icon asChild><ChevronDown size={16} aria-hidden="true"/></Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content className="production-report-select-options" position="popper">
+          <Select.ScrollUpButton className="production-report-select-scroll"><ChevronUp size={16}/></Select.ScrollUpButton>
+          <Select.Viewport className="production-report-select-viewport">
+            {options.map(option => <Select.Item className="production-report-select-option" key={option.value} value={option.value || '__all__'}>
+              <span className="production-report-select-indicator"><Select.ItemIndicator><Check size={16}/></Select.ItemIndicator></span>
+              <Select.ItemText>{option.label}</Select.ItemText>
+            </Select.Item>)}
+          </Select.Viewport>
+          <Select.ScrollDownButton className="production-report-select-scroll"><ChevronDown size={16}/></Select.ScrollDownButton>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  </div>;
 }
 
 function SearchFilter({ label, value, change }: { label: string; value: string; change: (value: string) => void }) {

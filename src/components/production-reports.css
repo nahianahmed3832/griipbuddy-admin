@@ -152,8 +152,8 @@
 .production-report-locations { position: relative; min-width: 0; }
 .production-report-select > svg,
 .production-report-locations > summary > svg { width: 16px; color: #a1a1aa; pointer-events: none; }
-.production-report-select > svg { position: absolute; right: 12px; top: 10px; }
-.production-report-filters :is(select, input:not([type="checkbox"]), .production-report-locations > summary) {
+
+.production-report-filters :is(.production-report-select, input:not([type="checkbox"]), .production-report-locations > summary) {
   width: 100%;
   min-width: 0;
   min-height: 36px;
@@ -169,7 +169,19 @@
   font-weight: 400;
   line-height: 20px;
 }
-.production-report-select select { appearance: none; padding-inline-end: 34px; cursor: pointer; }
+.production-report-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; text-align: left; outline: none; }
+.production-report-select:focus-visible { border-color: #a1a1aa; box-shadow: 0 0 0 3px rgb(161 161 170 / 50%); }
+.production-report-select > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.production-report-select-options { position: relative; z-index: 50; max-height: var(--radix-select-content-available-height); min-width: 128px; overflow-x: hidden; overflow-y: auto; border: 1px solid #e4e4e7; border-radius: 8px; background: white; color: #18181b; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%); transform-origin: var(--radix-select-content-transform-origin); }
+.production-report-select-options[data-side="bottom"] { transform: translateY(4px); }
+.production-report-select-options[data-side="top"] { transform: translateY(-4px); }
+.production-report-select-viewport { min-width: var(--radix-select-trigger-width); padding: 4px; }
+.production-report-select-option { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 32px 6px 8px; border-radius: 4px; font-size: 14px; font-weight: 400; line-height: 20px; outline: none; cursor: default; user-select: none; }
+.production-report-select-option[data-highlighted] { color: #18181b; background: #f4f4f5; }
+.production-report-select-option[data-disabled] { pointer-events: none; opacity: .5; }
+.production-report-select-indicator { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: #71717a; }
+.production-report-select-scroll { display: flex; align-items: center; justify-content: center; padding-block: 4px; cursor: default; }
+.production-report-select-options svg { flex-shrink: 0; pointer-events: none; }
 .production-report-locations > summary {
   display: flex;
   align-items: center;
