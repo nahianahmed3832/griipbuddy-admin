@@ -59,7 +59,7 @@ export function allowedOriginalApiPath(path, method) {
   const route = parts.join('/');
   if (family === 'global') {
     const read = /^admin\/(?:payments\/[a-f0-9]{24}(?:\/receipt)?|orders\/[a-f0-9]{24}|shipment-services\/bd)$/;
-    const write = /^admin\/(?:payments\/[a-f0-9]{24}\/(?:review|collect|refunds)|shipments(?:\/[a-f0-9]{24}\/(?:pick|pack|return))?)$/;
+    const write = /^admin\/(?:payments\/[a-f0-9]{24}\/(?:review|collect|refunds)|shipments(?:\/[a-f0-9]{24}\/(?:pick|pack|return|receive))?)$/;
     return ((method === 'GET' || method === 'HEAD') && read.test(route)) ||
       (method === 'POST' && write.test(route));
   }

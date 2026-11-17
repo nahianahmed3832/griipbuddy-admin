@@ -175,6 +175,38 @@ function ManagedShipment({ order, hooks, element }) {
     }, 'actions');
   }
 
+  function receiveAction(row) {
+    const outbound = data.shipments.filter(entry => entry.direction === 'outbound' && entry.state !== 'cancelled');
+    if (row.receivedAt || outbound.length !== 1 || String(outbound[0]._id) !== String(row.parent) ||
+        !['dispatched', 'in-transit', 'out-for-delivery', 'delivered', 'returned'].includes(row.state)) return null;
+    const tracked = row.lines.some(line => line.barcodes?.length);
+    return element('form', {
+      className: 'flex flex-col gap-2',
+      onSubmit: event => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const evidence = String(form.get('evidence') || '').trim();
+        const scans = String(form.get('barcodes') || '').split(/\s+/).filter(Boolean);
+        if (!evidence || !form.has('sellable') || (tracked && !scans.length) || scans.length > 200 || new Set(scans).size !== scans.length) {
+          setMessage('Confirm inspection, enter the warehouse receipt reference, and scan each tracked unit once.');
+          return;
+        }
+        const path = global + '/shipments/' + encodeURIComponent(row._id) + '/receive';
+        void save(path, { evidence, sellable: true, barcodes: scans }, 'Return received.');
+      },
+      children: [
+        label('Verified warehouse receipt reference', input('evidence', { required: true, maxLength: 128 })),
+        tracked && label('Returned unit barcodes', element('textarea', {
+          name: 'barcodes', className: field, maxLength: 6000, rows: 2, required: true,
+        }, 'barcodes')),
+        label('I inspected all returned units and confirmed they are sellable.', element('input', {
+          type: 'checkbox', name: 'sellable', required: true, className: 'size-4',
+        }, 'sellable')),
+        element('button', { type: 'submit', className: button, disabled: saving, children: 'Receive return' }, 'receive'),
+      ],
+    }, 'actions');
+  }
+
   const canShowPlan = data?.warehouses.length > 0;
   return element('details', {
     className: 'bg-background rounded-lg shadow-md print:hidden',
@@ -190,7 +222,7 @@ function ManagedShipment({ order, hooks, element }) {
             children: [
               element('p', { children: (row.direction === 'return' ? 'Return: ' : 'Shipment: ') + row.state }, 'state'),
               row.tracking && element('p', { children: 'Tracking number: ' + row.tracking }, 'tracking'),
-              row.direction === 'outbound' && shipmentActions(row),
+              row.direction === 'outbound' ? shipmentActions(row) : receiveAction(row),
             ],
           }, row._id)),
           canShowPlan && element('form', {
