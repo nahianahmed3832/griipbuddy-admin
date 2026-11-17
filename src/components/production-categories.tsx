@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ImageIcon, Plus, Video } from 'lucide-react';
+import { ChevronLeft, CornerDownRight, ImageIcon, Plus, Video } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { categoryKey, categoryName, categorySlug, childrenFor, placements, type CategoryNode } from '@/lib/category-tree';
 import { adminPath } from '@/lib/paths';
@@ -24,7 +24,17 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
   const [error, setError] = useState('');
   const branches = childrenFor(nodes);
   const roots = branches.get('') ?? [];
-  const rows = subcategory ? nodes.filter(row => row.depth > 0) : roots;
+  const names = new Map(nodes.map(row => [row.id, categoryName(row)]));
+  const depthRows = (siblings: CategoryNode[], prefix = ''): { row: CategoryNode; index: string }[] =>
+    siblings.flatMap((row, slot) => {
+      const index = prefix + String(slot + 1);
+      return [{ row, index }, ...depthRows(branches.get(categoryKey(row)) ?? [], index + '.')];
+    });
+  const rows = subcategory ? depthRows(nodes.filter(row => row.depth === 1))
+    : roots.map(row => ({ row, index: '' }));
+  const visited = new Set(rows.map(({ row }) => row.id));
+  if (subcategory) nodes.filter(row => row.depth > 1 && !visited.has(row.id))
+    .forEach(row => rows.push({ row, index: String(rows.length + 1) }));
   const createUrl = subcategory ? '/dashboard/add-new-sub-category' : '/dashboard/add-new-category';
   const editUrl = subcategory ? '/dashboard/update-sub-category/' : '/dashboard/update-category/';
   const columns = subcategory ? ['Index','Image','Name (EN)','Name (BN)','Description (EN)','Description (BN)','Category','Actions']
@@ -53,14 +63,16 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
     <div className={styles.tableBorder + ' ' + design.scroll}>
       <table className={styles.table}>
         <thead><tr>{columns.map(heading => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
-        <tbody>{rows.map((row, i) => {
-          const picture = row.media.find(item => item.size === 'SQUARE')?.image;
-          const root = roots.find(node => node.id === row.ancestors[0]);
-          return <tr key={categoryKey(row)}>
-            <td>{subcategory ? i + 1 : row.position}</td><td><CategoryImage image={picture}/></td>
-            {subcategory ? <><td>{row.name_en}</td><td lang="bn">{row.name_bn}</td>
+        <tbody>{rows.map(({ row, index }) => {
+          const picture = row.media.find(item => item.size === 'SQUARE')?.image ?? row.media[0]?.image;
+          const parentName = names.get(row.ancestors[row.depth - 1] ?? '');
+          return <tr key={categoryKey(row)} className={design.categoryRow} data-depth={row.depth}>
+            <td>{subcategory ? index : row.position}</td><td><CategoryImage image={picture}/></td>
+            {subcategory ? <><td><div className={design.branchName}>{row.depth > 1 && <CornerDownRight size={16}/>} {row.name_en}</div></td>
+              <td lang="bn">{row.name_bn}</td>
               <td className={design.description}>{row.description_en}</td><td className={design.description} lang="bn">{row.description_bn}</td>
-              <td><small className={design.root}>ROOT CATEGORY</small><p>{root && categoryName(root)}</p></td></>
+              <td><small className={design.root}>{['', 'Root Category', 'Parent Sub', 'Parent Sub-Sub'][row.depth]}</small>
+                {parentName && <span className={design.parentBadge}>{parentName}</span>}</td></>
               : <><td>{row.name_en}</td><td>{row.slug}</td><td>{(branches.get(categoryKey(row)) ?? []).length}</td>
                 <td><label className={design.liveSwitch}>
                   <input type="checkbox" role="switch" aria-label={'Publish ' + categoryName(row)} checked={row.is_published}

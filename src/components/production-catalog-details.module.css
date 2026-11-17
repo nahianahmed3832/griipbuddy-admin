@@ -89,3 +89,12 @@
 .faqProduct { display: grid; justify-items: start; gap: 4px; min-height: 170px; padding: 16px; border: 1px solid var(--catalog-border); background: #fafafa; border-radius: 12px; color: #334155; }
 .faqProduct h2 { margin: 0 0 8px; font-size: 16px; }
 .reviewAttachment { display: block; width: min(160px, 100%); aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
+.root { display: block; font-size: 9px; font-weight: 700; letter-spacing: .035em; text-transform: uppercase; }
+.branchName { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+.parentBadge { display: inline-block; font-size: 11px; font-weight: 700; line-height: 16px; border-radius: 4px; padding: 0 4px; background: var(--catalog-primary); color: white; }
+.categoryRow[data-depth='2'] { border-inline-start: 4px solid #76c89f; }
+.categoryRow[data-depth='3'] { border-inline-start: 4px solid #80adf1; }
+.categoryRow[data-depth='2'] .branchName { padding-inline-start: 12px; color: #047857; }
+.categoryRow[data-depth='2'] .parentBadge { color: #047857; background: #edfcf3; }
+.categoryRow[data-depth='3'] .branchName { padding-inline-start: 24px; color: #1d4ed8; }
+.categoryRow[data-depth='3'] .parentBadge { color: #1d4ed8; background: #edf4ff; }
