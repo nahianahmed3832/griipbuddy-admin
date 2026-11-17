@@ -4,6 +4,7 @@ import { applyBasePath } from './base-path.mjs';
 import { rewriteOriginalCatalogMedia, rewriteOriginalHeroVideo } from './catalog-media.mjs';
 import { patchManagedReceipt } from './managed-receipt.mjs';
 import { patchManagedShipment } from './managed-shipment.mjs';
+import { patchStaffPassword } from './staff-password.mjs';
 
 const app = process.argv[2];
 if (!app) throw new Error('An original admin artifact directory is required');
@@ -18,14 +19,21 @@ const loginChunk = 'page-4a794a36ace8264e-email.js';
 const originalOrderChunk = 'page-ed397c6f7e77af22.js';
 const orderChunk = 'page-ed397c6f7e77af22-managed.js';
 const orderDirectory = 'chunks/app/(dashboard)/dashboard/(orders)/order-details/[id]/';
+const originalStaffChunk = '7662-bfc447cf9b3f10e4.js';
+const staffChunk = '7662-bfc447cf9b3f10e4-staff-password.js';
+const staffPages = new Set([
+  'app/(dashboard)/dashboard/(manage-staffs)/add-new-staff/page.js',
+  'app/(dashboard)/dashboard/(manage-staffs)/update-staff/[slug]/page.js',
+]);
 const originalLoginValidation = '.min(11,"Phone number should be 11 digits").max(11,"Phone number should be 11 digits")';
 const loginValidation = '.trim().refine(value=>/^\\+?\\d{8,16}$/.test(value)||/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value),"Enter a phone number or email address")';
 const manifestPath = join(next, 'app-build-manifest.json');
 const manifest = readFileSync(manifestPath, 'utf8');
-if (!manifest.includes(originalLoginChunk) || !manifest.includes(originalOrderChunk)) {
-  throw new Error('Unexpected preserved login or order chunk');
+if (!manifest.includes(originalLoginChunk) || !manifest.includes(originalOrderChunk) || !manifest.includes(originalStaffChunk)) {
+  throw new Error('Unexpected preserved login, order or staff chunk');
 }
-writeFileSync(manifestPath, manifest.replaceAll(originalLoginChunk, loginChunk).replaceAll(originalOrderChunk, orderChunk));
+writeFileSync(manifestPath, manifest.replaceAll(originalLoginChunk, loginChunk)
+  .replaceAll(originalOrderChunk, orderChunk).replaceAll(originalStaffChunk, staffChunk));
 
 // Browser traffic goes through the protected gateway. Server rendering uses
 // the same private API directly, as the original standalone build does.
@@ -38,6 +46,7 @@ for (const root of ['static', 'server']) {
     const source = readFileSync(file, 'utf8');
     let updated = rewriteOriginalCatalogMedia(source).replaceAll(originalLoginChunk, loginChunk)
       .replaceAll(originalOrderChunk, orderChunk)
+      .replaceAll(originalStaffChunk, staffChunk)
       .replaceAll('https://api.griipbuddy.com/api/v1', api)
       .replaceAll('__NEXT_PUBLIC_BASE_SERVER_API__', api)
       .replaceAll('__NEXT_PUBLIC_FILE_UPLOAD_API_KEY__', 'fixture-upload')
@@ -65,11 +74,16 @@ for (const root of ['static', 'server']) {
       updated = patchManagedReceipt(updated, root === 'server');
       updated = patchManagedShipment(updated, root === 'server');
     }
+    if ((root === 'static' && relative === 'chunks/' + originalStaffChunk) ||
+        (root === 'server' && staffPages.has(relative))) {
+      updated = patchStaffPassword(updated);
+    }
     if (source !== updated) writeFileSync(file, updated);
   }
 }
 renameSync(join(next, 'static/chunks/app', originalLoginChunk), join(next, 'static/chunks/app', loginChunk));
 renameSync(join(next, 'static', orderDirectory, originalOrderChunk), join(next, 'static', orderDirectory, orderChunk));
+renameSync(join(next, 'static/chunks', originalStaffChunk), join(next, 'static/chunks', staffChunk));
 
 const actions = JSON.parse(readFileSync(join(app, '.next/server/server-reference-manifest.json'), 'utf8'));
 if (Object.keys(actions.node).length || Object.keys(actions.edge).length) {
