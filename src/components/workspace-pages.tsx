@@ -9,15 +9,18 @@ import { ProductionFeaturedProducts, type FeaturedVariant } from './production-f
 import { ProductionBannerEditor } from './production-banner-editor';
 import { PageHeading } from './dashboard';
 import { PosEditor, type SaleDraft } from './pos-editor';
+import { ProductionPosEditor } from './production-pos-editor';
+import { posDay, posMethods } from '@/lib/pos';
+import { readPosSale } from '@/lib/production-pos';
 
-export async function SaleWorkspace({ auth, id, region }: { auth: Session; id?: string; region: Region }) {
+export async function SaleWorkspace({ auth, id, region, production = false }: { auth: Session; id?: string; region: Region; production?: boolean }) {
   if (!advancedEnabled() || !canWrite(auth.staff) || !has(auth.staff, 'pos.view') || !has(auth.staff, id ? 'pos.update' : 'pos.create')) {
     throw new ApiError(403);
   }
   if (region !== 'BD' || id && !mongoId(id)) throw new ApiError(404);
   const [locations, accounts, raw] = await Promise.all([
-    loadLocations(auth, region), has(auth.staff, 'expense.view') ? paymentAccounts(auth) : [],
-    id ? api('/pos/sale/' + id, auth.token) : null,
+    loadLocations(auth, region), !production && has(auth.staff, 'expense.view') ? paymentAccounts(auth) : [],
+    id ? readPosSale(id, auth) : null,
   ]);
   const sale = obj(raw);
   if (id && obj(sale.business_location).region !== region) throw new ApiError(404);
@@ -29,6 +32,19 @@ export async function SaleWorkspace({ auth, id, region }: { auth: Session; id?: 
     lines: arr(sale.products).map(obj).map(row => ({ sku: str(obj(row.selected_variant).sku),
       quantity: String(row.quantity ?? 1), discount: discount(row.product_discount) })),
   };
+  if (production) {
+    const saleDate = str(sale.sale_date);
+    const paymentMethod = [...posMethods, 'Bank transfer'].find(method => method.toLowerCase() === draft.paymentMethod.toLowerCase()) || 'Other';
+    const lines = arr(sale.products).map(obj).map((row, index) => ({
+      ...draft.lines[index], name: str(obj(row.product).name),
+      regularPrice: Number(obj(row.selected_variant).regular_price) || 0,
+      salePrice: Number(obj(row.selected_variant).sale_price) || 0,
+    }));
+    return <ProductionPosEditor draft={{ ...draft, lines, paymentMethod, serial: String(sale.sale_serial_id ?? ''),
+      day: saleDate && !Number.isNaN(Date.parse(saleDate)) ? posDay(new Date(saleDate)) : posDay(),
+      customerName: str(obj(sale.user).full_name),
+    }} locations={locations} canSearchCustomers={has(auth.staff, 'user.view')} canCreateCustomer={has(auth.staff, 'user.create')}/>;
+  }
   return <>
     <PageHeading eyebrow="COMMERCE / POINT OF SALE" title={id ? 'Edit POS sale' : 'New POS sale'}
       description="Record items, discounts and offline payments for a Bangladesh location. Existing sale lines retain their price snapshots.">

@@ -1,0 +1,73 @@
+.root { display: grid; gap: 24px; color: #111113; font-size: 14px; }
+.root h1 { display: flex; align-items: center; gap: 8px; font-size: 18px; line-height: 28px; font-weight: 500; margin: 0; }
+.root h1 a, .outline { display: inline-grid; place-items: center; width: 36px; height: 36px; color: inherit; background: #fff; border: 1px solid #dfdfe4; border-radius: 8px; cursor: pointer; }
+.root h1 a { width: 28px; height: 28px; }
+.create, .edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 23.5%); align-items: stretch; gap: 24px; }
+.create { min-height: calc(100vh - 104px); }
+.items, .payment { min-width: 0; background: #fff; border-radius: 11px; box-shadow: 0 1px 3px #17171726; }
+.items { display: flex; flex-direction: column; align-items: stretch; gap: 18px; padding: 16px; }
+.edit .items { gap: 24px; padding: 24px; }
+.items h2 { font-size: 18px; font-weight: 500; margin: 0; }
+.headerFields, .scanField, .paymentFields, .root label { display: grid; gap: 6px; }
+.headerFields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.edit .headerFields { grid-template-columns: 1fr; }
+.root input:not([type="checkbox"]), .root select, .root textarea { color: inherit; background: #fff; border: 1px solid #dfdfe4; border-radius: 8px; box-shadow: 0 1px 2px #1717170d;
+  min-height: 36px; width: 100%; padding: 7px 12px; font: inherit; }
+.root input:disabled, .root button:disabled { opacity: .62; cursor: not-allowed; }
+.root textarea { min-height: 64px; }
+.locationWarning { color: #e00000; background: #fce6e5; border: 1px solid #ff6d70; border-radius: 8px; padding: 7px 12px; text-align: center; margin: 0; }
+.searchField { position: relative; }
+.searchField > label { margin-bottom: 6px; }
+.scanField { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.edit .scanField { grid-template-columns: 1fr; }
+.suggestions { position: absolute; top: 100%; z-index: 2; inset-inline: 0; max-height: 240px; overflow: auto; margin: 3px 0 0; padding: 4px; list-style: none;
+  background: #fff; border: 1px solid #dfdfe4; border-radius: 8px; box-shadow: 0 2px 4px #17171719; }
+.suggestions button { cursor: pointer; background: transparent; font: inherit; border: 0; border-radius: 4px; display: flex; align-items: center;
+  justify-content: flex-start; width: 100%; padding: 8px; text-align: left; gap: 8px; }
+.suggestions button:hover { background: #f1f4f2; }
+.suggestions span { margin-left: auto; }
+.table { border: 1px solid #dfdfe4; border-radius: 10px; overflow: auto; }
+.edit .table { border-radius: 0; }
+.table table, .receipt table { width: 100%; border-collapse: collapse; min-width: 635px; }
+.table th, .table td { text-align: left; padding: 8px; font-weight: 400; white-space: nowrap; }
+.table th { border-bottom: 1px solid #dfdfe4; }
+.table input, .table select { min-width: 66px; }
+.table tr + tr td { border-top: 1px solid #dfdfe4; }
+.table small { color: #657083; display: block; font-size: 12px; }
+.table .empty { padding: 36px 8px; text-align: center; color: #667284; }
+.createButtons, .editButtons { display: flex; justify-content: center; gap: 24px; margin-top: auto; }
+.editButtons { grid-column: 1 / -1; justify-content: flex-end; }
+.primary { padding: 14px 32px; font: inherit; min-height: 56px; color: #fff; display: inline-flex; align-items: center;
+  gap: 8px; background: #009b67; border: 0; cursor: pointer; border-radius: 8px; }
+.primary:hover { background: #008656; }
+.payment { padding: 16px; color: #475568; }
+.edit .payment { padding: 0; color: #151515; }
+.totals { display: grid; gap: 10px; padding: 16px; border-radius: 11px; margin: 0 0 20px; box-shadow: 0 1px 3px #17171726; font-size: 16px; }
+.totals div { display: flex; justify-content: space-between; gap: 8px; }
+.totals dd { margin: 0; }
+.create .totals div:is([data-index="1"], [data-index="2"]) { color: #00a53e; }
+.create .totals div[data-index="3"] { padding-top: 8px; border-top: 1px solid #dfdfe4; font-weight: 700; }
+.edit .totals { border-radius: 0; border-bottom: 1px solid #dfdfe4; margin: 0; padding: 24px; box-shadow: none; font-size: 14px; gap: 12px; }
+.edit .totals div[data-index="3"] { color: #f00000; }
+.paymentFields { gap: 16px; }
+.edit .paymentFields { padding: 24px; gap: 20px; }
+.overall { display: grid; gap: 12px; }
+.edit .overall { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: flex-start; gap: 24px; }
+.overall span { display: flex; align-items: center; gap: 7px; }
+.overall input[type="checkbox"] { width: 32px; height: 18px; appearance: none; background: #dedee1; border-radius: 14px; margin: 0; cursor: pointer; }
+.overall input[type="checkbox"]:checked { background: #009b67; }
+.overall input[type="checkbox"]::after { content: ''; width: 15px; height: 15px; border-radius: 50%; margin: 1.5px; background: #fff; display: block; }
+.overall input[type="checkbox"]:checked::after { margin-left: 15px; }
+.receipt { display: none; }
+@media (max-width: 960px) { .create, .edit { grid-template-columns: 1fr; } .items { min-height: 420px; } }
+@media print {
+  body:has(.receipt) * { visibility: hidden; }
+  body:has(.receipt) .receipt, body:has(.receipt) .receipt * { visibility: visible; }
+  .receipt { display: block; position: absolute; top: 0; left: 0; width: 100%; font: 14px sans-serif; }
+}
+.customerPanel { position: absolute; top: 100%; inset-inline: 0; z-index: 3; background: #fff; border: 1px solid #dfdfe4; border-radius: 8px;
+  box-shadow: 0 2px 4px #17171719; padding: 12px; display: grid; gap: 8px; }
+.customerSearch { display: flex; gap: 8px; }
+.customerSearch button { flex: none; }
+.customerButton { width: 100%; text-align: left; cursor: pointer; font: inherit; min-height: 36px;
+  border: 1px solid #dfdfe4; background: #fff; color: #222; padding: 7px 12px; border-radius: 8px; }

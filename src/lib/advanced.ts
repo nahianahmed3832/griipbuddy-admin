@@ -1,6 +1,7 @@
 import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from './api';
 import { findVariantBySku, locationInRegion } from './operations';
 import { has, type Region } from './sections';
+import { posMethods, validPosDay } from './pos';
 
 export function advancedEnabled() {
   return ['preview','integration'].includes(process.env.GRIIP_ADMIN_TARGET ?? '') || (process.env.GRIIP_ADMIN_TARGET === 'fixture'
@@ -48,6 +49,8 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
   requireWrite(auth, 'pos.view', id ? 'pos.update' : 'pos.create', 'product.view', 'business_locations.view');
   if ((id && !mongoId(id)) || (!id && !mongoId(str(input.requestId)))) throw invalid('Invalid sale reference.');
   const location = await locationInRegion(str(input.location), 'BD', auth);
+  const saleDay = str(input.saleDate);
+  if (saleDay && !validPosDay(saleDay)) throw invalid('Select a valid sale date.');
   const previous = id ? obj(await api('/pos/sale/' + id, auth.token)) : {};
   if (id && obj(previous.business_location).region !== 'BD') throw new ApiError(404, 'Sale not found in this region.');
   const lines = arr(input.lines).map(obj);
@@ -57,6 +60,7 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
   const snapshots = new Map(arr(previous.products).map(obj).map(row => [str(obj(row.selected_variant).sku), row]));
   const products = [];
   let subtotal = 0;
+  let regularSubtotal = 0;
   for (const [index, line] of lines.entries()) {
     const quantity = Number(line.quantity);
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) throw invalid('Enter a whole quantity between 1 and 1000.');
@@ -65,6 +69,7 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
     const unitPrice = money(variant.regular_price, 'Catalog regular price');
     if (!unitPrice || !str(variant.barcode)) throw invalid('The SKU needs a price and primary barcode.');
     const reduction = discount(line.discount, quantity * unitPrice);
+    regularSubtotal += quantity * unitPrice;
     subtotal += quantity * unitPrice - reduction.minor;
     products.push({ product: existing ? reference(existing.product) : reference(variant.product),
       quantity, product_discount: reduction.input, selected_variant: {
@@ -74,34 +79,53 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
   }
   const overall = discount(input.discount, subtotal);
   const total = subtotal - overall.minor;
-  if (review) return { subtotal: subtotal / 100, discount: overall.minor / 100, total: total / 100 };
+  if (review) return { subtotal: subtotal / 100, itemDiscount: (regularSubtotal - subtotal) / 100, discount: overall.minor / 100, total: total / 100 };
   if (typeof input.quotedTotal !== 'number' || Math.round(input.quotedTotal * 100) !== total) {
     throw new ApiError(409, 'Sale totals changed. Review the updated totals before saving.');
   }
   const paid = money(input.paid, 'Amount received');
-  if (paid > total) throw invalid('Amount received exceeds the sale total.');
+  if (paid > total && !(input.production === true && input.paymentMethod === 'Cash')) throw invalid('Amount received exceeds the sale total.');
   const account = str(input.paymentAccount);
   const method = str(input.paymentMethod);
-  if (!['Cash', 'Bank transfer', 'Card'].includes(method) || (method !== 'Cash' && !account)) {
+  const methods: readonly string[] = input.production === true ? [...posMethods, 'Bank transfer'] : ['Cash', 'Bank transfer', 'Card'];
+  if (!methods.includes(method) || (input.production !== true && method !== 'Cash' && !account)) {
     throw invalid('Select a payment method and its accounting source.');
   }
-  if (account && (!has(auth.staff, 'expense.view') || !(await paymentAccounts(auth)).some(row => row.value === account))) {
+  if (input.production === true ? account.length > 100 || /\p{Cc}/u.test(account)
+    : account && (!has(auth.staff, 'expense.view') || !(await paymentAccounts(auth)).some(row => row.value === account))) {
     throw invalid('Select an active payment account.');
   }
   const customer = str(input.customer).trim();
+  const createCustomer = !id && input.production === true && input.newCustomer === true;
+  if (createCustomer) requireWrite(auth, 'user.create', 'user.view');
+  const customerName = createCustomer ? str(input.customerName).trim().slice(0, 100) : undefined;
   if (customer && !/^\+?\d{8,16}$/.test(customer)) throw invalid('Enter an existing customer phone number.');
   const revision = str(input.revision);
   if (id && !revision) throw new ApiError(409, 'Reload this sale before editing.');
+  const previousItems = arr(previous.products).map(obj);
+  const sameLines = id && products.length === previousItems.length && products.every((line, index) => {
+    const previousLine = previousItems[index];
+    const previousDiscount = obj(previousLine.product_discount);
+    return reference(obj(previousLine.selected_variant)) === line.selected_variant._id
+      && previousLine.quantity === line.quantity
+      && (str(previousDiscount.type) || 'FLAT') === line.product_discount.type
+      && Number(previousDiscount.value ?? 0) === line.product_discount.value;
+  });
+  const sameDiscount = (str(obj(previous.overall_discount).type) || 'FLAT') === overall.input.type
+    && Number(obj(previous.overall_discount).value ?? 0) === overall.input.value;
   const result = obj(await api(id ? '/pos/sale/' + id : '/pos/sale', auth.token, {
     method: id ? 'PUT' : 'POST',
     body: JSON.stringify({
       ...(id ? { expected_updated_at: revision } : { request_id: input.requestId }),
-      business_location: reference(location), products, customer_phone: customer, existing_customer_only: true,
-      paid_amount: paid / 100, overall_discount: overall.input, payment_method: method, payment_account: account || null,
+      business_location: reference(location),
+      ...(!sameLines || !sameDiscount || reference(previous.business_location) !== reference(location) ? { products } : {}),
+      customer_phone: customer, existing_customer_only: !createCustomer, ...(createCustomer && { customer_name: customerName || 'New Customer' }),
+      ...(saleDay ? { sale_date: new Date(saleDay + 'T12:00:00+06:00').toISOString() } : {}),
+      paid_amount: paid / 100, ...(!id || !sameDiscount || !sameLines ? { overall_discount: overall.input } : {}), payment_method: method, payment_account: account || null,
       sale_note: str(input.note).slice(0, 500), payment_note: str(input.paymentNote).slice(0, 500),
     }),
   }));
-  return { id: reference(result) };
+  return { id: reference(result), invoice: str(result.invoice_number), serial: String(result.sale_serial_id ?? '') };
 }
 
 export async function bulkHandover(input: RecordData, auth: Session, region: Region) {
