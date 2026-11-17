@@ -80,7 +80,14 @@ export async function serveStorefrontContent(incoming, outgoing, target, fetchAp
     homepage: publicHomepage(homepage),
     offer: offer && {
       offer_start_date: offer.offer_start_date, validFor: offer.validFor, specialSaleActive: offer.specialSaleActive,
-      navbar_label: offer.navbar_label, pageConf: { header: offer.pageConf?.header },
+      discountPercentage: offer.discountPercentage, freeDelivery: offer.freeDelivery,
+      applied_subcategories: references(offer.applied_subcategories),
+      navbar_label: offer.navbar_label, pageConf: {
+        title: offer.pageConf?.title, header: offer.pageConf?.header,
+        timer_config: offer.pageConf?.timer_config && {
+          show_timer: offer.pageConf.timer_config.show_timer, mode: offer.pageConf.timer_config.mode,
+        },
+      },
     },
   });
 }
