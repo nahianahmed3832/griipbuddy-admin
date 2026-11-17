@@ -71,16 +71,16 @@ export function SupplierEditor({ selected, region, inline = false, production = 
         pattern={name === 'contact_id' ? '[0-9]{1,8}' : undefined} inputMode={name === 'contact_id' ? 'numeric' : undefined} defaultValue={selected?.[name]}/>
       {name === 'tax_info' && <small className={design.muted}>e.g., NID, TIN, VAT number</small>}
     </label>;
-    return <form className={design.forms} onSubmit={save}>
+    return <form className={design.forms + ' ' + design.supplierForm} onSubmit={save}>
       <fieldset className={design.supplierFields} disabled={busy}>
         {editableFields.slice(0, 2).map(field)}
-        <label className={styles.field}>Supplier Type <em aria-hidden="true">*</em>
+        <label className={styles.field}><span>Supplier Type <em aria-hidden="true">*</em></span>
           <select className={styles.select} name="type" aria-label="Supplier Type" defaultValue={recordType} required>
             <option value="INDIVIDUAL">Individual</option><option value="COMPANY">Company</option>
             {recordType === 'BUSINESS' && <option value="BUSINESS">Business</option>}
           </select>
         </label>
-        <label className={styles.field}>Payment Terms <em aria-hidden="true">*</em>
+        <label className={styles.field}><span>Payment Terms <em aria-hidden="true">*</em></span>
           <select className={styles.select} aria-label="Payment Terms" name="default_payment_terms" defaultValue={savedTerms || terms[0][0]} required>
             {terms.map(([value, description]) => <option key={value} value={value}>{description}</option>)}
           </select>

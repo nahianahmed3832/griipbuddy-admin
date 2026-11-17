@@ -1,5 +1,5 @@
 .heading, .submit, .assetActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.heading a { min-height: 32px; padding: 7px 10px; }
+.heading a { min-height: 32px; padding: 5px 10px; }
 .submit { justify-content: flex-end; }
 .scroll { overflow-x: auto; }
 .description { max-width: 280px; text-overflow: ellipsis; overflow: hidden; }
@@ -22,7 +22,7 @@
 .fileBox > svg { flex: none; padding: 6px; border-radius: 6px; background: #f5f5f5; width: 28px; height: 36px; }
 .fileBox:focus-within, .placement label:focus-within .fileBox { outline: solid 2px var(--catalog-primary); }
 .forms { display: grid; gap: 24px; }
-.forms :is(input:not([type=hidden]), select, textarea) { width: 100%; min-height: 36px; padding: 6px 12px; border: 1px solid var(--catalog-border); border-radius: 8px; background: #fff; box-shadow: 0 1px 2px #0001; font: inherit; }
+.forms :where(input:not([type=hidden]), select, textarea) { width: 100%; min-height: 36px; padding: 6px 12px; border: 1px solid var(--catalog-border); border-radius: 8px; background: #fff; box-shadow: 0 1px 2px #0001; font: inherit; font-weight: 400; }
 .forms textarea { min-height: 90px; }
 .narrow { width: min(100%, 672px); }
 .twoPart { display: grid; grid-template-columns: minmax(0,2fr) minmax(220px,1fr); gap: 24px; align-items: start; }
@@ -39,6 +39,9 @@
 .recordData dd { margin: 3px 0 0; color: var(--catalog-muted); }
 @media (max-width: 1000px) { .placements { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 650px) { .placements, .categoryFields, .twoPart { grid-template-columns: minmax(0,1fr); } }
+.supplierForm fieldset { margin-top: 4px; }
+.supplierForm .submit button { min-height: 40px; padding-inline: 24px; font-size: 16px; }
+.supplierFields textarea { min-height: 80px; }
 .supplierFields { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 24px; padding: 24px; margin: 0; border: 0; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px #0002; }
 .supplierFields em { display: inline; color: #dc2626; font-style: normal; }
 .supplierFields [data-field=address] { grid-column: span 2; }
@@ -67,7 +70,10 @@
 .review aside h2 { padding-bottom: 12px; border-bottom: 1px solid var(--catalog-border); }
 .review .reviewTitle { font: inherit; font-size: 24px; font-weight: 500; margin-top: -10px; }
 .review .reviewContent { border-top: 1px solid var(--catalog-border); padding-top: 24px; font-style: italic; }
-.review textarea { min-height: 150px; }
+.review textarea { min-height: 150px; background: transparent; }
+.replySubmit { min-width: 172px; min-height: 48px; font-size: 18px; }
+.replyCancel { background: transparent; color: var(--catalog-muted); border: none; padding: 8px; font-size: 14px; }
+
 .stars { display: flex; gap: 4px; color: #e2e3e5; }
 .stars [data-filled=true] { fill: #ffc200; color: #ffc200; }
 @media (max-width: 740px) { .readColumns { grid-template-columns: minmax(0,1fr); } .faqCreate { padding: 0; } }

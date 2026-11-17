@@ -32,7 +32,7 @@ const statuses = { brands: ['active','inactive'], faqs: ['active','inactive','pe
 const labels: Record<string,string> = { active: 'Active', approved: 'Approved', inactive: 'Inactive', pending: 'Pending', rejected: 'Rejected' };
 const date = (value: string, full = false) => value && !Number.isNaN(Date.parse(value))
   ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', ...(full
-    ? { dateStyle: 'short', timeStyle: 'medium' } as const : { dateStyle: 'medium' } as const) }).format(new Date(value)) : '—';
+    ? { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' } as const : { dateStyle: 'medium' } as const) }).format(new Date(value)) : '—';
 const scope = (path: string, region: Region) => path + (region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '');
 const imageUrl = (value: string) => {
   const src = productionCmsPreview(value);
@@ -265,8 +265,10 @@ function ReplyForm({ row, kind, region }: { row: RegistryRow; kind: 'faqs' | 're
     </label>
     {error && <p className={styles.error} role="alert">{error}</p>}{note && <p role="status">{note}</p>}
     <div className={kind === 'faqs' ? design.heading : design.submit}>
-      {kind === 'reviews' && <button className={styles.outline} type="button" onClick={() => { setReply(''); setNote(''); setError(''); }}>Cancel</button>}
-      <button className={styles.primary} disabled={busy || !reply.trim()}>{busy ? 'Saving…' : kind === 'faqs' ? 'Submit Reply' : 'Post Reply'}</button>
+      {kind === 'reviews' && <button className={design.replyCancel} type="button" onClick={() => { setReply(''); setNote(''); setError(''); }}>Cancel</button>}
+      <button className={styles.primary + (kind === 'reviews' ? ' ' + design.replySubmit : '')} disabled={busy || !reply.trim()}>
+        {busy ? 'Saving…' : kind === 'faqs' ? 'Submit Reply' : 'Post Reply'}
+      </button>
     </div>
   </form>;
 }
