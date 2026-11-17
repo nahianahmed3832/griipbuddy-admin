@@ -3,7 +3,7 @@ import { api, ApiError, mongoId, obj, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
-import { has, type Region } from '@/lib/sections';
+import { has, superAdmin, type Region } from '@/lib/sections';
 import styles from './production-pos-report.module.css';
 
 const path = '/dashboard/pos/report';
@@ -27,7 +27,7 @@ export async function ProductionPosReport({ auth, q, region }: { auth: Session; 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format();
   const from = reportDay(param(q, 'from')) ?? today;
   const to = reportDay(param(q, 'to')) ?? today;
-  const scope = auth.staff.assignedLocation;
+  const scope = superAdmin(auth.staff) ? undefined : auth.staff.assignedLocation;
   const locations = has(auth.staff, 'business_locations.view') ? await loadLocations(auth, region) : [];
   const selected = param(q, 'location') ?? '';
   const location = scope || selected;
