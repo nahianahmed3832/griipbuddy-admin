@@ -4,9 +4,10 @@ import { useState, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 
 type Option = { id: string; name: string };
-export function ContentProductPicker({ multiple, value, update }: {
-  multiple: boolean; value: string; update: (value: string) => void;
+export function ContentProductPicker({ multiple, value, update, production = false }: {
+  multiple: boolean; value: string; update: (value: string) => void; production?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [items, setItems] = useState<Option[]>([]);
   const [busy, setBusy] = useState(false);
@@ -30,6 +31,27 @@ export function ContentProductPicker({ multiple, value, update }: {
     event.preventDefault();
     void search();
   }
+  if (production) return <div className="cms-product-picker">
+    <button type="button" className="button secondary" aria-expanded={open} onClick={() => setOpen(!open)}>
+      {multiple ? 'Select products...' : 'Select product'}
+    </button>
+    {open && <div>
+      <label>Search products<input type="search" value={q} onChange={event => setQ(event.target.value)} onKeyDown={onKey} maxLength={100}/></label>
+      <button type="button" className="button secondary" disabled={q.trim().length < 2 || busy} onClick={() => void search()}>Search</button>
+      {feedback && <p role="status">{feedback}</p>}
+      {items.length > 0 && <ul>{items.map(item => <li key={item.id}><button type="button" className="button subtle"
+        disabled={ids.includes(item.id)} onClick={() => {
+          update(multiple ? [...ids, item.id].join(', ') : item.id);
+          setLabels({ ...labels, [item.id]: item.name });
+          if (!multiple) setOpen(false);
+        }}>{item.name}</button></li>)}</ul>}
+    </div>}
+    {ids.length > 0 && <ul>{ids.map((id, index) => <li key={id}>
+      {labels[id] || 'Selected product ' + (index + 1)}
+      <button type="button" className="button subtle" aria-label={'Remove ' + (labels[id] || 'selected product ' + (index + 1))}
+        onClick={() => update(ids.filter(value => value !== id).join(', '))}>Remove</button>
+    </li>)}</ul>}
+  </div>;
   return <div className="cms-product-picker">
     <label>Find products<input type="search" value={q} onChange={event => setQ(event.target.value)} onKeyDown={onKey} maxLength={100}/></label>
     <button type="button" className="button secondary" disabled={q.trim().length < 2 || busy} onClick={() => void search()}>Search products</button>

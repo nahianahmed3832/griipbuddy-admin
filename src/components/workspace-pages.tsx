@@ -5,6 +5,8 @@ import { advancedEnabled, loadLocations, paymentAccounts, reference } from '@/li
 import { has, type Region } from '@/lib/sections';
 import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
 import { ContentEditor } from './content-editor';
+import { ProductionFeaturedProducts, type FeaturedVariant } from './production-featured-products';
+import { ProductionBannerEditor } from './production-banner-editor';
 import { PageHeading } from './dashboard';
 import { PosEditor, type SaleDraft } from './pos-editor';
 
@@ -38,6 +40,13 @@ export async function SaleWorkspace({ auth, id, region }: { auth: Session; id?: 
 
 export async function ContentWorkspace({ auth, section, region, production = false }: { auth: Session; section?: string; region: Region; production?: boolean }) {
   if (region !== 'BD' || !has(auth.staff, 'cms.view')) throw new ApiError(403);
+  if (production && section === 'featured_products') {
+    const variants = await api('/cms/admin/featured-variants', auth.token) as FeaturedVariant[];
+    const writable = advancedEnabled() && canWrite(auth.staff);
+    return <ProductionFeaturedProducts initial={variants}
+      canAdd={writable && has(auth.staff, 'cms.create') && has(auth.staff, 'product.view')}
+      canRemove={writable && has(auth.staff, 'cms.delete')}/>;
+  }
   const [doc, categories] = await Promise.all([
     api('/cms/admin/workspace', auth.token).then(obj),
     !section || section === 'homepage.shop_by_category' ? loadCategoryTree(auth).catch(() => []) : [],
@@ -45,6 +54,8 @@ export async function ContentWorkspace({ auth, section, region, production = fal
   const carouselEnabled = !production && process.env.GRIIP_ADMIN_TARGET === 'integration';
   const allowUploads = production ? pinnedAdminGatewayConfigured() : carouselEnabled && Boolean(process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR);
   const writable = advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'cms.update');
+  if (production && section === 'banners') return <ProductionBannerEditor doc={doc}
+    writable={writable} allowUploads={allowUploads} allowProducts={has(auth.staff, 'product.view')}/>;
   if (production) return <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories}
     carouselEnabled={false} production allowProductSearch={has(auth.staff, 'product.view')} allowUploads={allowUploads} writable={writable}/>;
   return <>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import { productionCmsPreview } from '@/lib/production-cms-media';
 import { ContentProductPicker } from './content-product-picker';
@@ -63,16 +63,36 @@ const copies: Record<string, { title: string; description?: string; add?: string
   featured_products: { title: 'Featured Products', add: 'Add New Featured Product' },
   hero_section: { title: 'Hero Section Management', description: 'Manage hero video sliders (max 3 videos) with titles, buttons, and fallback images.', add: 'Add New Video' },
   'homepage.shop_by_category': { title: 'Shop by Category', description: 'Manage top 3 categories displayed on the homepage', add: 'Add New Category' },
-  'homepage.best_selling': { title: 'Best Selling Products', add: 'Add Product' },
+  'homepage.best_selling': { title: 'Best Selling Products', description: 'Manage best selling products displayed on homepage (max 20)', add: 'Add Product' },
   'homepage.new_arrivals': { title: 'New Arrivals', description: 'Manage new arrival groups (e.g., Tech, Bags, Fashion) with products', add: 'Add New Group' },
   'homepage.leather_section': { title: 'Leather Section', description: 'Manage the leather products section displayed on homepage' },
 };
 const banners = ['banners', 'mobile_banners', 'featured_products'];
 const positionLabel = ['hero_section', 'homepage.shop_by_category'];
 
+const defaultProductionRows = ['hero_section', 'homepage.shop_by_category', 'homepage.best_selling'];
+const formTips: Record<string, string[]> = {
+  hero_section: ['Each video must have a unique position (1-3)', 'Videos are displayed in order: Position 1 → 2 → 3',
+    'Fallback image is shown while video loads or on devices that do not support autoplay', 'Button can be enabled/disabled per video independently',
+    'Redirect route supports internal paths (/products) and external HTTPS URLs'],
+  'homepage.shop_by_category': ['Each category must have a unique position (1-3)', 'Categories are displayed in order: Position 1 → 2 → 3',
+    'Custom label overrides the category name on display'],
+  'homepage.best_selling': ['Add up to 20 best selling products', 'Products are displayed in the order they are added',
+    'Each product can only be added once', 'Use the search box to find products quickly'],
+  'homepage.new_arrivals': ['Create groups to organize new arrivals', 'Each group must have a unique slug for URL routing',
+    'Add products to groups by searching and selecting', 'Groups are displayed in position order on homepage'],
+  'homepage.leather_section': ['Toggle the section on/off to show/hide on homepage', 'Add a banner image for visual appeal (optional)',
+    'Button link supports internal paths (/products) and external URLs', 'Position determines order relative to other homepage sections'],
+};
+
+function initialContentRows(doc: Row, section: Section, production: boolean) {
+  const rows = sectionRows(doc, section);
+  return production && !rows.length && defaultProductionRows.includes(section.id) ? [{}] : rows;
+}
+
 function productionSection(section: Section): Section {
   if (section.id === 'hero_section') return { ...section, fields: [
-    ['position','Position (1-3)','number'], ['title','Title'], ['video_url','Video File'], ['thumbnail_url','Fallback Image (Optional)','optional'],
+    ['position','Position (1-3)','number'], ['title','Title'], ['video_url','Video File','optional'], ['thumbnail_url','Fallback Image (Optional)','optional'],
     ['button.enabled','Show Button','toggle'], ['button.text','Button Text','optional'], ['button.redirect_route','Redirect Route','optional'],
   ] };
   if (section.id === 'homepage.shop_by_category' || section.id === 'homepage.new_arrivals') {
@@ -90,7 +110,8 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
   const isCarousel = carouselEnabled && section.id === carousel.id;
   const copy = production ? copies[section.id] : undefined;
   const positionInput = section.fields.some(([name]) => name === 'position');
-  const [rows, setRows] = useState(() => sectionRows(doc, initial));
+  const formId = useId();
+  const [rows, setRows] = useState(() => initialContentRows(doc, initial, production));
   const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState(false);
@@ -102,7 +123,7 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
   function switchSection(next: Section) {
     if (dirty && !window.confirm('Discard unsaved content changes?')) return;
     setSection(next);
-    setRows(sectionRows(doc, next));
+    setRows(initialContentRows(doc, next, production));
     setDirty(false);
     setFeedback('');
   }
@@ -181,18 +202,33 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
 
   const bannerTabs = production && initialSection === 'banners';
   const sectionTabs = bannerTabs ? availableSections.filter(item => banners.includes(item.id)) : availableSections;
+  const actionsInHeader = production && !bannerTabs && Boolean(copy);
+  const saveLabel = section.id === 'hero_section' ? 'Save All Changes' : section.id === 'homepage.new_arrivals' ? 'Save All Groups' : 'Save Changes';
   return <section className={production ? styles.page : 'panel padded'}>
-    {copy && <header className={styles.heading}><h1>{bannerTabs ? 'Banner Update' : copy.title}</h1>{copy.description && <p>{copy.description}</p>}</header>}
+    {copy && <header className={styles.heading}><div><h1>{bannerTabs ? 'Banner Update' : copy.title}</h1>{copy.description && <p>{copy.description}</p>}</div>
+      {actionsInHeader && <div className="page-actions">
+        <button type="button" className="button secondary" disabled={busy || uploading} onClick={() => {
+          if (!dirty || window.confirm('Discard unsaved content changes?')) {
+            setRows(initialContentRows(doc, section, production)); setDirty(false); setFeedback(''); router.refresh();
+          }
+        }}>Refresh</button>
+        {writable && <button type="submit" className="button primary" form={formId} disabled={!dirty || busy || uploading}>
+          {busy ? 'Saving…' : saveLabel}
+        </button>}
+      </div>}
+    </header>}
     {(!initialSection || bannerTabs) && <div className={bannerTabs ? styles.tabs : 'tabs'} aria-label="Content sections">{sectionTabs.map(item =>
       <button className={'button ' + (section.id === item.id ? 'primary' : 'subtle')} key={item.id} type="button"
         aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{bannerTabs && item.id === 'featured_products' ? 'Featured Banners' : production ? copies[item.id]?.title ?? item.label : item.label}</button>)}</div>}
-    <form className={production ? `${styles.form} stack-form` : 'stack-form'} onSubmit={save}>
+    <form id={formId} className={production ? `${styles.form} stack-form` : 'stack-form'} onSubmit={save}>
       {(!copy || bannerTabs || section.id === 'homepage.leather_section') && <h2>{section.id === 'homepage.leather_section' && production ? 'Section Settings' : copy?.title ?? section.label}</h2>}
       {isCarousel && <p>Add up to five slides. {allowUploads && 'Upload a photo (JPG, PNG, WebP or AVIF, up to 6 MB) or video (MP4 or WebM, up to 24 MB), or '}use a direct media URL. A video may have a cover photo.</p>}
       {section.id === 'seo' && <p>Use / for the homepage or a storefront route such as /bd/products. The storefront keeps its canonical URL and indexing policy.</p>}
-      {!rows.length && <p>No entries yet.</p>}
+      {!rows.length && !production && <p>No entries yet.</p>}
       {rows.map((row, index) => <fieldset className="editor-fieldset" key={index} disabled={!writable || busy || uploading}>
-        <legend>{isCarousel ? 'Slide' : 'Entry'} {index + 1}</legend>
+        {production ? section.max && <h2>{section.id === 'hero_section' ? 'Video ' : section.id === 'homepage.shop_by_category' ? 'Category '
+          : section.id === 'homepage.best_selling' ? '#' : section.id === 'homepage.new_arrivals' ? 'Group ' : 'Banner '}{index + 1}</h2>
+          : <legend>{isCarousel ? 'Slide' : 'Entry'} {index + 1}</legend>}
         <div className="editor-grid">{section.fields.map(([name, label, kind]) => {
           const value = get(row, name) ?? (name === 'position' ? index + 1 : undefined);
           const change = (input: unknown) => update(rows.map((item, position) => position === index ? set(item, name, input) : item));
@@ -205,10 +241,21 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
             const source = new URL(preview);
             safePreview ||= source.protocol === 'https:' && !source.username && !source.password;
           } catch { /* Address may still be a local asset. */ }
+          if (production && section.id === 'homepage.shop_by_category' && ['subcategory_id','icon_image_url'].includes(name)) return null;
+          if (production && section.id === 'hero_section' && ['button.text','button.redirect_route'].includes(name) && get(row, 'button.enabled') !== true) return null;
+          if (production && isProduct && allowProductSearch) return <div className="cms-field" key={name}>
+            <span>{section.id === 'homepage.best_selling' ? 'Product *' : 'Products'}</span>
+            {writable && <ContentProductPicker production multiple={kind === 'ids'} value={text} update={change}/>}
+          </div>;
           const taxonomy = name === 'category_id' ? categories : name === 'subcategory_id'
             ? categories.find(category => category.id === row.category_id)?.children : undefined;
-          return <div className="cms-field" key={name}><label>{label}
-            {taxonomy && taxonomy.length > 0 ? <select value={text} required={kind !== 'optional'}
+          return <div className="cms-field" key={name}><label>{production && !bannerTabs && name === 'category_id' ? 'Category *'
+            : production && section.id === 'homepage.shop_by_category' && name === 'label' ? 'Custom Label (Optional)' : label}
+            {production && kind === 'toggle' ? <input type="checkbox" role="switch" checked={value === true} onChange={event => change(event.target.checked)}/>
+             : production && positionInput && name === 'position' && positionLabel.includes(section.id) ? <select value={text} onChange={event => change(event.target.value)}>
+               {[1,2,3].map(position => <option value={position} key={position}>Position {position}</option>)}</select>
+             : production && media && allowUploads && (section.id === 'hero_section' || section.id === 'homepage.leather_section') ? null
+             : taxonomy && taxonomy.length > 0 ? <select value={text} required={kind !== 'optional'}
               onChange={event => name === 'category_id' ? update(rows.map((item, position) => position === index
                 ? { ...item, category_id: event.target.value, subcategory_id: '' } : item)) : change(event.target.value)}>
               <option value="">{kind === 'optional' ? 'None' : 'Choose a category'}</option>
@@ -220,8 +267,10 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
               onChange={event => change(event.target.value)} required={kind === 'long'}/>
               : <input value={text} type={kind === 'number' ? 'number' : 'text'} required={kind !== 'optional'}
                 min={kind === 'number' ? 1 : undefined} max={kind === 'number' ? (positionLabel.includes(section.id) ? 3 : 100) : undefined}
-                maxLength={isCarousel && name === 'title' ? 120 : 1000} onChange={event => change(event.target.value)}/>}
+                maxLength={isCarousel && name === 'title' ? 120 : production && name === 'label' ? 50 : production && section.id === 'hero_section' && name === 'title' ? 200 : 1000} onChange={event => change(event.target.value)}/>}
           </label>
+          {production && (name === 'label' && section.id === 'homepage.shop_by_category' || name === 'title' && section.id === 'hero_section') &&
+            <small>{text.length}/{name === 'label' ? 50 : 200} characters</small>}
           {isProduct && writable && allowProductSearch && <ContentProductPicker multiple={kind === 'ids'} value={text} update={change}/>}
           {media && safePreview && (name === 'video_url'
             ? <video className="cms-preview" controls preload="metadata" src={preview} aria-label={label}/>
@@ -254,14 +303,16 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
         {section.max && <button className="button secondary" type="button" disabled={busy || uploading || rows.length >= section.max}
           onClick={() => update([...rows, {}])}>{copy?.add ?? (isCarousel ? 'Add slide' : 'Add entry')}</button>}
         {dirty && <button className="button subtle" type="button" disabled={busy || uploading} onClick={() => {
-          setRows(sectionRows(doc, section));
+          setRows(initialContentRows(doc, section, production));
           setDirty(false);
           setFeedback('');
         }}>Reset form</button>}
-        <button className="button primary" disabled={!dirty || busy || uploading}>{busy ? 'Saving…' : production ? 'Save Changes' : 'Save content'}</button>
+        {!actionsInHeader && <button className="button primary" disabled={!dirty || busy || uploading}>{busy ? 'Saving…' : production ? saveLabel : 'Save content'}</button>}
       </div>}
       {uploading && <p role="status">Uploading media…</p>}
       {feedback && <p className={error ? 'notice warn' : 'notice'} role={error ? 'alert' : 'status'}>{feedback}</p>}
     </form>
+    {production && section.max && defaultProductionRows.includes(section.id) && rows.length < section.max && <p>{section.max - rows.length} more slot(s) available</p>}
+    {production && formTips[section.id] && <aside className={styles.tips}><h2>Tips</h2><ul>{formTips[section.id].map(tip => <li key={tip}>{tip}</li>)}</ul></aside>}
   </section>;
 }

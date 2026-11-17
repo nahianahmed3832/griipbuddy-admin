@@ -14,3 +14,17 @@
 .form .upload { display: grid; justify-items: center; padding: 18px 12px; border: 2px dashed #dedee3; border-radius: 8px; color: #55555f; cursor: pointer; }
 .upload input { max-width: 100%; }
 @media (max-width: 600px) { .form fieldset { padding: 16px; } }
+.heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.form fieldset > h2 { margin: 0 0 16px; font-size: 16px; font-weight: 600; }
+.form .upload { min-height: 70px; }
+.tips { padding: 16px; border: 1px solid #cfe3ff; border-radius: 8px; background: #eff6ff; color: #1555a8; }
+.tips h2 { margin: 0; font-size: 14px; }
+.tips ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.bannerGroup { display: grid; gap: 12px; }
+.bannerGroup > h1 { margin: 0; font-size: 24px; font-weight: 500; }
+.bannerCard { display: grid; gap: 12px; padding: 16px; border: 1px solid #e3e3e6; border-radius: 10px; background: #fff; }
+.bannerCard > button { justify-self: end; }
+.bannerUpload { display: flex; align-items: center; justify-content: center; min-height: 85px; gap: 16px; padding: 12px; border: 1px dashed #d5d5da; border-radius: 8px; cursor: pointer; }
+.bannerUpload small { display: block; color: #71717f; }
+.bannerRows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 12px; }
+.bannerImage { max-width: 100%; height: auto; max-height: 300px; object-fit: contain; justify-self: center; }
