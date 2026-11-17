@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Boxes, ChartNoAxesCombined, CircleAlert,
-  ChevronRight, FileText, Info, RefreshCw, ShoppingBag } from 'lucide-react';
+  ChevronRight, FileText, Info, Minus, RefreshCw, ShoppingBag, TrendingDown, TrendingUp } from 'lucide-react';
 import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, reportFilterKeys, reportIds, reportQuery, type Query } from '@/lib/data';
 import { periodRange } from '@/lib/overview';
 import { adminPath } from '@/lib/paths';
-import { reportNumber, reportRange, reportTime, reportValue } from '@/lib/report-format';
+import { productionReportValue, reportNumber, reportRange, reportTime, reportValue } from '@/lib/report-format';
 import { has, type Region, type Staff } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { ComparisonField, CurrencyField, LocationField, PeriodFields } from './overview-filters';
@@ -14,6 +14,8 @@ import { ProductThumbnail } from './product-thumbnail';
 import { Empty } from './tables';
 import { TrendChart } from './trend-chart';
 import { ProductionReportFilters } from './production-report-filters';
+import { ProductionReportChart, type ReportPoint } from './production-report-chart';
+import { productionReportPeriodRange } from '@/lib/production-report-period';
 import './production-reports.css';
 
 const shortcuts = [
@@ -38,6 +40,7 @@ const reportDomain = (domain: unknown) => domains[str(domain) as keyof typeof do
 const tone = (value: unknown) => ['success','warning','danger','info','violet'].includes(str(value)) ? 'report-tone-' + value : '';
 const numericTypes = ['number','count','money','currency','cost','percent','days','hours'];
 const unbrokenColumns = ['period','placedAt','phone','sku','order','status'];
+const chartColors = ['#4f46e5', '#059669', '#d97706', '#dc2626', '#0284c7'];
 const formatPercentage = (value: number) => reportValue(value,'percent','BDT');
 
 function recordLink(key: string, raw: unknown, auth: Session, region: Region, production?: boolean) {
@@ -49,18 +52,23 @@ function recordLink(key: string, raw: unknown, auth: Session, region: Region, pr
 }
 
 const reportDisplayValue = (value: unknown, type: unknown, currency: string, production?: boolean) =>
-  production && typeof value === 'number' && type === 'percent'
-    ? new Intl.NumberFormat('en', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)
-    : reportValue(value, type, currency);
+  production ? productionReportValue(value, type, currency) : reportValue(value, type, currency);
+const reportCount = new Intl.NumberFormat('en-IN');
 
-function ReportMetrics({ kpis, currency, production }: { kpis: RecordData[]; currency: string; production?: boolean }) {
+function ReportMetrics({ kpis, currency, production, showChange }: {
+  kpis: RecordData[]; currency: string; production?: boolean; showChange: boolean;
+}) {
   if (!kpis.length) return null;
-  return <div className="report-metrics" style={{'--report-columns': kpis.length > 6 ? 4 : kpis.length} as React.CSSProperties}>
+  return <div className="report-metrics" data-count={kpis.length} style={{'--report-columns': kpis.length > 6 ? 4 : kpis.length} as React.CSSProperties}>
     {kpis.map(kpi => {
       const value = reportNumber(kpi.value);
       const previous = reportNumber(kpi.previous);
-      const delta = previous && value !== null ? (value - previous) / Math.abs(previous) : 0;
-      const improved = (delta < 0) === (kpi.invert === true);
+      const delta = previous && value !== null ? (value - previous) / Math.abs(previous) : null;
+      const improved = delta !== null && (delta > 0) !== (kpi.invert === true);
+      const stable = delta !== null && Math.abs(delta) < 0.0005;
+      const DeltaIcon = stable ? Minus : (delta ?? 0) > 0 ? TrendingUp : TrendingDown;
+      const showPrevious = previous !== null && (!production || showChange);
+      const hasDelta = delta !== null && (production ? showPrevious && kpi.type !== 'percent' : delta !== 0);
       const label = str(kpi.label);
       return <article className={'panel overview-card report-metric ' + tone(kpi.tone)} key={str(kpi.key)}>
         <div className="report-metric-heading"><h2>{label}</h2>
@@ -69,12 +77,13 @@ function ReportMetrics({ kpis, currency, production }: { kpis: RecordData[]; cur
           </details>}
         </div>
         <div className="overview-value"><strong>{reportDisplayValue(kpi.value, kpi.type, currency, production)}</strong>
-          {delta !== 0 && <span className={'overview-delta ' + (improved ? 'good' : 'bad')}
-            aria-label={formatPercentage(Math.abs(delta)) + (delta > 0 ? ' higher' : ' lower')}>
-            {delta > 0 ? '↗' : '↘'} {formatPercentage(Math.abs(delta))}
+          {hasDelta && <span className={'overview-delta ' + (production && stable ? 'neutral' : improved ? 'good' : 'bad')}
+            aria-label={production && stable ? 'No change' : formatPercentage(Math.abs(delta)) + (delta > 0 ? ' higher' : ' lower')}>
+            {production ? <DeltaIcon size={14} aria-hidden="true"/> : delta > 0 ? '↗' : '↘'}
+            {reportDisplayValue(Math.abs(delta), 'percent', currency, production)}
           </span>}
         </div>
-        {previous !== null && <p>Previous period{production ? ': ' : ' · '}{reportDisplayValue(previous, kpi.type, currency, production)}</p>}
+        {showPrevious && <p>Previous period{production ? ': ' : ' · '}{reportDisplayValue(previous, kpi.type, currency, production)}</p>}
         {str(kpi.estimated) && <span className="report-status report-tone-warning" title={str(kpi.estimated)}>Estimated</span>}
       </article>;
     })}
@@ -84,7 +93,18 @@ function ReportMetrics({ kpis, currency, production }: { kpis: RecordData[]; cur
 function ReportChart({ series, currency, production }: { series: RecordData; currency: string; production?: boolean }) {
   const lines = arr(series.lines).map(obj);
   const points = arr(series.points).map(obj);
-  if (!lines.length || !points.length) return null;
+  if (!lines.length || !points.length || (production && points.length < 2)) return null;
+  if (production) {
+    const seriesLines = lines.map((line, index) => ({ key: str(line.key), label: str(line.label), color: chartColors[index % chartColors.length] }));
+    const seriesPoints = points.map(point => ({
+      ...Object.fromEntries(seriesLines.map(line => [line.key, reportNumber(point[line.key])])),
+      key: str(point.key),
+    } satisfies ReportPoint));
+    return <section className="panel report-panel report-trend">
+      <ProductionReportChart points={seriesPoints} lines={seriesLines} unit={str(series.unit)} currency={currency}
+        valueType={str(lines[0].type) || 'number'}/>
+    </section>;
+  }
   const tick = new Intl.DateTimeFormat('en-GB', {day:'numeric',month:'short',timeZone:'UTC'});
   return <section className="panel report-panel report-trend">
     {!production && <h2>Sales trend</h2>}
@@ -99,8 +119,8 @@ function ReportChart({ series, currency, production }: { series: RecordData; cur
   </section>;
 }
 
-function ReportTable({ table, auth, region, currency, path, query, production, showCaption }: {
-  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>; production?: boolean; showCaption?: boolean;
+function ReportTable({ table, auth, region, currency, path, query, production }: {
+  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>; production?: boolean;
 }) {
   const columns = arr(table.columns).map(obj);
   const rows = arr(table.rows).map(obj);
@@ -114,17 +134,20 @@ function ReportTable({ table, auth, region, currency, path, query, production, s
   const previous = page !== null && page > 1;
   const next = page !== null && limit !== null && total !== null && page * limit < total;
   return <section className="panel report-panel" aria-label={name}>
-    {(!production || showCaption) && <div className="report-table-caption"><h2>{name}</h2>{str(table.description) && <p className="muted">{str(table.description)}</p>}</div>}
+    {(!production || str(table.title) || str(table.description)) && <div className="report-table-caption">
+      {(!production || str(table.title)) && <h2>{name}</h2>}
+      {str(table.description) && <p className="muted">{str(table.description)}</p>}
+    </div>}
     {rows.length || production ? <div className="table-scroll report-table-scroll" tabIndex={0} role="region" aria-label={name + ' table'}>
       <table><thead><tr>{columns.map(col => {
         const key = str(col.key);
         const active = sort.key === key;
-        const order = active && sort.order === 'asc' ? 'desc' : 'asc';
-        const Icon = active ? sort.order === 'asc' ? ArrowUp : ArrowDown : ArrowUpDown;
         const numeric = numericTypes.includes(str(col.type));
+        const order = active ? sort.order === 'asc' ? 'desc' : 'asc' : production && numeric ? 'desc' : 'asc';
+        const Icon = active ? sort.order === 'asc' ? ArrowUp : ArrowDown : ArrowUpDown;
         return <th key={key} scope="col" className={numeric ? 'report-numeric' : undefined}
           aria-sort={active ? sort.order === 'asc' ? 'ascending' : 'descending' : undefined}>
-          {col.sortable === true && table.sort ? <Link className="table-sort" href={url(path,{...query,sort:key,order,page:undefined})}
+          {col.sortable === true && table.sort && (!production || page !== null) ? <Link className="table-sort" href={url(path,{...query,sort:key,order,page:undefined})}
             aria-label={'Sort by ' + str(col.label) + ' ' + (order === 'asc' ? 'ascending' : 'descending')}>
             {str(col.label)}<Icon size={14} aria-hidden="true"/>
           </Link> : str(col.label)}
@@ -133,29 +156,40 @@ function ReportTable({ table, auth, region, currency, path, query, production, s
         const key = str(col.key);
         const value = reportDisplayValue(row[key], col.type, currency, production);
         const href = recordLink(key,obj(row._links)[key],auth,region,production);
-        const flag = tone(obj(row._tones)[key]);
-        const content = href ? <Link className="table-link" href={href}>{value}</Link> : value;
-        const cellClass = numericTypes.includes(str(col.type)) ? 'report-numeric' : unbrokenColumns.includes(key) ? 'report-nowrap' : undefined;
-        return <td key={key} className={cellClass}>
-          {col.image === true ? <div className="overview-product"><ProductThumbnail source={row._image}/>{content}</div>
-            : flag ? <span className={'report-status ' + flag}>{content}</span> : content}
+        const flag = (!production || value !== '—') ? tone(obj(row._tones)[key]) : '';
+        const status = flag ? <span className={'report-status ' + flag}>{value}</span> : value;
+        const content = href ? <Link className="table-link" href={href}>{status}</Link> : status;
+        const cellClass = [
+          numericTypes.includes(str(col.type)) ? 'report-numeric' : production || unbrokenColumns.includes(key) ? 'report-nowrap' : '',
+          production && col.image === true ? 'report-image-cell' : production && col.type === 'text' ? 'report-text-cell' : '',
+        ].filter(Boolean).join(' ');
+        return <td key={key} className={cellClass} title={production && col.type === 'text' ? str(row[key]) : undefined}>
+          {col.image === true ? <div className="overview-product"><ProductThumbnail source={row._image}/><span>{content}</span></div> : content}
         </td>;
       })}</tr>)}
         {production && !rows.length && <tr><td className="production-report-table-empty" colSpan={Math.max(1, columns.length)}>
           {str(table.emptyText) || 'No records in this view'}
         </td></tr>}
       </tbody>
-      {totals && (!production || rows.length > 0) && <tfoot><tr>{columns.map((col,index) => index === 0
-        ? <th key={str(col.key)} scope="row">{reportDisplayValue(totals[str(col.key)], col.type, currency, production)}</th>
-        : <td key={str(col.key)} className={numericTypes.includes(str(col.type)) ? 'report-numeric' : undefined}>
-          {reportDisplayValue(totals[str(col.key)], col.type, currency, production)}</td>)}</tr></tfoot>}
+      {totals && (!production || rows.length > 0) && <tfoot><tr>{columns.map((col, index) => {
+        const key = str(col.key);
+        const value = production && totals[key] === undefined ? '' : reportDisplayValue(totals[key], col.type, currency, production);
+        return index === 0 ? <th key={key} scope="row">{value}</th>
+          : <td key={key} className={numericTypes.includes(str(col.type)) ? 'report-numeric' : undefined}>{value}</td>;
+      })}</tr></tfoot>}
       </table>
     </div> : <Empty detail={str(table.emptyText) || undefined}/>}
-    {page !== null && (previous || next) && <div className="pagination">
-      <span>Page {page} · {total} records</span><div>
-        {previous && <Link className="button secondary" href={url(path,{...query,page:String(page - 1)})}><ArrowLeft size={15}/> Previous</Link>}
-        {next && <Link className="button secondary" href={url(path,{...query,page:String(page + 1)})}>Next <ArrowRight size={15}/></Link>}
-      </div>
+    {page !== null && (production ? total !== null && limit !== null && total > 0 : previous || next) && <div className="pagination">
+      <span>{production && limit !== null && total !== null
+        ? reportCount.format((page - 1) * limit + 1) + '–' + reportCount.format(Math.min(page * limit, total)) + ' of ' + reportCount.format(total) + (totals ? ' · totals cover every row' : '')
+        : 'Page ' + page + ' · ' + total + ' records'}</span>
+      {(previous || next) && <div>
+        {previous ? <Link className="button secondary" href={url(path,{...query,page:String(page - 1)})}><ArrowLeft size={15}/> Previous</Link>
+          : production && <button className="button secondary" disabled><ArrowLeft size={15}/> Previous</button>}
+        {production && total !== null && limit !== null && <span>Page {reportCount.format(page)} of {reportCount.format(Math.ceil(total / limit))}</span>}
+        {next ? <Link className="button secondary" href={url(path,{...query,page:String(page + 1)})}>Next <ArrowRight size={15}/></Link>
+          : production && <button className="button secondary" disabled>Next <ArrowRight size={15}/></button>}
+      </div>}
     </div>}
   </section>;
 }
@@ -212,11 +246,12 @@ export async function Reports({ auth, id, q, region, production = false }: {
   }
   if (!reportIds.includes(id)) throw new ApiError(404);
   const path = reportBase + '/' + id;
-  const { period, from, to } = periodRange(q, production || id === 'sales-summary' ? '30' : 'today');
-  const scope = reportQuery({...q,from,to},region);
+  const { period, from, to } = production ? productionReportPeriodRange(q) : periodRange(q, id === 'sales-summary' ? '30' : 'today');
+  const scope = { ...reportQuery({...q,from,to},region), ...(production && param(q, 'order') === 'desc' && { order: 'desc' }) };
   const page = param(q,'page');
+  const limit = production ? param(q,'limit') : undefined;
   const refresh = param(q,'refresh') === '1' ? '1' : undefined;
-  const data = obj(await api(url('/analytics/reports/' + id,{...scope,page,refresh}),auth.token));
+  const data = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh}),auth.token));
   const report = obj(data.report);
   const meta = obj(data.meta);
   const domain = reportDomain(report.domain);
@@ -235,7 +270,7 @@ export async function Reports({ auth, id, q, region, production = false }: {
   const previous = reportRange(obj(meta.compare).from,obj(meta.compare).to);
   const basis = str(report.dateBasis);
   const window = reportRange(meta.from,meta.to) || (basis.startsWith('Right now') ? '' : 'Right now');
-  const context = [region === 'BD' ? 'Bangladesh' : 'International',currency,window,
+  const context = [region === 'BD' ? 'Bangladesh' : 'International',currency,production && !dates ? '' : window,
     previous && (production ? 'compared with ' : 'Compared with ') + previous,basis].filter(Boolean).join(' · ');
 
   const filterInputs = <>
@@ -253,43 +288,56 @@ export async function Reports({ auth, id, q, region, production = false }: {
           : <select name={key} defaultValue={value}>{arr(filter.options).map(obj).map(option =>
             <option key={str(option.value)} value={str(option.value)}>{str(option.label)}</option>)}</select>}</label>;
       })}
-            {report.compares === true && (production
-      ? <><label className="production-report-compare"><input type="checkbox" role="switch" name="compare" value="previous"
-          defaultChecked={scope.compare !== 'none'}/>Compare with previous period</label>
-        <input type="hidden" name="filterApplied" value="1"/></>
-      : <ComparisonField compare={scope.compare !== 'none'}/>)}
+      {report.compares === true && <ComparisonField compare={scope.compare !== 'none'}/>}
   </>;
   const filterKey = JSON.stringify([period, query]);
   const tableEntries = arr(data.tables).map(obj);
-  const actionsBelow = id === 'sales-summary' || id === 'pending-fulfilment';
+  const restricted = arr(data.restricted).map(str);
+  const restrictedText = restricted.includes('cost') && restricted.includes('profit')
+    ? 'Purchase price and profit figures are hidden for your role.'
+    : restricted.includes('cost') ? 'Purchase price figures are hidden for your role.' : 'Profit and margin figures are hidden for your role.';
+  const quality = arr(data.quality).map(obj);
   return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
+      <div className="report-header-copy">
       <Link className="table-link report-back" href={url(reportBase,{region})}><ArrowLeft size={16}/> All reports</Link>
       <div className="report-title"><span className="overview-block-icon"><domain.icon size={22}/></span>
         <div><span className="report-domain">{domain.name}</span><h1>{str(report.title)}</h1></div>
       </div>
       <p className="report-description">{str(report.description)}</p>
       <p className="muted">{context}</p>
-      <div className="page-actions report-actions" data-stacked={actionsBelow}>
+      </div>
+      <div className="page-actions report-actions">
         {asOf && <time className="muted" dateTime={generatedAt}>Data as of {asOf}{!production && ' Dhaka'}</time>}
-        <a className="button secondary" href={adminPath(url(path,{...query,page,period:dates ? period : undefined,refresh:'1'}))}><RefreshCw size={15}/> Refresh</a>
+        <a className="button secondary" href={adminPath(url(path,{...query,page,limit,period:dates ? period : undefined,refresh:'1'}))}><RefreshCw size={15}/> Refresh</a>
         <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'csv'}))}><ArrowDownToLine size={16}/> CSV</a>
         <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'xlsx'}))}><ArrowDownToLine size={16}/> Excel</a>
       </div>
     </header>
-    {(dates || filters.length > 0 || locations.length > 0 || region === 'INTERNATIONAL') &&
-      (production ? <ProductionReportFilters key={filterKey} path={path}>{filterInputs}</ProductionReportFilters> :
+    {production ? <ProductionReportFilters path={path} region={region} period={period} from={from} to={to}
+      usesPeriod={dates} usesLocations={report.usesLocations === true} locations={locations} selectedLocations={scope.locations?.split(',') ?? []}
+      compares={report.compares === true} compare={scope.compare !== 'none'} currency={currency}
+      values={Object.fromEntries(filters.map(filter => [str(filter.key), param(q, str(filter.key)) ?? str(params[str(filter.key)])]))}
+      filters={filters.map(filter => ({ key: str(filter.key), label: str(filter.label), type: str(filter.type),
+        options: arr(filter.options).map(obj).map(option => ({ value: str(option.value), label: str(option.label) })),
+        fallback: str(filter.default),
+      }))}/> : (dates || filters.length > 0 || locations.length > 0 || region === 'INTERNATIONAL') &&
       <form key={filterKey} action={adminPath(path)} className="panel overview-filters report-filters">
         {filterInputs}
         <div className="page-actions"><button className="button primary">Apply filters</button>
           <Link className="button subtle" href={url(path,{region})}>Reset</Link></div>
-      </form>)}
-    {arr(data.restricted).length > 0 && <p className="notice">Some cost or margin figures are hidden by your permissions.</p>}
-    <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency} production={production}/>
+      </form>}
+    {!production && restricted.length > 0 && <p className="notice">Some cost or margin figures are hidden by your permissions.</p>}
+    <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency} production={production} showChange={Boolean(meta.compare)}/>
     <ReportChart series={obj(data.series)} currency={currency} production={production}/>
     {tableEntries.map(table => <ReportTable key={str(table.id)} table={table} auth={auth} region={region}
-      currency={currency} path={path} query={{...query,period:dates ? period : undefined}} production={production} showCaption={tableEntries.length > 1}/>)}
-    {arr(data.quality).map(obj).map((flag,index) => <div className="notice warn" key={index}><CircleAlert size={17}/>
+      currency={currency} path={path} query={{...query,limit,period:dates ? period : undefined}} production={production}/>)}
+    {production && restricted.length > 0 && <p className="production-report-restricted"><Info size={14}/>{restrictedText}</p>}
+    {production && quality.length > 0 && <div className="production-report-quality">{quality.map((flag, index) =>
+      <p key={str(flag.code) || index}><CircleAlert size={14}/><span>{str(flag.message)}
+        {Number(flag.total) > 0 && <> ({reportCount.format(Number(flag.affected))} of {reportCount.format(Number(flag.total))})</>}</span></p>
+    )}</div>}
+    {!production && quality.map((flag,index) => <div className="notice warn" key={index}><CircleAlert size={17}/>
       <p>{str(flag.message)}{reportNumber(flag.affected) !== null && reportNumber(flag.total) !== null &&
         <> ({String(flag.affected)} of {String(flag.total)})</>}</p></div>)}
   </div>;

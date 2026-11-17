@@ -83,42 +83,38 @@
 }
 .production-report-other h2 { font-size: 18px; margin-bottom: 8px; }
 .production-report-page .report-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
 }
-.production-report-page .report-header > .report-back {
-  grid-column: 1 / -1;
-  color: var(--report-copy);
+.production-report-page .report-header-copy { max-width: 100%; min-width: 0; }
+.production-report-page .report-header-copy > * + * { margin-top: 6px; }
+.production-report-page .report-back { gap: 4px; color: var(--report-copy); font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .report-title { gap: 12px; }
+.production-report-page .report-domain, .production-report-page .report-status {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--report-pill-border, #a3b3c9);
+  color: var(--report-pill-text, #314158);
+  background: var(--report-pill-bg, #f1f5f9);
   font-size: 12px;
   font-weight: 500;
-}
-.production-report-page .report-title { grid-column: 1 / -1; margin: 3px 0 2px; gap: 12px; }
-.production-report-page .report-domain {
-  gap: 6px;
-  padding: 0 7px;
   line-height: 18px;
-  font-weight: 500;
-  border: 1px solid color-mix(in oklab, var(--section-color) 40%, white);
-  color: var(--section-color);
 }
-.production-report-page .report-title h1 { margin: 0; line-height: 30px; }
-.production-report-page .report-description { grid-row: 3; color: var(--report-copy); font-size: 14px; }
-.production-report-page .report-header:has(.report-actions[data-stacked="true"]) > :is(.report-description, p.muted) { grid-column: 1 / -1; }
-.production-report-page .report-header:has(.report-actions[data-stacked="true"]) .report-description { max-width: 750px; }
-.production-report-page.overview-sales .report-header:has(.report-actions[data-stacked="true"]) .report-description { max-width: none; }
-.production-report-page .report-header > p.muted { grid-row: 4; color: var(--report-muted); font-size: 12px; }
-.production-report-page .report-actions {
-  grid-column: 2;
-  grid-row: 3 / span 2;
-  align-self: flex-end;
-  gap: 8px;
-  color: oklch(55.2% .016 285.938);
-  margin: 0;
-}
-.production-report-page .report-actions[data-stacked="true"] { grid-column: 1 / -1; grid-row: 5; margin-top: 7px; }
+.production-report-page .report-status { line-height: 16px; white-space: nowrap; }
+.production-report-page .report-status::before,
+.production-report-page .report-domain::before { background: var(--report-tone, var(--section-color)); }
+.production-report-page .report-title h1 { margin: 0; line-height: 32px; }
+.production-report-page .report-description { max-width: 768px; color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-page .report-header-copy > p.muted { color: var(--report-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .report-actions { flex-wrap: wrap; gap: 8px; color: oklch(55.2% .016 285.938); margin: 0; }
 .production-report-page .report-actions :is(.button, button),
-.production-report-page .production-report-submit {
+.production-report-page .pagination :is(.button, button) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -130,10 +126,10 @@
   color: inherit;
   box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   font: inherit;
-  font-weight: 500;
+  font-weight: 400;
 }
 .production-report-page .report-actions .button:hover { background: #f5f5f6; }
-.production-report-page .report-actions time { margin: 0; }
+.production-report-page .report-actions time { font-size: 12px; line-height: 16px; margin: 0; }
 .production-report-filters {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -145,33 +141,78 @@
   border-radius: 14px;
   box-shadow: var(--report-shadow);
 }
-.production-report-filters > label, .production-report-filters .overview-locations summary {
+.production-report-field {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  font-weight: 500;
-  line-height: 16px;
 }
-.production-report-filters :is(select, input:not([type="checkbox"]), .overview-locations summary span) {
+.production-report-field > span:first-child,
+.production-report-compare { color: inherit; font-size: 14px; font-weight: 500; line-height: 14px; }
+.production-report-select,
+.production-report-locations { position: relative; min-width: 0; }
+.production-report-select > svg,
+.production-report-locations > summary > svg { width: 16px; color: #a1a1aa; pointer-events: none; }
+.production-report-select > svg { position: absolute; right: 12px; top: 10px; }
+.production-report-filters :is(select, input:not([type="checkbox"]), .production-report-locations > summary) {
   width: 100%;
+  min-width: 0;
   min-height: 36px;
   height: 36px;
-  padding: 4px 12px;
+  padding: 6px 12px;
   color: inherit;
-  background: white;
+  background: transparent;
   border: 1px solid var(--report-border);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
 }
-.production-report-filters .overview-locations { align-self: auto; }
-.production-report-filters .overview-locations summary span { color: var(--muted); font-weight: 400; }
-.production-report-filters .production-report-compare {
+.production-report-select select { appearance: none; padding-inline-end: 34px; cursor: pointer; }
+.production-report-locations > summary {
   display: flex;
-  gap: 8px;
   align-items: center;
-  align-self: flex-end;
-  min-height: 36px;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 9px;
 }
+.production-report-locations > summary::-webkit-details-marker { display: none; }
+.production-report-location-count {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.production-report-location-count > span {
+  border-radius: 6px;
+  padding-inline: 5px;
+  background: #f4f4f5;
+  font-size: 12px;
+}
+.production-report-location-options {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 5px);
+  inset-inline-start: 0;
+  display: grid;
+  width: min(300px, 100vw - 40px);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--report-shadow);
+}
+.production-report-location-options fieldset { display: grid; padding: 0; margin: 0; border: 0; }
+.production-report-location-options label { display: flex; align-items: center; gap: 8px; padding: 5px 4px; }
+.production-report-location-options button { display: inline-flex; gap: 4px; align-items: center; text-align: left; }
+.production-report-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.production-report-custom-dates { min-width: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.production-report-filters .production-report-compare { display: flex; gap: 8px; align-items: center; padding-top: 24px; min-height: 56px; }
 .production-report-compare input {
   appearance: none;
   display: grid;
@@ -192,72 +233,126 @@
   display: block;
   width: 16px;
   height: 16px;
-  background: white;
   border-radius: 50%;
+  background: white;
   content: "";
   box-shadow: 0 1px 2px #0003;
 }
-.production-report-filters .production-report-submit {
-  position: absolute;
-  overflow: hidden;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  clip-path: inset(50%);
-}
-.production-report-filters .production-report-submit:focus,
-.production-report-filters:has(input[type="date"]) .production-report-submit {
-  position: static;
-  overflow: visible;
-  width: fit-content;
-  height: 36px;
-  min-height: 36px;
-  padding: 4px 10px;
-  border: 1px solid var(--report-border);
-  clip-path: none;
-}
-.production-report-page .report-metrics { gap: 12px; }
+.production-report-page .report-metrics { gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.production-report-page .report-metrics[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .production-report-page .report-metric {
-  gap: 4px;
+  gap: 0;
   padding: 16px;
   border-color: var(--report-border);
   border-left: 4px solid var(--report-tone, var(--section-color));
   box-shadow: var(--report-shadow);
   border-radius: 11px;
 }
-.production-report-page .report-metric-heading { justify-content: flex-start; align-items: center; }
-.production-report-page .report-metric h2 { font-weight: 500; color: var(--report-copy); font-size: 14px; }
-.production-report-page .report-metric strong { font-family: inherit; font-size: 24px; line-height: 32px; font-weight: 700; }
-.production-report-page .report-metric p { color: var(--report-copy); }
+.production-report-page .report-metric-heading { justify-content: flex-start; align-items: center; gap: 6px; }
+.production-report-page .report-metric h2 { font-weight: 500; color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-page .report-metric .overview-value { margin-top: 8px; gap: 8px; align-items: baseline; }
+.production-report-page .report-metric strong { font-family: inherit; font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -0.025em; font-variant-numeric: normal; }
+.production-report-page .report-metric p { margin-top: 4px; color: var(--report-copy); font-size: 12px; line-height: 16px; }
 .production-report-page .report-definition summary { color: #90a4bf; }
-.production-report-page .report-table-caption { padding: 0 0 14px; border: 0; margin: 0; }
-.production-report-page .report-table-caption h2 { font-weight: 600; font-size: 18px; }
+.production-report-page .report-definition { position: relative; }
+.production-report-page .report-definition p {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  inset: auto auto 100% 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 100px;
+  max-width: min(320px, 80vw);
+  margin: 0 0 5px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: white;
+  background: #18181b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.production-report-page .report-definition:is([open], :hover, :focus-within) > p { display: block; }
+.production-report-page .report-table-caption { padding: 0; border: 0; margin: 0 0 12px; gap: 0; }
+.production-report-page .report-table-caption h2 { font-weight: 600; font-size: 18px; line-height: 28px; }
+.production-report-page .report-table-caption p { color: var(--report-copy); font-size: 14px; line-height: 20px; }
 .production-report-page .report-table-scroll .production-report-table-empty {
-  height: 100px;
+  padding: 40px 8px;
   color: #71717a;
   text-align: center;
   vertical-align: middle;
 }
 .production-report-page .report-table-scroll th[aria-sort] > a { color: #0069a8; }
-.production-report-page .report-panel { box-shadow: var(--report-shadow); border-radius: 14px; padding: 16px; }
-.production-report-page .report-table-scroll { border: 1px solid var(--report-border); border-radius: 11px; }
-.production-report-page .report-table-scroll :is(th,td) { padding: 8px; color: #1d293d; font-size: 14px; }
-.production-report-page .report-table-scroll th { background: #f1f5f9; font-weight: 600; }
-.production-report-page .report-table-scroll tbody tr:nth-child(even) td { background: #f8fafc; }
-.production-report-page .report-table-scroll td a { color: #0069a8; font-weight: 500; }
-.production-report-page .report-trend .overview-chart { display: block; width: 100%; height: 250px; }
-.production-report-page .report-trend .overview-chart-key { margin: 0; }
-.production-report-page .trend-color-0 { color: #4f39f6; }
-.production-report-page .trend-color-1 { color: #009966; }
-.production-report-page .trend-color-2 { color: #e17100; }
-@media (max-width: 1080px) {
-  .production-report-page .report-metrics, .production-report-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .production-report-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .production-report-page .report-actions { grid-column: 1 / -1; grid-row: 5; margin-top: 7px; }
+.production-report-page .report-panel { border-color: var(--report-border); border-top: 4px solid var(--section-color); box-shadow: var(--report-shadow); border-radius: 14px; padding: 16px; }
+.production-report-page .report-table-scroll { border: 1px solid #e2e8f0; border-radius: 11px; box-shadow: var(--report-shadow); }
+.production-report-page .report-table-scroll table { font-size: 14px; line-height: 20px; }
+.production-report-page .report-table-scroll :is(th,td) {
+  min-width: 0;
+  max-width: none;
+  padding: 8px;
+  color: #1d293d;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: normal;
+  white-space: nowrap;
 }
+.production-report-page .report-table-scroll th { height: 40px; background: #f1f5f9; font-weight: 600; }
+.production-report-page .report-table-scroll .report-numeric { font-weight: 500; }
+.production-report-page .report-table-scroll th.report-numeric { font-weight: 600; }
+.production-report-page .report-table-scroll tfoot :is(th,td) { color: #0f172b; font-weight: 700; background: #f1f5f9; }
+.production-report-page .report-table-scroll tfoot tr { border-color: #cbd5e1; }
+.production-report-page .report-table-scroll tbody tr:nth-child(even) td { background: #f6f8fa; }
+.production-report-page .report-table-scroll tbody tr:hover td { background: #eef8ff; }
+.production-report-page .report-table-scroll td a { color: #0069a8; font-weight: 500; }
+.production-report-page .report-table-scroll td a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.production-report-page .report-table-scroll td.report-text-cell { max-width: 352px; overflow: hidden; text-overflow: ellipsis; }
+.production-report-page .report-table-scroll td.report-image-cell { max-width: 416px; }
+.production-report-page .report-table-scroll td .overview-product { min-width: 0; gap: 10px; }
+.production-report-page .report-table-scroll .overview-product > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.production-report-page .pagination { flex-wrap: wrap; gap: 8px; padding: 0; border: 0; margin-top: 8px; line-height: 16px; }
+.production-report-page .pagination > div { align-items: center; gap: 8px; }
+.production-report-page .production-report-restricted,
+.production-report-page .production-report-quality { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; background: #f8fafc; color: #314158; font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .production-report-restricted,
+.production-report-page .production-report-quality p { display: flex; gap: 8px; align-items: flex-start; }
+.production-report-page .production-report-quality { display: grid; gap: 4px; border-color: #fee685; background: #fffbeb; color: #7b3306; }
+.production-report-page .production-report-quality svg { color: #d97706; }
+.production-report-page.overview-sales .report-domain {
+  --report-pill-bg: #e0e7ff; --report-pill-border: #a3b3ff; --report-pill-text: #372aac; --report-tone: #4f39f6;
+}
+.production-report-page.overview-fulfilment .report-domain,
+.production-report-page .report-tone-info {
+  --report-pill-bg: #dff2fe; --report-pill-border: #74d4ff; --report-pill-text: #00598a; --report-tone: #0084d1;
+}
+.production-report-page.overview-inventory .report-domain {
+  --report-pill-bg: #cbfbf1; --report-pill-border: #5eead4; --report-pill-text: #005f5a; --report-tone: #009689;
+}
+.production-report-page .report-tone-success {
+  --report-pill-bg: #d1fae5; --report-pill-border: #86efac; --report-pill-text: #006045; --report-tone: #009966;
+}
+.production-report-page .report-tone-warning {
+  --report-pill-bg: #fef3c6; --report-pill-border: #ffd230; --report-pill-text: #7b3306; --report-tone: #fe9a00;
+}
+.production-report-page .report-tone-danger {
+  --report-pill-bg: #ffe2e2; --report-pill-border: #ffa2a2; --report-pill-text: #9f0712; --report-tone: #e7000b;
+}
+.production-report-page .report-tone-violet {
+  --report-pill-bg: #ede9fe; --report-pill-border: #c4b4ff; --report-pill-text: #59168b; --report-tone: #7f22fe;
+}
+@media (min-width: 1280px) {
+  .production-report-page .report-metrics[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .production-report-page .report-metrics[data-count="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 1279px) {
+  .production-report-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-report-page .report-metrics:is([data-count="5"], [data-count="6"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1023px) {
+  .production-report-page .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .production-report-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) { .production-report-filters { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 639px) {
-  .production-report-center, .production-report-page { gap: 16px; }
-  .production-report-cards, .production-report-page .report-metrics, .production-report-filters { grid-template-columns: minmax(0, 1fr); }
+  .production-report-cards, .production-report-page .report-metrics { grid-template-columns: minmax(0, 1fr) !important; }
 }
