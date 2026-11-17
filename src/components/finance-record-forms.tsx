@@ -154,8 +154,9 @@ export function FinanceRecordForm({ view, id, initial, choices, production = fal
   </form>;
 }
 
-export function FinanceRecordActions({ view, id, status, approved, canUpdate, canApprove, canRemove, production = false }: {
+export function FinanceRecordActions({ view, id, status, approved, canUpdate, canApprove, canRemove, production = false, only }: {
   view: ExpenseView; id: string; status: string; approved: boolean; canUpdate: boolean; canApprove: boolean; canRemove: boolean; production?: boolean;
+  only?: 'status' | 'approve' | 'note' | 'delete';
 }) {
   const router = useRouter();
   const closeDialog = useContext(FinanceDialogClose);
@@ -171,8 +172,8 @@ export function FinanceRecordActions({ view, id, status, approved, canUpdate, ca
     try {
       await write(view, id, action, payload);
       reset?.reset();
+      closeDialog?.();
       if (action === 'delete') {
-        closeDialog?.();
         router.replace(production ? productionFinancePath(view) : financePath(view) + '?region=BD&removed=1');
       }
       router.refresh();
@@ -186,21 +187,22 @@ export function FinanceRecordActions({ view, id, status, approved, canUpdate, ca
   }
   if (!(canUpdate || canApprove || canRemove)) return null;
   return <section className="panel padded stack-form" aria-label="Finance actions">
-    <h2>Actions</h2>
-    {canUpdate && <form className="page-actions" onSubmit={event => { event.preventDefault(); void run('status', Object.fromEntries(new FormData(event.currentTarget))); }}>
+    {!only && <h2>Actions</h2>}
+    {canUpdate && (!only || only === 'status') && <form className="page-actions" onSubmit={event => { event.preventDefault(); void run('status', Object.fromEntries(new FormData(event.currentTarget))); }}>
       <SelectOption key={status} label="Status" name="status" values={view === 'expenses' ? expenseStatuses : ledgerStatuses} initial={status}/>
       <button className="button secondary" disabled={busy}>Save status</button>
     </form>}
-    {canUpdate && view === 'expenses' && <form className="stack-form" onSubmit={event => { event.preventDefault(); void run('note', Object.fromEntries(new FormData(event.currentTarget)), event.currentTarget); }}>
+    {canUpdate && view === 'expenses' && (!only || only === 'note') && <form className="stack-form" onSubmit={event => { event.preventDefault(); void run('note', Object.fromEntries(new FormData(event.currentTarget)), event.currentTarget); }}>
       <label className="filter-label">Staff note<textarea name="note" required rows={2} maxLength={1000}/></label>
       <div className="page-actions"><button className="button secondary" disabled={busy}>Add note</button></div>
     </form>}
     <div className="page-actions">
-      {canApprove && <button className="button secondary" disabled={busy} onClick={() => void run('approve', { approved: !approved })}>{approved ? 'Withdraw approval' : 'Approve expense'}</button>}
-      {canRemove && <button className="button secondary" disabled={busy} onClick={() => { setError(''); remove.current?.showModal(); }}>Remove {expenseViews[view].label}</button>}
+      {canApprove && (!only || only === 'approve') && <button className="button secondary" disabled={busy} onClick={() => void run('approve', { approved: !approved })}>{approved ? (production ? 'Roll back approval' : 'Withdraw approval') : 'Approve expense'}</button>}
+      {canRemove && only === 'delete' && <button className="button primary" disabled={busy} onClick={() => void run('delete')}>Confirm deletion</button>}
+      {canRemove && !only && <button className="button secondary" disabled={busy} onClick={() => { setError(''); remove.current?.showModal(); }}>Remove {expenseViews[view].label}</button>}
     </div>
     {error && !remove.current?.open && <p className="notice warn" role="alert">{error}</p>}
-    {canRemove && <dialog className="form-dialog" ref={remove} aria-label={'Remove ' + expenseViews[view].label} onCancel={event => { if (busy) event.preventDefault(); }}>
+    {canRemove && !only && <dialog className="form-dialog" ref={remove} aria-label={'Remove ' + expenseViews[view].label} onCancel={event => { if (busy) event.preventDefault(); }}>
       <div className="stack-form"><h2>Remove {expenseViews[view].label}?</h2>
         {error && <p className="notice warn" role="alert">{error}</p>}
         <div className="page-actions"><button className="button secondary" disabled={busy} onClick={() => { setError(''); remove.current?.close(); }}>Cancel</button>

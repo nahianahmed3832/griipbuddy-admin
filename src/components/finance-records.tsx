@@ -244,18 +244,35 @@ function ProductionFinanceRecords({ view, records, total, search, filters, optio
             return <tr key={id}>{cells}<td>
               <details className={styles.actionMenu}><summary aria-label="Open menu"><Ellipsis size={18}/></summary>
                 {expenses ? <>
-                  <Link className="button subtle" href={financePath(view) + '/' + id}>Details</Link>
+                  <FinanceDialog title={id} label="View details">
+                    <p>{str(row.title)}</p>
+                    <dl className="details-grid">{[
+                      ['Amount', number.format(Number(row.amount) || 0)], ['Status', published],
+                      ['Approval', row.is_approved === true ? 'Approved' : 'Unapproved'], ['Date', date(row.expense_date)],
+                      ['Category', name(row.category)], ['Subcategory', name(row.subcategory)],
+                      ['Payment Method', str(row.payment_method)], ['Payment Source', name(row.payment_source)],
+                      ['Voucher No', str(row.voucher_no)], ['Account Details', str(row.account_details)],
+                    ].map(([term, value]) => <div key={term}><dt>{term}</dt><dd>{value || '—'}</dd></div>)}</dl>
+                    {!!str(row.description) && <p>{str(row.description)}</p>}
+                    {arr(row.attachments).map(str).filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value)).map((item, index) =>
+                      <a key={item + index} href={expenseAttachmentPath(item) ? adminPath(item) : item} target="_blank" rel="noreferrer">Attachment {index + 1}</a>)}
+                  </FinanceDialog>
                   {canUpdate && <Link className="button subtle" href={productionFinancePath(view, id)}>Edit</Link>}
+                  {([
+                    [canUpdate, 'Update status', 'status'], [canApprove, row.is_approved === true ? 'Roll back approval' : 'Approve', 'approve'],
+                    [canUpdate, 'Notes', 'note'], [canRemove, 'Delete', 'delete'],
+                  ] as const).filter(([enabled]) => enabled).map(([, label, only]) => <FinanceDialog key={only} title={label} label={label}>
+                    {only === 'note' && arr(row.notes).map(obj).map((note, index) =>
+                      <p key={index}>{str(note.note)} <small>{str(note.user)} {date(note.date)}</small></p>)}
+                    <FinanceRecordActions view={view} id={id} status={published.toLowerCase()} approved={row.is_approved === true}
+                      canUpdate={canUpdate} canApprove={canApprove} canRemove={canRemove} production only={only}/>
+                  </FinanceDialog>)}
                 </> : canUpdate && <FinanceDialog title={'Edit ' + copy.singular} label="Edit">
                   <FinanceRecordForm view={view} id={id} initial={fieldsForRecord(row)} choices={options} production/>
                 </FinanceDialog>}
-                {expenses && (canApprove || canUpdate || canRemove) && <FinanceDialog title="Expense actions" label="Manage expense">
-                  <FinanceRecordActions view={view} id={id} status={published.toLowerCase()} approved={row.is_approved === true}
-                    canUpdate={canUpdate} canApprove={canApprove} canRemove={canRemove} production/>
-                </FinanceDialog>}
                 {!expenses && canRemove && <FinanceDialog title={'Delete ' + copy.singular} label="Delete">
                   <FinanceRecordActions view={view} id={id} status={published.toLowerCase()} approved={false}
-                    canUpdate={false} canApprove={false} canRemove production/>
+                    canUpdate={false} canApprove={false} canRemove production only="delete"/>
                 </FinanceDialog>}
               </details>
             </td></tr>;
