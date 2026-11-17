@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { supplierFields, suppliersPath, supplierTypes, type SupplierRecord } from '@/lib/supplier-fields';
@@ -7,6 +8,7 @@ import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import design from './production-catalog-details.module.css';
 import styles from './production-catalog.module.css';
+import { ProductionCatalogActions } from './production-catalog-actions';
 
 export function SupplierEditor({ selected, region, inline = false, production = false }: { selected?: SupplierRecord; region: Region; inline?: boolean; production?: boolean }) {
   const router = useRouter();
@@ -144,4 +146,15 @@ export function DeleteSupplier({ id, name, region, production = false }: { id: s
         <div className="page-actions"><button type="button" className="button secondary" disabled={busy} onClick={() => dialog.current?.close()}>Cancel</button>
           <button className="button primary" disabled={busy}>{busy ? 'Removing…' : 'Confirm removal'}</button></div></form>
     </dialog></>;
+}
+
+export function ProductionSupplierActions({ id, name, href, region, canEdit, canDelete }: {
+  id: string; name: string; href: string; region: Region; canEdit: boolean; canDelete: boolean;
+}) {
+  return <ProductionCatalogActions label="Open menu">
+    {close => <>
+      {canEdit && <Link href={href} onClick={close}>Update Supplier</Link>}
+      {canDelete && <DeleteSupplier id={id} name={name} region={region} production/>}
+    </>}
+  </ProductionCatalogActions>;
 }

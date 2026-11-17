@@ -8,9 +8,8 @@ import { supplierDirectory, supplierRecord, supplierWrite } from '@/lib/supplier
 import type { Region } from '@/lib/sections';
 import { purchasePage } from '@/lib/purchases';
 import { PageHeading } from './dashboard';
-import { DeleteSupplier, SupplierEditor } from './supplier-editor';
+import { DeleteSupplier, ProductionSupplierActions, SupplierEditor } from './supplier-editor';
 import { RegistryPageSize } from './production-registry-size';
-import { ProductionCatalogActions } from './production-catalog-actions';
 import { Badge, Table } from './tables';
 import '@/app/purchases.css';
 import styles from './production-catalog.module.css';
@@ -70,12 +69,8 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
         <tbody>{current.map((row, index) => <tr key={row.id}>
           <td>{start + index + 1}</td><td>{row.name}</td><td>{row.type}</td><td>{row.email || 'N/A'}</td>
           <td>{row.phone || 'N/A'}</td><td>{row.address || 'N/A'}</td>
-          <td>{(edit || remove) && <ProductionCatalogActions label="Open menu">
-            {close => <>
-              {edit && <Link href={url('/dashboard/update-supplier/' + row.id, { region })} onClick={close}>Update Supplier</Link>}
-              {remove && <DeleteSupplier id={row.id} name={row.name} region={region} production/>}
-            </>}
-          </ProductionCatalogActions>}</td>
+          <td>{(edit || remove) && <ProductionSupplierActions id={row.id} name={row.name} region={region}
+            href={url('/dashboard/update-supplier/' + row.id, { region })} canEdit={edit} canDelete={remove}/>}</td>
         </tr>)}{!current.length && <tr><td colSpan={headings.length} className={styles.empty}>No suppliers found.</td></tr>}</tbody>
       </table></div>
       <nav className={design.pages} aria-label="Supplier pages">
