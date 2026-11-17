@@ -39,3 +39,5 @@
 .field > button { width:100%; }
 .dateRange .dateSelect { width:160px; }
 .cards article strong { line-height:28px; }
+
+.filters .field > button { min-height:36px; height:36px; }

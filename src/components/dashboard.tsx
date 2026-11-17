@@ -215,7 +215,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
     ? production ? url('/dashboard/orders', { status: filter, region: region === 'BD' ? undefined : region })
       : link('pending-fulfilment','pending_fulfilment','Open queue',{type})?.href
       ?? (filter ? url('/desk/orders/orders',{region,filter}) : undefined) : undefined;
-  const queue = [
+  const legacyQueue = [
     { title:'Orders to confirm', value:confirm.orders, level:'urgent', href:orderQueue('to_confirm','PLACED,ACCEPTED,PROCESSING'), notes:[money(confirm.value), 'Oldest waiting ' + hours(confirm.oldestHours), count(confirm.over48h) + ' waiting over 48 h'] },
     { title:'Awaiting stock', value:waiting.orders, level:'check', href:orderQueue('awaiting_stock','AWAITING_STOCK'), images:needed,
       notes:[money(waiting.value), ...(needed[0] ? ['Most needed: ' + str(needed[0].sku) + ' (' + count(needed[0].units) + ' units)'] : [])] },
@@ -229,6 +229,34 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
     { title:'Pre-orders to act on', value:preActions.total, level:'check', href:grant('pre_order.view') ? (production ? '/dashboard/pre-orders' : '/desk/orders/preorders?filter=ACTION_REQUIRED') : undefined,
       notes:[count(preActions.notQuoted) + ' waiting for a quote',count(preActions.awaitingAdvance) + ' awaiting advance',count(preActions.notShipped) + ' arrived, awaiting shipment'] },
   ];
+  const queueLevel = (value: unknown, urgent = false) => Number(value) > 0 ? urgent ? 'urgent' : 'check' : 'clear';
+  const queue = production ? [
+    { title:'Orders to confirm', value:confirm.orders, level:Number(confirm.over48h) > 0 ? 'urgent' : queueLevel(confirm.over24h),
+      href:orderQueue('to_confirm','PLACED,ACCEPTED,PROCESSING'),
+      notes:[...(Number(confirm.orders) > 0 ? [money(confirm.value)] : []), ...(number(confirm.oldestHours) !== undefined ? ['Oldest waiting ' + hours(confirm.oldestHours)] : []),
+        ...(Number(confirm.over48h) > 0 ? [count(confirm.over48h) + ' waiting over 48 h'] : [])] },
+    { title:'Awaiting stock', value:waiting.orders, level:queueLevel(waiting.orders), images:needed, href:orderQueue('awaiting_stock','AWAITING_STOCK'),
+      notes:[...(Number(waiting.orders) > 0 ? [money(waiting.value)] : []), ...(needed[0] ? ['Most needed: ' + str(needed[0].sku) + ' (' + counted(needed[0].units,'unit') + ')'] : [])] },
+    { title:'Payments to verify', value:verify.orders, level:queueLevel(verify.orders), href:orderQueue('payment_proof','INCOMPLETE'),
+      notes:Number(verify.orders) > 0 ? [money(verify.claimedAmount) + ' claimed (bKash/Nagad proof)'] : [] },
+    { title:'Customer not reachable', value:response.orders, level:queueLevel(response.orders), href:orderQueue('no_response','NO_RESPONSE'),
+      notes:number(response.oldestHours) !== undefined ? ['Oldest ' + hours(response.oldestHours)] : [] },
+    { title:'Overdue with courier', value:courier.overdue, level:queueLevel(courier.overdue,true), href:orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'),
+      notes:[...(Number(courier.overdue) > 0 ? [money(courier.overdueCod) + ' COD at risk'] : []), counted(courier.inTransit,'parcel') + ' with the courier'] },
+    { title:'Returns to handle', value:Number(courier.returnRequested || 0) + Number(courier.pendingReturn || 0),
+      level:queueLevel(Number(courier.returnRequested || 0) + Number(courier.pendingReturn || 0)), href:orderQueue('returns','RETURN_REQUESTED,PENDING_RETURN'),
+      notes:[count(courier.returnRequested) + ' requested by customers', count(courier.pendingReturn) + ' on the way back'] },
+    { title:'Out of stock', value:stock.outOfStock, level:Number(stock.outOfStockWithDemand) > 0 ? 'urgent' : queueLevel(stock.outOfStock),
+      href:link('low-stock','low_stock','Stock alerts')?.href ?? '/dashboard/check-outlet-stocks', images:depleted.slice(0,4),
+      notes:[...(Number(stock.outOfStockWithDemand) > 0 ? [count(stock.outOfStockWithDemand) + ' with orders waiting'] : []),
+        count(stock.lowStock) + ' running low (under 7 days of stock)', ...(depleted[0] ? ['e.g. ' + str(depleted[0].sku)] : [])] },
+    ...(actions?.preorders ? [{ title:'Pre-orders to act on', value:preActions.total, level:queueLevel(preActions.total), href:'/dashboard/pre-orders',
+      notes:[...(Number(preActions.notQuoted) > 0 ? [count(preActions.notQuoted) + ' waiting for a quote'] : []),
+        ...(Number(preActions.awaitingAdvance) > 0 ? [count(preActions.awaitingAdvance) + ' quoted, no advance yet'] : []),
+        ...(Number(preActions.notShipped) > 0 ? [count(preActions.notShipped) + ' arrived, not shipped'] : [])] }]
+      : [{ title:'Data health', value:healthLabels.reduce((sum,[key]) => sum + Number(health[key] || 0),0),
+        level:queueLevel(healthLabels.reduce((sum,[key]) => sum + Number(health[key] || 0),0)), href:link('data-health','data_health','Data health')?.href, notes:warnings }]),
+  ] : legacyQueue;
   const dispatch = obj(fulfilment?.dispatch);
   const success = obj(fulfilment?.deliverySuccess);
   const deliveryTime = obj(fulfilment?.deliveryTime);
@@ -272,17 +300,17 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         detail={production ? 'Live counts, independent of the selected period. Click a tile to open the list.' : 'Current queues are independent of the selected period. Open a tile to review matching records.'}
         tone="attention" icon={production ? <BellRing size={20}/> : <CircleAlert size={23}/>} link={openOrders}>
         <div className="overview-metrics attention-metrics">{queue.filter(item => number(item.value) !== undefined).map(item => {
-          const level = item.value === 0 ? 'clear' : production && item.title === 'Out of stock' && !number(stock.outOfStockWithDemand) ? 'check' : item.level;
-          const productionNotes = item.title === 'Overdue with courier' && !item.value
-            ? [count(courier.inTransit) + (courier.inTransit === 1 ? ' parcel with the courier' : ' parcels with the courier')]
-            : item.title === 'Out of stock'
-              ? [count(stock.lowStock) + ' running low (under 7 days of stock)', ...(depleted[0] ? ['e.g. ' + str(depleted[0].sku)] : [])] : item.notes;
-          const showNotes = item.value !== 0 || production && ['Overdue with courier', 'Returns to handle'].includes(item.title);
+          const level = item.value === 0 ? 'clear' : item.level;
+          const showNotes = item.value !== 0;
           const body = <><div className="attention-card-heading">{production ? <span className="attention-title">{item.title}</span> : <h3>{item.title}</h3>}
             <span className="attention-pill">{level === 'clear' ? 'All clear' : level === 'urgent' ? 'Act now' : 'Check'}</span></div>
             <strong>{count(item.value)}</strong>
-            {showNotes && <>{item.images?.length ? <div className="overview-thumbnails">{item.images.slice(0,4).map((row,index) =>
-              <ProductThumbnail source={row.image} key={index} size={production ? 28 : 32} emptyPlaceholder={production}/>)}</div> : null}<p>{(production ? productionNotes : item.notes).map(note => <span key={note}>{note}</span>)}</p></>}
+            {production ? <>
+              {item.images?.length ? <div className="overview-thumbnails">{item.images.map((row,index) =>
+                <ProductThumbnail source={row.image} key={index} size={28} emptyPlaceholder/>)}</div> : null}
+              <div className="production-attention-notes">{item.notes.map(note => <div key={note}>{note}</div>)}</div>
+            </> : showNotes && <>{item.images?.length ? <div className="overview-thumbnails">{item.images.slice(0,4).map((row,index) =>
+              <ProductThumbnail source={row.image} key={index} size={32}/>)}</div> : null}<p>{item.notes.map(note => <span key={note}>{note}</span>)}</p></>}
           </>;
           return item.href ? <Link key={item.title} className={'overview-card attention-' + level} href={item.href}>{body}</Link>
             : <article key={item.title} className={'overview-card attention-' + level}>{body}</article>;
@@ -315,9 +343,9 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-split"><ProductTable products={arr(sales.topProducts).map(obj)} currency={currency} region={region} canOpen={grant('product.view')} production={production}/>
           <div className="overview-stack"><Metric title="Returns processed" value={count(obj(sales.returns).orders)} detail={money(obj(sales.returns).value) + ' returned'}
             {...productionMetric('Orders for which a return was processed.', orderQueue('returns','RETURNED,PARTIAL'))}/>
-            {sales.pos && (!production || Number(obj(sales.pos).sales) > 0) ? <Metric title={production ? 'POS sales' : 'Point-of-sale value'} value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
+            {sales.pos ? <Metric title={production ? 'POS sales' : 'Point-of-sale value'} value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
               prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + (Number(obj(sales.pos).sales) === 1 ? ' sale' : ' sales')}
-              {...productionMetric('Sales completed at the point of sale during the selected period.')}/> : null}</div>
+              {...productionMetric('In-store (POS) sales by sale date. POS returns already reduce the stored sale.')}/> : null}</div>
         </div>
         <Quality data={sales.quality}/>
       </Panel>}

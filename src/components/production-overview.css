@@ -301,3 +301,10 @@
 .production-overview-field { display:grid; gap:4px; font-weight:500; line-height:16px; }
 .production-overview-field > button { width:100%; }
 .production-overview .overview-attention .overview-card { gap:8px; }
+
+.production-overview .overview-attention .overview-card { display:block; min-height:0; }
+.production-overview .overview-attention .overview-card > strong { display:block; margin-top:4px; font-weight:700; letter-spacing:-.025em; }
+.production-overview .overview-attention .overview-thumbnails { margin-top:8px; }
+.production-attention-notes { margin-top:6px; color:#314158; font-size:12px; font-weight:500; line-height:16px; }
+.production-attention-notes > div + div { margin-top:2px; }
+.production-overview .overview-card strong { font-weight:700; letter-spacing:-.025em; }
