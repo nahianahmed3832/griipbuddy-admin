@@ -6,7 +6,7 @@ export type HybridShipment = {
   carrier: string;
   trackingReference: string;
   source: 'DEV_SIMULATOR' | 'MANUAL';
-  events?: { status: string; recordedAt: string }[];
+  events?: { status: string; recordedAt: string; evidence?: string | null }[];
 };
 
 export type HybridFulfillment = {
@@ -14,7 +14,7 @@ export type HybridFulfillment = {
   step: string;
   payment: { method: string; status: string; amountMinor: number } | null;
   shipment: HybridShipment | null;
-  receipt: { receivedAt: string; disposition: 'RESTOCK' | 'HOLD'; restockedUnits: number } | null;
+  receipt: { receivedAt: string; disposition: 'RESTOCK' | 'HOLD'; restockedUnits: number; note?: string } | null;
   manualPayment: { transaction: string | null } | null;
   editable: boolean;
   canReturn: boolean;

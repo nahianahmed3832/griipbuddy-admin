@@ -54,11 +54,14 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
       {shipment && <>
         <dl><div><dt>Carrier</dt><dd>{shipment.carrier}</dd></div><div><dt>Tracking reference</dt><dd>{shipment.trackingReference}</dd></div></dl>
         {!!shipment.events?.length && <ol aria-label="Tracking history">{shipment.events.map(event => <li key={event.status}>
-          {hybridStatusLabels[event.status] ?? event.status}<small>{orderDate(event.recordedAt, 'BD')}</small>
+          <span>{hybridStatusLabels[event.status] ?? event.status}
+            {event.evidence && <small className={styles.hybridEvidence}>Courier evidence: {event.evidence}</small>}
+          </span><small>{orderDate(event.recordedAt, 'BD')}</small>
         </li>)}</ol>}
       </>}
       {receipt && <p>Parcel received {orderDate(receipt.receivedAt, 'BD')}. {receipt.disposition === 'RESTOCK'
         ? `${receipt.restockedUnits} ${receipt.restockedUnits === 1 ? 'unit' : 'units'} returned to stock.` : 'Stock held for inspection.'}</p>}
+      {receipt?.note && <p className={styles.hybridEvidence}>Warehouse note: {receipt.note}</p>}
       {notice && <p role={notice.error ? 'alert' : 'status'} className="notice">{notice.message}</p>}
       {next && <form className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
         ...(next === 'SHIPPED' && (simulatedHandoff ? { simulate: true }
