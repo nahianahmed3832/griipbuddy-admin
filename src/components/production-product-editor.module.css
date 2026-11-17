@@ -29,7 +29,7 @@
 .specRows { display: grid; gap: 12px; justify-items: start; }
 .specRow { display: grid; width: 100%; align-items: end; gap: 8px; border: 1px solid var(--editor-line); border-radius: 8px; padding: 12px; }
 .specRow label { display: grid; gap: 8px; font-size: 14px; font-weight: 500; }
-.secondary, .primary, .remove { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding-inline: 16px; border: 1px solid var(--editor-line); border-radius: 8px; background: white; color: inherit; font: inherit; font-size: 14px; font-weight: 500; }
+.secondary, .primary, .remove { gap: 8px; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding-inline: 16px; border: 1px solid var(--editor-line); border-radius: 8px; background: white; color: inherit; font: inherit; font-size: 14px; font-weight: 500; }
 .primary { color: white; background: var(--editor-primary); border-color: transparent; }
 .remove { color: #b91c1c; }
 .switchField { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-height: 14px; }
@@ -57,7 +57,8 @@
 .property p { margin: 0; font-size: 12px; font-weight: 500; }
 .propertyMain, .propertyMeasures { display: grid; gap: 16px; }
 .property button { justify-self: end; }
-.danger { width: fit-content; min-height: 32px; padding: 4px 12px; border: 0; border-radius: 7px; color: white; background: #e7000b; font: inherit; font-size: 14px; }
+.propertyRows > button { width: 100%; min-height: 32px; }
+.danger { display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 32px; padding: 4px 12px; border: 0; border-radius: 7px; color: white; background: #e7000b; font: inherit; font-size: 14px; }
 .multiple { position: relative; }
 .multiple summary { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px; border: 1px solid var(--editor-line); border-radius: 8px; color: var(--editor-muted); background: white; line-height: 20px; list-style: none; cursor: pointer; box-shadow: 0 1px 2px #0001; }
 .multiple summary::-webkit-details-marker { display: none; }
@@ -72,9 +73,11 @@
 .imageFields { display: grid; gap: 24px; }
 .mediaPicker { display: grid; gap: 8px; min-width: 0; }
 .mediaPicker > p { margin: 0; font-weight: 500; font-size: 14px; }
-.imageUpload, .videoUpload { position: relative; display: flex; align-items: center; justify-content: center; min-height: 82px; gap: 12px; padding: 16px; border: 1px solid var(--editor-line); border-radius: 10px; cursor: pointer; }
+.imageUpload, .videoUpload { position: relative; display: flex; align-items: center; justify-content: center; min-height: 74px; gap: 16px; padding: 16px; border: 1px solid var(--editor-line); border-radius: 10px; cursor: pointer; }
 .videoUpload { border-style: dashed; border-width: 2px; margin: 0; }
+.clipUploader { display: grid; gap: 16px; border: 1px solid var(--editor-line); border-radius: 8px; padding: 16px; }
 .uploadIcon { display: grid; flex: 0 0 40px; height: 40px; place-items: center; color: #009c67; background: #eff9f4; border-radius: 50%; }
+.imageUpload .uploadIcon { color: inherit; background: #f4f4f5; border-radius: 8px; }
 .mediaPicker strong, .mediaPicker small { display: block; }
 .mediaPicker strong { font-size: 14px; font-weight: 500; }
 .mediaPicker small { color: var(--editor-muted); font-size: 12px; line-height: 16px; }
@@ -89,9 +92,11 @@
 .countryField > small { color: var(--editor-muted); font-size: 12px; line-height: 16px; }
 .centerSave { display: flex; justify-content: center; }
 .centerSave button:disabled { opacity: .6; }
-.variantSection { display: grid; gap: 24px; min-width: 0; }
+.variantSection { display: grid; gap: 16px; min-width: 0; }
 .variantEditor, .dangerZone { display: grid; gap: 16px; min-width: 0; padding: 16px; border: 1px solid var(--editor-line); border-radius: 10px; background: white; box-shadow: 0 1px 2px #0002; }
-.variantHeading, .dialogHeading, .dangerHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.variantEditor { padding: 8px 24px 16px; }
+.variantHeading, .dialogHeading, .danger:disabled { opacity: .6; }
+.dangerHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .variantHeading h2, .matrix h2, .dialogHeading h3 { font-size: 20px; line-height: 28px; font-weight: 600; margin: 0; }
 .variantHeading button, .attributeValues button { gap: 6px; }
 .attributes { display: grid; gap: 24px; }
@@ -114,20 +119,22 @@
 .matrixTable td > input:not([type="checkbox"]) { width: 106px; height: 36px; border: 1px solid var(--editor-line); border-radius: 8px; padding: 4px 8px; background: white; font: inherit; }
 .matrixTable td > small { display: block; color: var(--editor-muted); }
 .matrixTable td button { margin: 0; }
-.variantStatus { display: inline-block; background: #d1fae5; color: #047857; font-size: 12px; font-weight: 600; border-radius: 5px; padding: 2px 6px; }
-.variantStatus[data-existing="true"] { background: #f4f4f5; color: #27272a; }
+.variantStatus { display: inline-block; background: #eff6ff; color: #1447e6; border: 1px solid #bedbff; font-size: 12px; font-weight: 500; border-radius: 4px; padding: 4px 8px; }
+.variantStatus[data-existing="true"] { background: #f0fdf4; color: #008236; border-color: #b9f8cf; }
 .editorDialog { max-width: min(640px,calc(100% - 24px)); width: 100%; max-height: 80vh; padding: 20px; border: 1px solid var(--editor-line); border-radius: 10px; color: inherit; background: white; }
 .editorDialog[open] { display: grid; gap: 16px; }
 .editorDialog::backdrop { background: rgb(0 0 0 / 45%); }
 .editorDialog .mediaTile[aria-pressed="true"] { border-color: var(--editor-primary); box-shadow: 0 0 0 1px var(--editor-primary); }
 .optionImages { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; }
-.currencyPrices { display: grid; gap: 8px; border: 1px solid var(--editor-line); border-radius: 8px; padding: 10px; min-width: 0; }
-.dangerZone { border-color: #fecaca; }
+.currencyPrices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; min-width: 0; }
+.dangerZone { border-color: #fecaca; background: #fff9f999; padding: 16px 16px 20px; }
+.dangerZone .tableScroll { background: white; border: 1px solid var(--editor-line); border-radius: 6px; }
+.danger:disabled { opacity: .6; }
 .dangerHeading { justify-content: flex-start; align-items: flex-start; color: #b91c1c; }
 .dangerHeading h3, .dangerZone p { margin: 0; }
 .dangerZone p { font-size: 14px; color: var(--editor-muted); }
 .switchField[data-inline="true"] label { width: fit-content; flex-direction: row-reverse; min-height: 18px; border: 0; padding: 0; font-size: 12px; }
-@media (min-width: 768px) { .matrixDefaults { grid-template-columns: repeat(3,minmax(0,1fr)) auto; } .currencyPrices { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (min-width: 768px) { .matrixDefaults { grid-template-columns: repeat(4,minmax(0,1fr)); } }
 @media (min-width: 1280px) { .attributes { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
 .updateAction { background: #00a63e; }
@@ -135,3 +142,44 @@
 .variantAction { background: #155dfb; }
 .variantAction:hover { background: #1447e6; }
 @media (min-width: 768px) { .updateAction { min-height: 40px; padding-inline: 24px; font-size: 16px; } }
+
+.variantRow { cursor: move; }
+.variantSerial, .colorCode { display: inline-flex; align-items: center; gap: 8px; }
+.variantSerial svg, .colorCode { color: var(--editor-muted); }
+.colorCode { font-size: 12px; }
+.colorCode > span { width: 24px; height: 24px; border: 1px solid var(--editor-line); border-radius: 4px; }
+.rowGallery { width: 40px; min-height: 40px; display: inline-grid; place-items: center; border: 1px solid var(--editor-line); border-radius: 7px; background: white; padding: 0; color: inherit; position: relative; }
+.rowGallery > img { width: 38px; height: 38px; object-fit: cover; border-radius: inherit; }
+.rowGallery > span { position: absolute; top: -5px; right: -5px; min-width: 20px; font-size: 12px; color: white; background: var(--editor-primary); border-radius: 12px; }
+.variantRow td:nth-child(5) input { width: 235px; }
+.matrixDefaults > button { max-width: 150px; }
+.selectWrap[data-return="true"] { width: min(100%, max-content); }
+.emptyVariants { text-align: center; }
+@media (max-width: 767px) { .variantHeading { align-items: center; flex-direction: column; } .variantHeading h2, .matrix h2 { font-size: 16px; line-height: 24px; } .variantEditor { padding-inline: 16px; } }
+
+.globalPriceButton { min-width: 90px; min-height: 32px; gap: 4px; }
+.globalPriceButton span { color: var(--editor-muted); }
+.globalPriceButton span[data-set="true"] { color: #009966; }
+.globalPriceDialog { max-width: min(512px,calc(100% - 24px)); }
+.globalPriceDialog h3 { font-size: 18px; line-height: 24px; }
+.globalPriceDialog p { margin: 0; color: var(--editor-muted); font-size: 14px; }
+.currencyCard { padding: 12px; border: 1px solid var(--editor-line); border-radius: 8px; }
+.currencyCard[data-currency="BDT"] { background: #ecfdf5; }
+.currencyCard[data-currency="USD"] { background: #f0fdf4; }
+.currencyCard[data-currency="EUR"] { background: #eff6ff; }
+.currencyCard[data-currency="AUD"] { background: #fffbeb; }
+.currencyCard > p { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.currencyCard > p::before { content: ""; display: block; width: 10px; height: 10px; border-radius: 50%; background: #009966; }
+.currencyCard > p strong { color: #18181b; }
+.currencyCard .field { font-size: 12px; }
+.currencyCard .currencyPrices > span { color: var(--editor-muted); font-size: 14px; }
+
+.clipGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.clip { display: grid; gap: 8px; background: #f4f4f580; border: 1px solid var(--editor-line); border-radius: 8px; padding: 8px; min-width: 0; }
+.clip > div { position: relative; aspect-ratio: 9/16; overflow: hidden; border-radius: 6px; background: black; }
+.clip video { width: 100%; height: 100%; object-fit: cover; }
+.clip button { position: absolute; top: 4px; right: 4px; background: white; border-radius: 4px; }
+.clip small { position: absolute; left: 4px; bottom: 4px; font-size: 10px; color: white; background: #0009; }
+.clip input { min-width: 0; min-height: 28px; padding: 4px 8px; border: 1px solid var(--editor-line); border-radius: 6px; font: inherit; font-size: 12px; }
+@media (min-width: 640px) { .clipGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (min-width: 768px) { .clipGrid { grid-template-columns: repeat(4,minmax(0,1fr)); } }

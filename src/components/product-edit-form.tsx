@@ -46,11 +46,11 @@ function CategorySelects({ tree, selected, production }: { tree: CategoryOption[
   });
 }
 function SelectRef({ values, current, name, label, placeholder }: { values: Choice[]; current?: string; name: string; label: string; placeholder?: string }) {
-  return <label className={placeholder ? productionStyles.field : 'operation-field'}>{label}<div className={placeholder ? productionStyles.selectWrap : undefined}><select name={name} defaultValue={current ?? ''}>
+  return <label className={placeholder ? productionStyles.field : 'operation-field'}>{label}<span className={placeholder ? productionStyles.selectWrap : undefined} data-return={name === 'return_policy'}><select name={name} defaultValue={current ?? ''}>
     <option value="">{placeholder ?? 'None'}</option>
     {current && !values.some(choice => choice.value === current) && <option value={current}>Current selection</option>}
     {values.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
-  </select>{placeholder && <ChevronDown aria-hidden="true" size={15}/>}</div></label>;
+  </select>{placeholder && <ChevronDown aria-hidden="true" size={15}/>}</span></label>;
 }
 function uploadImage(file: File) {
   return fetch(adminPath('/api/catalog-edit?upload=1'), { method: 'POST', headers: { 'Content-Type': file.type }, body: file })
@@ -85,9 +85,9 @@ function ImageUpload({ initial, gallery }: { initial: string; gallery: string })
 }
 function list(value: string) { return value.split(/[\r\n]+/).map(value => value.trim()).filter(Boolean); }
 function inputPrices(values: Prices) { return Object.fromEntries(Object.entries(values).filter(([,value]) => value !== '').map(([field, value]) => [field, Number(value)])); }
-function variantPayload(variants: VariantDraft[]) {
-  return variants.map(({ _id, sku, attribute_values, image, color_code, color_image, image_based_on, base, prices, images, videos }) => ({
-    _id, sku, attribute_values, image, color_code, color_image, image_based_on,
+function variantPayload(variants: VariantDraft[], withSerial = false) {
+  return variants.map(({ _id, sku, attribute_values, image, color_code, color_image, image_based_on, base, prices, images, videos }, index) => ({
+    ...(withSerial && { serial: index + 1 }), _id, sku, attribute_values, image, color_code, color_image, image_based_on,
     ...inputPrices(base), prices: Object.fromEntries(Object.entries(prices).map(([currency, price]) => [currency, inputPrices(price)])),
     images: list(images), videos: list(videos),
   }));
@@ -229,13 +229,16 @@ type StagedVariants = { attributes: string[]; variants: ReturnType<typeof varian
 
 export function ProductionProductUpdate(props: ProductFormProps) {
   const stagedVariants = useRef<StagedVariants>(null);
+  const [sliderImages, setSliderImages] = useState(() => list(props.initial.slider_images ?? ''));
   return <>
-    <ProductEditForm {...props} stagedVariants={stagedVariants}/>
-    <section className={productionStyles.variantSection}><ProductEditForm {...props} variantOnly stagedVariants={stagedVariants}/></section>
+    <ProductEditForm {...props} stagedVariants={stagedVariants} setSliderImages={setSliderImages}/>
+    <section className={productionStyles.variantSection}><ProductEditForm {...props} variantOnly stagedVariants={stagedVariants} sliderImages={sliderImages}/></section>
   </>;
 }
 
-export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false, production = false, changeRegion = false, stagedVariants }: ProductFormProps & { stagedVariants?: RefObject<StagedVariants | null> }) {
+export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false, production = false, changeRegion = false, stagedVariants, sliderImages, setSliderImages }: ProductFormProps & {
+  stagedVariants?: RefObject<StagedVariants | null>; sliderImages?: string[]; setSliderImages?: (items: string[]) => void;
+}) {
   const [attributesText, setAttributes] = useState(initialAttributes.join('\n'));
   const [editorRegion, setEditorRegion] = useState(region);
   const [formRevision, setFormRevision] = useState(0);
@@ -250,10 +253,10 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
   useEffect(() => {
     if (!variantOnly || !stagedVariants) return;
     const attributes = list(attributesText);
-    const payload = variantPayload(variants);
+    const payload = variantPayload(variants, true);
     stagedVariants.current = {
       attributes, variants: payload, uploading,
-      dirty: JSON.stringify([attributes, payload]) !== JSON.stringify([initialAttributes, variantPayload(initialVariants)]),
+      dirty: JSON.stringify([attributes, payload]) !== JSON.stringify([initialAttributes, variantPayload(initialVariants, true)]),
     };
   }, [variantOnly, stagedVariants, attributesText, variants, uploading, initialAttributes, initialVariants]);
 
@@ -264,7 +267,7 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
     busy.current = true;
     setSaving(true); setError(''); setNotice('');
     const form = new FormData(event.currentTarget);
-    const values = { ...Object.fromEntries(form), available_countries: form.getAll('available_countries'), attributes: list(attributesText), variants: variantPayload(variants) };
+    const values = { ...Object.fromEntries(form), available_countries: form.getAll('available_countries'), attributes: list(attributesText), variants: variantPayload(variants, production && variantOnly) };
     if (production && !variantOnly) {
       for (const name of ['offer_tags', 'search_tags'] as const) {
         const value = form.get(name);
@@ -352,14 +355,14 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
           <SelectRef name="return_policy" label="Return Policy" current={initial.return_policy} values={policies} placeholder="Select return policy"/>
         </div></ProductEditorPanel>
         <ProductEditorPanel title="Thumbnail &amp; Slider Images">
-          {id ? <ProductionProductImages initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''} uploading={uploading} setUploading={setUploading}/>
+          {id ? <ProductionProductImages initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''} onSliderImages={setSliderImages} uploading={uploading} setUploading={setUploading}/>
             : <ImageUpload initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''}/>}
           {!id && <label className={productionStyles.field}>Short Videos (Story / Reels) (Optional)
             <textarea name="short_videos" defaultValue={initial.short_videos} rows={3} placeholder="One video URL per line"/>
           </label>}
         </ProductEditorPanel>
         {id && <ProductEditorPanel title="Short Videos (Story / Reels) (Optional)">
-          <ProductionProductVideos initial={initial.short_videos ?? ''} uploading={uploading} setUploading={setUploading}/>
+          <ProductionProductVideos initial={initial.short_video_details ?? '[]'} uploading={uploading} setUploading={setUploading}/>
         </ProductEditorPanel>}
         {['facebook','instagram','youtube','tiktok','is_published','shipping_cost','shipping_cost_per_unit','coin_per_order']
           .map(name => <input key={name} type="hidden" name={name} value={initialValue(name) || (name === 'is_published' ? 'false' : '')}/>)}
@@ -385,8 +388,8 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
         </div></fieldset>
       </>}
       {production && variantOnly ? <ProductionVariantEditor initialAttributes={initialAttributes} initialVariants={initialVariants} variants={variants}
-        setVariants={setVariants} setAttributes={setAttributes} allowCost={allowCost} rootSku={initial.sku ?? ''} heading
-        uploading={uploading} setUploading={setUploading} sliderImages={[...new Set(list(initial.slider_images ?? ''))]}/>
+        setVariants={setVariants} setAttributes={setAttributes} rootSku={initial.sku ?? ''} heading
+        uploading={uploading} setUploading={setUploading} sliderImages={sliderImages ?? [...new Set(list(initial.slider_images ?? ''))]}/>
         : (variantOnly || !id) && <VariantMatrix attributesText={attributesText} setAttributes={setAttributes} variants={variants} setVariants={setVariants}
           allowCost={allowCost} canDelete={canDelete} id={id} production={production} uploading={uploading} setUploading={setUploading}
           sliderImages={[...new Set(list(initial.slider_images ?? ''))]}/>}

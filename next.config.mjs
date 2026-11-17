@@ -31,10 +31,13 @@ const config = {
       source,
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:;") }],
     })), ...['/desk/content/:path*', '/dashboard/hero-section', '/dashboard/banner-update', '/dashboard/homepage/:path*',
-      '/dashboard/featured-products', '/dashboard/offer-page', '/dashboard/update-product/:path*'].map(source => ({
+      '/dashboard/featured-products', '/dashboard/offer-page'].map(source => ({
       source,
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https:;") }],
-    }))];
+    })), {
+      source: '/dashboard/update-product/:path*',
+      headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https: blob:;") }],
+    }];
   },
 };
 export default config;

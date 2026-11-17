@@ -162,7 +162,7 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
   if (rows.length > 120 || requireRows && !rows.length) throw invalid('Choose between 1 and 120 variant rows.');
   const allowCost = has(auth.staff, 'purchase.price.view');
   const seenSku = new Set<string>(), seenSignature = new Set<string>();
-  const variants = rows.map(row => {
+  const variants = rows.map((row, index) => {
     const sku = str(row.sku).trim().toUpperCase();
     const selected = obj(row.attribute_values);
     const values = attributes.map(name => str(selected[name]).trim());
@@ -182,7 +182,7 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
     const image = str(row.image).trim(), colorImage = str(row.color_image).trim();
     const imageSource = str(row.image_based_on).trim();
     if ([...images, ...videos, image, colorImage].filter(Boolean).some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS URLs for variant media.');
-    return { ...(mongoId(str(row._id)) ? { _id: row._id } : {}), sku,
+    return { ...(mongoId(str(row._id)) ? { _id: row._id } : {}), ...(row.serial !== undefined && { serial: index + 1 }), sku,
       attribute_values: Object.fromEntries(attributes.map((name, index) => [name, values[index]])),
       ...base, image, images, videos, color_image: colorImage, color_code: str(row.color_code).slice(0, 32), prices,
       ...(row.image_based_on !== undefined && { image_based_on: attributes.includes(imageSource) ? imageSource : '' }) };
@@ -204,6 +204,16 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
   const clips = arr(short_videos).map(str);
   if ([...clips, ...arr(product.slider_images).map(str)].some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS links for product media.');
   const existingClips = arr(previous.short_videos).map(obj);
+  function videoDetails() {
+    if (values.short_video_details === undefined) return [];
+    try {
+      if (typeof values.short_video_details !== 'string' || values.short_video_details.length > 50000) throw new Error('invalid');
+      const details: unknown = JSON.parse(values.short_video_details);
+      if (!Array.isArray(details) || details.length > 60 || details.some(detail => !clips.includes(str(obj(detail).url)))) throw new Error('invalid');
+      return details.map(obj);
+    } catch { throw invalid('Review the short video details.'); }
+  }
+  const details = videoDetails();
   const dynamic = arr(product.dynamic_specs).map(obj);
   if (product.dynamic_specs !== undefined && !Array.isArray(product.dynamic_specs) || dynamic.length > 30 || dynamic.some(spec => !str(spec.title).trim() || !Array.isArray(spec.options) && spec.options !== undefined)) {
     throw invalid('Specifications must be an array of title, description and options objects.');
@@ -234,7 +244,20 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
   if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min < 1 || max < min) throw invalid('Enter valid minimum and maximum order quantities.');
   return { ...product, ...selected, region, available_countries: countries,
     social_links: { facebook, instagram, youtube, tiktok }, sale_channels: { website: website === true, pos: pos === true },
-    short_videos: clips.map(clip => existingClips.find(record => record.url === clip) ?? { url: clip }) };
+    short_videos: clips.map(clip => {
+      const current = existingClips.find(record => record.url === clip);
+      const edit = details.find(record => record.url === clip);
+      if (!edit) return current ?? { url: clip };
+      const format = str(edit.format), ratio = str(edit.ratio), size = edit.size, duration = edit.duration;
+      return { ...current, url: clip, title: str(edit.title).slice(0, 200),
+        ...(!current && {
+          ...(['mp4', 'webm', 'ogg', 'mov'].includes(format) && { format }),
+          ...(/^\d{1,5}:\d{1,5}$/.test(ratio) && { ratio }),
+          ...(typeof duration === 'number' && Number.isSafeInteger(duration) && duration >= 0 && duration <= 86400 && { duration }),
+          ...(typeof size === 'number' && Number.isSafeInteger(size) && size > 0 && size <= 500 * 1024 * 1024 && { size }),
+        }),
+      };
+    }) };
 }
 
 export async function productWrite(action: string, id: string, values: RecordData, auth: Session, region: Region) {

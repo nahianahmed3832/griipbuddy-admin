@@ -62,10 +62,13 @@ export async function CategoryWorkspace({ auth, q, production, subcategory = fal
   </>;
 }
 
-function variantDrafts(value: unknown, canSeeCost: boolean): VariantDraft[] {
+function variantDrafts(value: unknown, canSeeCost: boolean, sort = false): VariantDraft[] {
   const visiblePrices = (record: RecordData) => Object.fromEntries(['regular_price', 'sale_price', ...(canSeeCost ? ['buying_price'] : [])]
     .map(field => [field, asInput(record[field])]));
-  return arr(value).map(obj).filter(variant => mongoId(reference(variant))).map(variant => ({ key: reference(variant), _id: reference(variant),
+  const records = arr(value).map(obj).filter(variant => mongoId(reference(variant)));
+  const serial = (row: RecordData) => typeof row.serial === 'number' ? row.serial : Number.MAX_SAFE_INTEGER;
+  if (sort) records.sort((left, right) => serial(left) - serial(right));
+  return records.map(variant => ({ key: reference(variant), _id: reference(variant),
     sku: str(variant.sku), attribute_values: Object.fromEntries(Object.entries(obj(variant.attribute_values)).map(([key,val]) => [key, asInput(val)])),
     base: visiblePrices(variant), prices: Object.fromEntries(currencies.map(currency => [currency, visiblePrices(obj(obj(variant.prices)[currency]))])),
     image: str(variant.image), images: asLines(variant.images), videos: asLines(variant.videos), color_code: str(variant.color_code),
@@ -111,8 +114,9 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
     const initial = creating ? {} : Object.fromEntries([
       ...productFields.map(({name}) => [name, inputValue(record, name)]), ...['brand', 'return_policy'].map(field => [field, reference(record[field])]),
       ['available_countries', arr(record.available_countries).map(reference).filter(mongoId).join('\n')],
+      ['short_video_details', JSON.stringify(arr(record.short_videos))],
     ]);
-    const drafts = variantDrafts(variantRecords, maySeeCost);
+    const drafts = variantDrafts(variantRecords, maySeeCost, production);
     const attributes = [...new Set([...arr(record.attributes).map(str), ...drafts.flatMap(row => Object.keys(row.attribute_values))].filter(Boolean))];
     if (production) {
       const target = creating ? undefined : readId;

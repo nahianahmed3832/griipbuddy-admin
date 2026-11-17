@@ -1,9 +1,8 @@
 'use client';
 
-import { AlertTriangle, GripVertical, ImagePlus, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Globe, GripVertical, ImagePlus, Plus, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { currencies } from '@/lib/catalog-edit-fields';
 import { productionCmsPreview } from '@/lib/production-cms-media';
 import type { Region } from '@/lib/sections';
 import { saveCatalog } from './catalog-edit-form';
@@ -21,7 +20,6 @@ type VariantEditor = {
   setAttributes: (value: string) => void;
   rootSku: string;
   sliderImages: string[];
-  allowCost: boolean;
   uploading: boolean;
   setUploading: (value: boolean) => void;
   heading: boolean;
@@ -36,6 +34,13 @@ function initialAttributeValues(names: string[], rows: VariantDraft[]) {
   return names.map((name, key) => ({ key, name, values: unique(rows.map(row => row.attribute_values[name])) }));
 }
 
+function variationSku(root: string, combination: Record<string, string>) {
+  const attrs = Object.keys(combination);
+  const first = attrs.find(attr => /size/i.test(attr)) ?? attrs[0];
+  return [root, ...(first ? [combination[first], ...attrs.filter(attr => attr !== first).sort().map(attr => combination[attr])] : [])]
+    .map(part => part.trim().replace(/\s+/g, '').toUpperCase()).filter(Boolean).join('-');
+}
+
 function makeVariants(attrs: Attribute[], existing: VariantDraft[], defaults: VariantDraft['base'], rootSku: string) {
   const active = attrs.filter(attr => attr.name.trim() && attr.values.some(value => value.trim()));
   let combinations: Record<string, string>[] = active.length ? [{}] : [];
@@ -45,11 +50,10 @@ function makeVariants(attrs: Attribute[], existing: VariantDraft[], defaults: Va
     combinations = combinations.flatMap(row => choices.map(value => ({ ...row, [name.trim()]: value })));
   }
   const names = active.map(attr => attr.name.trim());
-  return combinations.map((attribute_values, index) => {
+  return combinations.map(attribute_values => {
     const previous = existing.find(variant => names.every(name => variant.attribute_values[name] === attribute_values[name]));
-    const slug = names.map(name => attribute_values[name].replace(/[^a-z\d]/gi, '').toUpperCase()).join('-');
     return previous ? { ...previous, attribute_values } : {
-      key: 'new-' + JSON.stringify(attribute_values), sku: rootSku ? rootSku + '-' + (slug || index + 1) : '', attribute_values,
+      key: 'new-' + JSON.stringify(attribute_values), sku: rootSku ? variationSku(rootSku, attribute_values) : '', attribute_values,
       base: { ...defaults }, prices: {}, image: '', images: '', videos: '', color_code: '',
     };
   });
@@ -107,32 +111,63 @@ function VariantImages({ value, images, sliderImages, uploading, setUploading, o
   </>;
 }
 
-function VariantPrices({ row, allowCost, onChange }: {
-  row: VariantDraft; allowCost: boolean; onChange: (prices: VariantDraft['prices']) => void;
-}) {
+function VariantImagePreview({ row }: { row: VariantDraft }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [draft, setDraft] = useState(row.prices);
-  const displayed = currencies.filter(currency => Object.values(row.prices[currency] ?? {}).some(Boolean));
+  const images = lines(row.images);
   return <>
-    <button className={styles.secondary} type="button" aria-label={'Global Prices for ' + row.sku}
-      onClick={() => { setDraft(row.prices); dialog.current?.showModal(); }}>{displayed.length ? displayed.join(', ') : 'Add'}</button>
-    <dialog className={styles.editorDialog} ref={dialog} aria-label={'Global Prices for ' + row.sku}>
-      <div className={styles.dialogHeading}><h3>Global Prices</h3>
-        <button className={styles.iconButton} type="button" aria-label="Close global prices" onClick={() => dialog.current?.close()}><X size={16}/></button>
+    <button className={styles.rowGallery} type="button" aria-label={'Preview images for ' + row.sku} onClick={() => dialog.current?.showModal()}>
+      {images.length > 0 ? <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={productionCmsPreview(images[0])} alt="" referrerPolicy="no-referrer"/><span>{images.length}</span>
+      </> : <ImagePlus size={16} aria-hidden="true"/>}
+    </button>
+    <dialog className={styles.editorDialog} ref={dialog} aria-label={'Variant images for ' + row.sku}>
+      <div className={styles.dialogHeading}><h3>Variant Images</h3>
+        <button className={styles.iconButton} type="button" aria-label="Close variant images" onClick={() => dialog.current?.close()}><X size={16}/></button>
       </div>
-      {currencies.map(currency => <fieldset className={styles.currencyPrices} key={currency}>
-        <legend>{currency}</legend>
-        {priceFields.filter(([name]) => allowCost || name !== 'buying_price').map(([name, label]) => <label className={styles.field} key={name}>
-          {currency} {label}<input type="number" min="0" step=".01" value={draft[currency]?.[name] ?? ''}
-            onChange={event => setDraft(previous => ({ ...previous, [currency]: { ...previous[currency], [name]: event.target.value } }))}/>
-        </label>)}
-      </fieldset>)}
-      <button type="button" className={styles.primary} onClick={() => { onChange(draft); dialog.current?.close(); }}>Save Global Prices</button>
+      {images.length ? <div className={styles.mediaGrid}>{images.map((address, index) => <div className={styles.mediaTile} key={address}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={productionCmsPreview(address)} alt={'Selected ' + (index + 1)} referrerPolicy="no-referrer"/>
+      </div>)}</div> : <p>No images selected</p>}
     </dialog>
   </>;
 }
 
-export function ProductionVariantEditor({ initialAttributes, initialVariants, variants, setVariants, setAttributes, rootSku, sliderImages, allowCost, uploading, setUploading, heading }: VariantEditor) {
+const alternateCurrencies = [
+  ['USD', '$', 'US Dollar'], ['EUR', '€', 'Euro'], ['AUD', 'A$', 'Australian Dollar'],
+] as const;
+
+function VariantPrices({ row, onChange }: {
+  row: VariantDraft; onChange: (prices: VariantDraft['prices']) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const count = alternateCurrencies.filter(([currency]) => ['regular_price', 'sale_price'].some(name => (row.prices[currency]?.[name] ?? '') !== '')).length;
+  return <>
+    <button className={styles.globalPriceButton + ' ' + styles.secondary} type="button" aria-label={'Global Prices for ' + row.sku}
+      onClick={() => dialog.current?.showModal()}><Globe size={14} aria-hidden="true"/><span data-set={count > 0}>{count ? count + ' set' : 'Add'}</span></button>
+    <dialog className={styles.editorDialog + ' ' + styles.globalPriceDialog} ref={dialog} aria-label={'Global Prices for ' + row.sku}>
+      <div className={styles.dialogHeading}><h3>International Prices</h3>
+        <button className={styles.iconButton} type="button" aria-label="Close global prices" onClick={() => dialog.current?.close()}><X size={16}/></button>
+      </div>
+      <p>BDT is the default &amp; fallback. Set prices for other currencies below — leave a currency blank to fall back to the BDT price.</p>
+      <div className={styles.currencyCard} data-currency="BDT">
+        <p><strong>BDT</strong> <small>৳ Bangladeshi Taka · default / fallback</small></p>
+        <div className={styles.currencyPrices}><span>Regular: ৳{row.base.regular_price || '—'}</span><span>Sale: ৳{row.base.sale_price || '—'}</span></div>
+      </div>
+      {alternateCurrencies.map(([currency, symbol, description]) => <div className={styles.currencyCard} data-currency={currency} key={currency}>
+        <p><strong>{currency}</strong> <small>{symbol} {description}</small></p>
+        <div className={styles.currencyPrices}>{priceFields.slice(0, 2).map(([name, label]) => <label className={styles.field} key={name}>
+          {name === 'regular_price' ? 'Regular' : 'Sale'} Price ({symbol})<input aria-label={currency + ' ' + label} type="number" min="0" step=".01"
+            placeholder="—" value={row.prices[currency]?.[name] ?? ''}
+            onChange={event => onChange({ ...row.prices, [currency]: { ...row.prices[currency], [name]: event.target.value } })}/>
+        </label>)}</div>
+      </div>)}
+      <div className={styles.saveActions}><button type="button" className={styles.primary} onClick={() => dialog.current?.close()}>Done</button></div>
+    </dialog>
+  </>;
+}
+
+export function ProductionVariantEditor({ initialAttributes, initialVariants, variants, setVariants, setAttributes, rootSku, sliderImages, uploading, setUploading, heading }: VariantEditor) {
   const [attrs, setAttrs] = useState(() => initialAttributeValues(initialAttributes, initialVariants));
   const serial = useRef(initialAttributes.length);
   const [defaultRegular, setDefaultRegular] = useState(initialVariants[0]?.base.regular_price ?? '');
@@ -140,6 +175,7 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
   const [imageBy, setImageBy] = useState(initialVariants.find(row => row.image_based_on)?.image_based_on ?? '');
   const [error, setError] = useState('');
   const dragged = useRef<{ attribute: number; value: number }>(null);
+  const draggedRow = useRef<string>(null);
 
   useEffect(() => {
     setAttrs(initialAttributeValues(initialAttributes, initialVariants));
@@ -247,19 +283,35 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
         <label className={styles.field}>Default Sale Price (BDT)<input type="number" min="0" step=".01" placeholder="Enter default sale price" value={defaultSale} onChange={event => setDefaultSale(event.target.value)}/></label>
         <label className={styles.field}>Root Level SKU<input value={rootSku} disabled placeholder="Enter root level SKU" title="Root level SKU cannot be edited."/></label>
         <button className={styles.primary} type="button" onClick={() => setVariants(rows => rows.map(row => ({
-          ...row, base: { ...row.base, regular_price: defaultRegular, sale_price: defaultSale },
+          ...row, sku: !row.sku || row.sku === rootSku ? variationSku(rootSku, row.attribute_values) : row.sku,
+          base: { ...row.base, regular_price: defaultRegular, sale_price: defaultSale },
         })))}>Apply to All</button>
       </div>
       <div className={styles.tableScroll}><table className={styles.matrixTable}>
         <thead><tr>{['Serial', 'Attribute Variation', 'Regular Price', 'Sale Price', 'SKU', 'Color Code', 'Images', 'Global Prices', 'Status'].map(label => <th key={label}>{label}</th>)}</tr></thead>
-        <tbody>{variants.map((row, index) => <tr key={row.key}>
-          <td>{index + 1}</td><td>{Object.values(row.attribute_values).join(' / ')}</td>
+        <tbody>{variants.map((row, index) => <tr key={row.key} draggable className={styles.variantRow} onDragStart={() => { draggedRow.current = row.key; }}
+          onDragEnd={() => { draggedRow.current = null; }} onDragOver={event => event.preventDefault()} onDrop={event => {
+            event.preventDefault();
+            const key = draggedRow.current;
+            if (!key || key === row.key) return;
+            setVariants(previous => {
+              const reordered = [...previous];
+              const from = reordered.findIndex(item => item.key === key);
+              const to = reordered.findIndex(item => item.key === row.key);
+              if (from < 0 || to < 0) return previous;
+              const [moved] = reordered.splice(from, 1);
+              reordered.splice(to, 0, moved);
+              return reordered;
+            });
+          }}>
+          <td><span className={styles.variantSerial}><GripVertical size={16} aria-hidden="true"/>{index + 1}</span></td>
+          <td>{Object.values(row.attribute_values).join(' - ')}</td>
           {priceFields.slice(0, 2).map(([name, label]) => <td key={name}><input type="number" required min="0" step=".01" aria-label={label + ' for variant ' + (index + 1)}
             value={row.base[name] ?? ''} onChange={event => change(row.key, { base: { ...row.base, [name]: event.target.value } })}/></td>)}
           <td><input required aria-label={'SKU for variant ' + (index + 1)} value={row.sku} onChange={event => change(row.key, { sku: event.target.value })}/></td>
-          <td>{row.color_code || '-'}</td>
-          <td>{lines(row.images).length > 0 ? lines(row.images).length : ''}</td>
-          <td><VariantPrices row={row} allowCost={allowCost} onChange={prices => change(row.key, { prices })}/></td>
+          <td><span className={styles.colorCode}>{row.color_code && <span style={{ backgroundColor: row.color_code }} aria-hidden="true"/>}{row.color_code || '-'}</span></td>
+          <td><VariantImagePreview row={row}/></td>
+          <td><VariantPrices row={row} onChange={prices => change(row.key, { prices })}/></td>
           <td><span className={styles.variantStatus} data-existing={Boolean(row._id)}>{row._id ? 'EXISTING' : 'NEW'}</span></td>
         </tr>)}</tbody>
       </table></div>
@@ -291,7 +343,7 @@ export function ProductionVariantRemoval({ id, region, variants }: { id: string;
       <p>Product: {id}. Deleting variants can affect orders, inventory and reporting. Prefer soft delete if you have order references.</p>
     </div></div>
     <div className={styles.saveActions}><button className={styles.danger} type="button" disabled={!selected.length}
-      onClick={() => confirm(selected)}>Delete Selected ({selected.length})</button></div>
+      onClick={() => confirm(selected)}><Trash2 size={16} aria-hidden="true"/> Delete Selected ({selected.length})</button></div>
     <div className={styles.tableScroll}><table className={styles.matrixTable}>
       <thead><tr><th><label><input type="checkbox" checked={ids.length > 0 && selected.length === ids.length}
         onChange={event => setSelected(event.target.checked ? ids : [])}/> All</label></th><th>Variant</th><th>Prices</th><th>SKU</th><th>Action</th></tr></thead>
@@ -300,8 +352,9 @@ export function ProductionVariantRemoval({ id, region, variants }: { id: string;
           onChange={event => setSelected(current => event.target.checked ? [...current, row._id!] : current.filter(id => id !== row._id))}/></td>
         <td>{Object.values(row.attribute_values).join(' / ')}<small>ID: {row._id}</small>{row.barcode && <small>Barcode: {row.barcode}</small>}</td>
         <td>Regular: {formatAmount(row.base.regular_price)}<br/>Sale: {formatAmount(row.base.sale_price)}</td><td>{row.sku}</td>
-        <td><button type="button" className={styles.danger} aria-label={'Delete ' + row.sku} onClick={() => confirm([row._id!])}>Delete</button></td>
+        <td><button type="button" className={styles.danger} aria-label={'Delete ' + row.sku} onClick={() => confirm([row._id!])}><Trash2 size={16} aria-hidden="true"/> Delete</button></td>
       </tr>)}</tbody>
+    {!ids.length && <tbody><tr><td colSpan={5} className={styles.emptyVariants}>No variants found.</td></tr></tbody>}
     </table></div>
     <dialog className={styles.editorDialog} ref={dialog} aria-label="Delete variants">
       <div className={styles.dialogHeading}><h3>Delete {target.length} {target.length === 1 ? 'variant' : 'variants'}?</h3></div>
