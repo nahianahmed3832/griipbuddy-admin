@@ -315,7 +315,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <div className="overview-split"><ProductTable products={arr(sales.topProducts).map(obj)} currency={currency} region={region} canOpen={grant('product.view')} production={production}/>
           <div className="overview-stack"><Metric title="Returns processed" value={count(obj(sales.returns).orders)} detail={money(obj(sales.returns).value) + ' returned'}
             {...productionMetric('Orders for which a return was processed.', orderQueue('returns','RETURNED,PARTIAL'))}/>
-            {sales.pos ? <Metric title="Point-of-sale value" value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
+            {!production && sales.pos ? <Metric title="Point-of-sale value" value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
               prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + ' sales'}/> : null}</div>
         </div>
         <Quality data={sales.quality}/>
