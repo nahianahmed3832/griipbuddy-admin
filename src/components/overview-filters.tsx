@@ -2,7 +2,6 @@
 
 import { type FormEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import { ProductionLocationFilter } from './production-location-filter';
 import { ProductionReportSelect } from './production-report-filters';
