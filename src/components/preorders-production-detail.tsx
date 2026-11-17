@@ -8,7 +8,7 @@ import { ProductionPreOrderActionDialog, type ProductionPreOrderAction } from '.
 import { PreOrderPicture, PreOrderStatus } from './preorders-production-media';
 import styles from './preorders.module.css';
 
-const dateTime = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' }) : '';
+const dateTime = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }) : '';
 
 export function ProductionPreOrderDetail({ row, update, mediaOrigin, batches }: { row: PreOrderRow; update: boolean; mediaOrigin: string; batches: string[] }) {
   const [dialog, setDialog] = useState<ProductionPreOrderAction>();
@@ -20,8 +20,8 @@ export function ProductionPreOrderDetail({ row, update, mediaOrigin, batches }: 
   const creator = online ? 'Online (Customer)' : row.created_by?.full_name
     ? [row.created_by.full_name, role && '(' + role + ')'].filter(Boolean).join(' ') : row.order_by;
   const address = row.delivery_address;
-  function action(kind: ProductionPreOrderAction, label: string) {
-    return <button type="button" className={styles.control} onClick={() => setDialog(kind)}>{label}</button>;
+  function action(kind: ProductionPreOrderAction, label: string, disabled = false) {
+    return <button type="button" className={styles.control} disabled={disabled} onClick={() => setDialog(kind)}>{label}</button>;
   }
   return <div className={`${styles.production} ${styles.detailPage}`}>
     <header className={styles.splitHeading}>
@@ -35,12 +35,12 @@ export function ProductionPreOrderDetail({ row, update, mediaOrigin, batches }: 
       </div>
       {update && <div className={styles.inline}>
         <Link href={productionPreOrdersPath + '/' + row._id + '/edit'} className={styles.primary}><Pencil size={16}/> Edit</Link>
-        {action('quote', 'Quote')}{!row.advance_paid && action('advance', 'Record Advance')}{action('status', 'Update Status')}
+        {action('quote', 'Quote')}{action('advance', 'Record Advance', !!row.advance_paid)}{action('status', 'Update Status')}
         {action('bulk-batch', 'Assign Batch')}{!!row.customer_phone && action('sms', 'Send SMS')}
       </div>}
     </header>
     {notice && <p className={styles.feedback} role="status">{notice}</p>}
-    <section className={styles.infoCard}>
+    <section className={`${styles.infoCard} ${styles.productDetails}`}>
       <h2>Products ({items.length})</h2>
       {items.map((item, index) => {
         const listed = item.source_type === 'LISTED';
@@ -74,7 +74,7 @@ export function ProductionPreOrderDetail({ row, update, mediaOrigin, batches }: 
         ['Advance Paid', row.advance_paid ? 'Yes' : 'No'], ['Paid Amount', row.paid_amount], ['Due Amount', row.due_amount],
       ]}/>
       <Info title="Courier" rows={[
-        ['Tracking Code', row.tracking_code], ['Consignment ID', row.consignment_id], ['Transferred', row.transfer_to_courier ? 'Yes' : 'No'],
+        ['Tracking Code', row.tracking_code || undefined], ['Consignment ID', row.consignment_id || undefined], ['Transferred', row.transfer_to_courier ? 'Yes' : 'No'],
       ]}/>
       <section className={styles.infoCard}>
         <h2>Status Timeline</h2>

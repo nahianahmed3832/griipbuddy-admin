@@ -25,7 +25,10 @@ const stamp = (value?: string, dateOnly = false) => value && Number.isFinite(Dat
 const rangeDate = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit' });
 const displayDate = (value: string) => Number.isFinite(Date.parse(value)) ? rangeDate.format(new Date(value + 'T00:00:00Z')) : '—';
 const groups = [['China → Bangladesh', inboundPreOrderStatuses], ['Bangladesh → Customer', outboundPreOrderStatuses], ['Other', preOrderStatuses.slice(10)]] as const;
-const columns = ['Actions', 'Pre-Order Id', 'Date', 'Product / Reference', 'Customer Info', 'Qty', 'Batch', 'Quote / Advance / Paid', 'Status', 'Courier Info', 'Call Info', 'Created By'];
+const columns = [
+  ['Actions', 66], ['Pre-Order Id', 137], ['Date', 80], ['Product / Reference', 276], ['Customer Info', 236],
+  ['Qty', 41], ['Batch', 136], ['Quote / Advance / Paid', 174], ['Status', 150], ['Courier Info', 125], ['Call Info', 150], ['Created By', 135],
+] as const;
 
 type Dialog = { kind: ProductionPreOrderAction; row?: PreOrderRow; ids?: string[] };
 
@@ -132,10 +135,11 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
     <section className={`${styles.surface} ${styles.tablePanel}`} aria-label="Pre-orders">
       <div className={styles.tableScroll} role="region" tabIndex={0} aria-label="Pre-order table">
         <table className={styles.productionTable}>
+          <colgroup>{access.update && <col style={{ width: 24 }}/>} {columns.map(([name, width]) => <col key={name} style={{ width }}/>)}</colgroup>
           <thead><tr>
             {access.update && <th scope="col"><input type="checkbox" ref={selectAll} checked={all} aria-label="Select all" disabled={!rows.length}
               onChange={() => setSelected(all ? [] : rows.map(row => row._id))}/></th>}
-            {columns.map(column => <th scope="col" key={column}>{column}</th>)}
+            {columns.map(([name]) => <th scope="col" key={name}>{name}</th>)}
           </tr></thead>
           <tbody>{rows.map(row => {
             const items = preOrderItems(row);
