@@ -4,6 +4,7 @@ import { type FormEvent, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
+import { ProductionLocationFilter } from './production-location-filter';
 import { ProductionReportSelect } from './production-report-filters';
 import { overviewPreset, overviewPresets } from '@/lib/overview-periods';
 import type { Region } from '@/lib/sections';
@@ -74,7 +75,6 @@ export function OverviewFilters(values: OverviewFilterValues & { production?: bo
 
 function ProductionOverviewFilters({ region, selected, period, from, to, compare, currency, locations }: OverviewFilterValues) {
   const [choice, setChoice] = useState(overviewPreset(period));
-  const [locationsQuery, setLocationsQuery] = useState('');
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   function navigate(changes: Record<string, string> = {}) {
@@ -91,9 +91,6 @@ function ProductionOverviewFilters({ region, selected, period, from, to, compare
     event.preventDefault();
     navigate();
   }
-  const selectedNames = selected.map(value => locations.find(location => location.value === value)?.label).filter(Boolean);
-  const locationLabel = selectedNames.length > 2 ? selectedNames.slice(0, 2).join(', ') + ' +' + (selectedNames.length - 2)
-    : selectedNames.length ? selectedNames.join(', ') : selected.length ? selected.length + ' selected' : 'All locations';
   return (
     <form ref={form} className="production-overview-filters" action={adminPath('/dashboard/overview')} onSubmit={apply}>
       <input type="hidden" name="region" value={region} />
@@ -101,23 +98,8 @@ function ProductionOverviewFilters({ region, selected, period, from, to, compare
       <ProductionReportSelect label="Period" name="period" value={choice} fieldClassName="production-overview-field"
         options={[...overviewPresets.map(([value, label]) => ({value, label})), ...(choice === '90' ? [{value:'90', label:'Last 90 days'}] : [])]}
         change={value => { setChoice(value); if (value !== 'custom') navigate({period:value}); }}/>
-      <details className="production-overview-locations">
-        <summary><span>Locations</span><span className="production-overview-location-control">
-          {locationLabel}<ChevronDown aria-hidden="true" size={14} />
-        </span></summary>
-        <fieldset>
-          <legend>Locations</legend>
-          {locations.length > 0 && <input type="search" aria-label="Search locations" placeholder="Search..." value={locationsQuery}
-            onChange={event => setLocationsQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}/>}
-          {locations.length ? locations.map(location => (
-            <label key={location.value} hidden={!location.label.toLowerCase().includes(locationsQuery.trim().toLowerCase())}>
-              <input type="checkbox" name="location" value={location.value} defaultChecked={selected.includes(location.value)}
-                onChange={event => event.currentTarget.form?.requestSubmit()} />
-              {location.label}
-            </label>
-          )) : <span>No locations available</span>}
-        </fieldset>
-      </details>
+      <ProductionLocationFilter options={locations} value={selected} name="location" className="production-overview-field"
+        change={values => navigate({locations:values.join(','),location:''})}/>
       {region === 'INTERNATIONAL' && <ProductionReportSelect label="Currency" name="currency" value={currency}
         fieldClassName="production-overview-field" options={['USD','EUR','AUD','BDT'].map(value => ({value,label:value}))}
         change={value => navigate({currency:value})}/>}

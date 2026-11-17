@@ -1,9 +1,10 @@
 'use client';
 
 import * as Select from '@radix-ui/react-select';
-import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ProductionLocationFilter } from './production-location-filter';
 import { productionReportPeriods } from '@/lib/production-report-period';
 
 type Option = { value: string; label: string };
@@ -12,8 +13,9 @@ export type ReportFilter = { key: string; label: string; type: string; options: 
 export function ProductionReportSelect({ label, value, options, change, name, fieldClassName, selectClassName }: { label: string; value: string; options: readonly Option[]; change: (value: string) => void; name?: string; fieldClassName?: string; selectClassName?: string }) {
   const labelId = useId();
   return <div className={fieldClassName || "production-report-field"}>
+    {name && <input type="hidden" name={name} value={value}/>}
     <span id={labelId}>{label}</span>
-    <Select.Root name={name} value={value || '__all__'} onValueChange={value => change(value === '__all__' ? '' : value)}>
+    <Select.Root value={value || '__all__'} onValueChange={value => change(value === '__all__' ? '' : value)}>
       <Select.Trigger className={["production-report-select", selectClassName].filter(Boolean).join(" ")} aria-labelledby={labelId}>
         <Select.Value/>
         <Select.Icon asChild><ChevronDown size={16} aria-hidden="true"/></Select.Icon>
@@ -52,52 +54,6 @@ function SearchFilter({ label, value, change }: { label: string; value: string; 
       pending.current = setTimeout(() => change(value.trim()), 400);
     }}/>
   </label>;
-}
-
-function LocationFilter({ value, locations, change }: { value: string[]; locations: Option[]; change: (value: string[]) => void }) {
-  const [search, setSearch] = useState('');
-  const popup = useRef<HTMLDetailsElement>(null);
-  const visible = locations.filter(option => option.label.toLowerCase().includes(search.toLowerCase()));
-  const selected = locations.filter(option => value.includes(option.value));
-  useEffect(() => {
-    const dismiss = (event: MouseEvent) => {
-      if (event.target instanceof Node && !popup.current?.contains(event.target)) popup.current?.removeAttribute('open');
-    };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
-  }, []);
-
-  return <div className="production-report-field">
-    <span>Locations</span>
-    <details className="production-report-locations" ref={popup} onKeyDown={event => {
-      if (event.key === 'Escape') {
-        event.currentTarget.open = false;
-        event.currentTarget.querySelector('summary')?.focus();
-      }
-    }}>
-      <summary aria-label={selected.length ? selected.map(option => option.label).join(', ') : 'All locations'}>
-        {!selected.length ? <span>All locations</span> : <span className="production-report-location-count">
-          {selected.slice(0, 2).map(option => <span key={option.value}>{option.label}</span>)}
-          {selected.length > 2 && <span>+ {selected.length - 2} more</span>}
-        </span>}
-        <ChevronDown size={16} aria-hidden="true"/>
-      </summary>
-      <div className="production-report-location-options">
-        <input type="search" aria-label="Search locations" placeholder="Search..." value={search}
-          onChange={event => setSearch(event.currentTarget.value)}/>
-        <fieldset>
-          <legend className="production-report-visually-hidden">Locations</legend>
-          {visible.length ? visible.map(option => <label key={option.value}>
-            <input type="checkbox" value={option.value} checked={value.includes(option.value)} onChange={event => {
-              change(event.currentTarget.checked ? [...value, option.value] : value.filter(id => id !== option.value));
-            }}/>{option.label}
-          </label>) : <span>No results found.</span>}
-        </fieldset>
-        {selected.length > 0 && <button type="button" onClick={() => change([])}><X size={14} aria-hidden="true"/>Clear</button>}
-        <button type="button" onClick={() => { if (popup.current) popup.current.open = false; }}>Close</button>
-      </div>
-    </details>
-  </div>;
 }
 
 export function ProductionReportFilters({ path, region, period, from, to, usesPeriod, usesLocations, locations, selectedLocations, compares,
@@ -148,7 +104,7 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
       <label className="production-report-field"><span>To</span><input type="date" value={to} min={from}
         onChange={event => { if (event.currentTarget.value) update({ to: event.currentTarget.value }); }}/></label>
     </div>}
-    {usesLocations && <LocationFilter key={region} locations={locations} value={selectedLocations}
+    {usesLocations && <ProductionLocationFilter key={region} options={locations} value={selectedLocations}
       change={ids => update({ locations: ids.join(',') })}/>}
     {region === 'INTERNATIONAL' && <ProductionReportSelect label="Currency" value={currency}
       options={['BDT', 'USD', 'EUR', 'AUD'].map(code => ({ value: code, label: code }))}
