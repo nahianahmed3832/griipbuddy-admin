@@ -2,16 +2,21 @@ function ManagedReceipt({ paymentId, hooks, element }) {
   const [current, setCurrent] = hooks.useState(null);
   const [message, setMessage] = hooks.useState('');
   const [saving, setSaving] = hooks.useState(false);
+  const refundKeys = hooks.useRef(new Map());
   const path = '/admin/api/v1/global/admin/payments/' + encodeURIComponent(paymentId);
+
+  async function load(signal) {
+    const response = await fetch(path, { signal });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Could not load payment details.');
+    return result.data;
+  }
+
   hooks.useEffect(() => {
     const controller = new AbortController();
     setCurrent(null);
     setMessage('');
-    fetch(path, { signal: controller.signal }).then(async response => {
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Could not load payment details.');
-      setCurrent(result.data);
-    }).catch(error => {
+    load(controller.signal).then(setCurrent).catch(error => {
       if (error.name !== 'AbortError') setMessage(error.message);
     });
     return () => controller.abort();
@@ -24,6 +29,31 @@ function ManagedReceipt({ paymentId, hooks, element }) {
   const scale = 10 ** decimals;
   const field = 'w-full rounded-md border border-input bg-background px-3 py-2 text-foreground';
   const button = 'rounded-md bg-primary text-primary-foreground px-3 py-2 disabled:opacity-50';
+  function amountFrom(form) {
+    const input = String(form.get('amount') || '').trim();
+    const value = Math.round(Number(input) * scale);
+    return input && Number.isSafeInteger(value) && Number(input) === value / scale ? value : null;
+  }
+
+  async function save(action, input, messageAfter) {
+    if (saving) return;
+    setSaving(true);
+    setMessage('');
+    try {
+      const response = await fetch(path + '/' + action, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || 'Could not update the payment.');
+      setCurrent(await load());
+      setMessage(typeof messageAfter === 'function' ? messageAfter(result.data) : messageAfter);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function review(event) {
     event.preventDefault();
     if (saving || !pending) return;
@@ -34,29 +64,63 @@ function ManagedReceipt({ paymentId, hooks, element }) {
     if (!input.reason) return setMessage('Enter a review note.');
     if (decision === 'approve' && payment.provider === 'manual') {
       const reference = String(form.get('reference') || '').trim();
-      const amount = String(form.get('amount') || '').trim();
-      const verifiedAmount = Math.round(Number(amount) * scale);
-      if (!reference || !amount || !Number.isSafeInteger(verifiedAmount) || Number(amount) !== verifiedAmount / scale) {
+      const verifiedAmount = amountFrom(form);
+      if (!reference || verifiedAmount === null) {
         return setMessage('Enter the receipt reference and exact amount.');
       }
       input.verifiedReference = reference;
       input.verifiedAmount = verifiedAmount;
     }
-    setSaving(true);
-    setMessage('');
-    try {
-      const response = await fetch(path + '/review', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Could not update the payment.');
-      setCurrent({ ...current, payment: result.data });
-      setMessage(decision === 'approve' ? 'Payment approved.' : 'Payment rejected.');
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setSaving(false);
+    await save('review', input, decision === 'approve' ? 'Payment approved.' : 'Payment rejected.');
+  }
+
+  async function collect(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amount = amountFrom(form);
+    const reference = String(form.get('reference') || '').trim();
+    if (!reference || !amount || amount !== current?.collection?.amount) {
+      return setMessage('Enter the verified collection reference and exact balance due.');
     }
+    await save('collect', { amount, reference }, 'Collection recorded.');
+  }
+
+  async function refund(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amount = amountFrom(form);
+    const reason = String(form.get('reason') || '').trim();
+    const reference = String(form.get('reference') || '').trim();
+    if (!current?.refund || !amount || amount < 1 || amount > current.refund.amount || !reason ||
+        (current.refund.requiresReference && !reference)) {
+      return setMessage('Enter a valid refund amount, reason, and any required verified reference.');
+    }
+    const input = { amount, reason, ...(current.refund.requiresReference && { reference }) };
+    const signature = JSON.stringify([paymentId, input]);
+    if (!refundKeys.current.has(signature)) refundKeys.current.set(signature, crypto.randomUUID());
+    await save('refunds', { ...input, key: refundKeys.current.get(signature) },
+      result => result.state === 'refunded' ? 'Refund recorded.' : 'Refund status: ' + result.state);
+  }
+
+  function labeled(text, name, props) {
+    return element('label', { className: 'flex flex-col gap-1', children: [
+      text, element('input', { name, className: field, required: true, ...props }, 'input'),
+    ] }, name);
+  }
+
+  function moneyField(max) {
+    return labeled('Verified amount (' + payment.currency + ')', 'amount',
+      { type: 'number', min: String(1 / scale), max: String(max / scale), step: String(1 / scale) });
+  }
+
+  function action(label, submit, fields) {
+    return element('details', { className: 'pt-1', children: [
+      element('summary', { className: 'cursor-pointer underline', children: label }, 'summary'),
+      element('form', { className: 'flex flex-col gap-2 pt-2', onSubmit: submit, children: [
+        ...fields,
+        element('button', { type: 'submit', className: button, disabled: saving, children: label }, 'submit'),
+      ] }, 'form'),
+    ] }, label);
   }
 
   return element('div', {
@@ -95,6 +159,17 @@ function ManagedReceipt({ paymentId, hooks, element }) {
           ] }, 'actions'),
         ],
       }, 'review'),
+      current?.collection && action('Record collection', collect, [
+        element('p', { children: 'Balance due: ' + format.format(current.collection.amount / scale) }, 'due'),
+        moneyField(current.collection.amount),
+        labeled('Verified collection reference', 'reference', { maxLength: 128 }),
+      ]),
+      current?.refund && action(current.refund.requiresReference ? 'Record refund' : 'Refund payment', refund, [
+        element('p', { children: 'Available to refund: ' + format.format(current.refund.amount / scale) }, 'available'),
+        moneyField(current.refund.amount),
+        labeled('Refund reason', 'reason', { maxLength: 500 }),
+        current.refund.requiresReference && labeled('Verified refund reference', 'reference', { maxLength: 128 }),
+      ]),
       message && element('p', { role: 'status', children: message }, 'message'),
     ],
   });
