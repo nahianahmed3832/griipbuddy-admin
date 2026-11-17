@@ -47,6 +47,7 @@ function ManagedReceipt({ paymentId, hooks, element }) {
       if (!response.ok) throw new Error(result.message || 'Could not update the payment.');
       setCurrent(await load());
       setMessage(typeof messageAfter === 'function' ? messageAfter(result.data) : messageAfter);
+      return result.data;
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -87,6 +88,7 @@ function ManagedReceipt({ paymentId, hooks, element }) {
 
   async function refund(event) {
     event.preventDefault();
+    if (saving) return;
     const form = new FormData(event.currentTarget);
     const amount = amountFrom(form);
     const reason = String(form.get('reason') || '').trim();
@@ -97,9 +99,21 @@ function ManagedReceipt({ paymentId, hooks, element }) {
     }
     const input = { amount, reason, ...(current.refund.requiresReference && { reference }) };
     const signature = JSON.stringify([paymentId, input]);
-    if (!refundKeys.current.has(signature)) refundKeys.current.set(signature, crypto.randomUUID());
-    await save('refunds', { ...input, key: refundKeys.current.get(signature) },
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(signature));
+    const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    const storageKey = 'griipbuddy-refund:' + fingerprint;
+    let key = refundKeys.current.get(storageKey) || crypto.randomUUID();
+    try {
+      key = localStorage.getItem(storageKey) || key;
+      localStorage.setItem(storageKey, key);
+    } catch { /* Storage can be unavailable in isolated browser contexts. */ }
+    refundKeys.current.set(storageKey, key);
+    const saved = await save('refunds', { ...input, key },
       result => result.state === 'refunded' ? 'Refund recorded.' : 'Refund status: ' + result.state);
+    if (saved && saved.state !== 'pending') {
+      refundKeys.current.delete(storageKey);
+      try { localStorage.removeItem(storageKey); } catch { /* Storage can be unavailable. */ }
+    }
   }
 
   function labeled(text, name, props) {
