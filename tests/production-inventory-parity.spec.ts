@@ -115,7 +115,7 @@ test('production inventory, purchasing, variant media, and barcode workflows', a
     await edit.getByLabel('Condition').selectOption('OPEN_BOX');
     await edit.getByLabel('Admin note (optional)').fill('Verified label condition');
     await edit.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByRole('list', { name: 'Barcode history' }).getByText('Note: Verified label condition')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Barcode history' }).getByText('Verified label condition', { exact: true })).toBeVisible();
     await page.goto(origin + '/dashboard/barcodes?barcode=' + barcode);
     await page.getByRole('dialog', { name: barcode }).getByRole('button', { name: 'Reset barcode' }).click();
     await expect(page.getByRole('dialog', { name: barcode })).toHaveCount(0);
