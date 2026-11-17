@@ -235,3 +235,9 @@
   .editor[data-update="true"] .body[data-general="true"] > .fields { margin-bottom: 2px; }
   .variantHeading { gap: 4px; }
 }
+.attributeValue input { width: 80px; height: 36px; min-height: 36px; padding: 0; }
+.attributeValue > .iconButton { padding: 0; }
+.attributeValue > svg, .attributeValue > .iconButton svg { width: 16px; height: 16px; }
+.variantEditor { padding-bottom: 8px; }
+.variantSection { gap: 24px; }
+.switchField[data-inline="true"] input[role="switch"] { height: 1.15rem; min-height: 1.15rem; }
