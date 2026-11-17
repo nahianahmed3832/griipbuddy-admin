@@ -9,7 +9,7 @@ import styles from './production-location-filter.module.css';
 export type LocationOption = { value: string; label: string };
 
 export function ProductionLocationFilter({ options, value, change, className, triggerClassName, name }: {
-  options: LocationOption[];
+  options: readonly LocationOption[];
   value: string[];
   change: (value: string[]) => void;
   className?: string;
