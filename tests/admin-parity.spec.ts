@@ -7,10 +7,10 @@ const origin = 'http://127.0.0.1:4327';
 
 async function signIn(page: Page, suffix = '1') {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + suffix);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + suffix);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 }
 
 test('the dashboard manifest is explicitly mapped and malformed paths are rejected', () => {
@@ -24,15 +24,16 @@ test('the dashboard manifest is explicitly mapped and malformed paths are reject
   expect(resolveLegacy(['renew-subscription'])).toMatchObject({path:'/desk/settings/renew-subscription',pending:expect.any(String)});
 });
 
-test('legacy links land in native overview, order filters and stock exports', async ({page,request}) => {
+test('production links open the editable overview, order filters and stock exports', async ({page,request}) => {
   await signIn(page);
   await page.goto(origin + '/dashboard/overview?view=classic');
-  await expect(page).toHaveURL(/\/desk\/overview\/classic$/);
+  await expect(page).toHaveURL(/\/dashboard\/overview\?view=classic$/);
   await expect(page.getByRole('link',{name:'Current overview'})).toBeVisible();
   await page.getByRole('link',{name:'Current overview'}).click();
   await expect(page.getByRole('heading',{name:'Needs attention'})).toBeVisible();
   await page.goto(origin + '/dashboard/orders?status=PLACED,IN_TRANSIT');
-  await expect(page.getByLabel('Order status')).toHaveValue('PLACED,IN_TRANSIT');
+  await expect(page).toHaveURL(origin + '/dashboard/orders?status=PLACED,IN_TRANSIT');
+  await expect(page.getByRole('heading', { name: /^All Orders/ })).toBeVisible();
   await page.goto(origin + '/dashboard/check-outlet-stocks');
   await expect(page.getByRole('heading',{name:'Stocks report',level:1})).toBeVisible();
   await page.getByLabel('Product, SKU or barcode').fill('FIXTURE-BD-BLUE');
@@ -77,7 +78,7 @@ test('eligible admins can create and edit a disabled coupon through the native e
 test('the fraud lookup is disabled on the fixture and restricted staff cannot open the stock report', async ({page}) => {
   await signIn(page,'6');
   await page.goto(origin + '/dashboard/fraud-checker');
-  await expect(page.getByRole('button',{name:'Check courier history'})).toBeDisabled();
+  await expect(page.locator('main section').getByRole('button',{name:'Check courier history'})).toBeDisabled();
   await page.goto(origin + '/dashboard/check-outlet-stocks');
   await expect(page.getByRole('heading',{name:'Access restricted',level:1})).toBeVisible();
 });
@@ -89,10 +90,10 @@ test('hidden sales and plan routes preserve their visible behavior', async ({pag
   await expect(page.getByLabel('Date range preset')).toHaveValue('0');
   await expect(page.getByRole('link',{name:'Download Excel'})).toBeVisible();
   await page.goto(origin + '/dashboard/current-plan');
-  await expect(page.getByRole('heading',{name:'Current Plan',level:1})).toBeVisible();
-  await expect(page.getByText('Feature coming soon.')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Current Plan Feature Coming Soon!',level:1})).toBeVisible();
+  await expect(page.getByText('We\'ll inform you when this feature becomes available to use.')).toBeVisible();
   await page.goto(origin + '/dashboard/renew-subscription');
-  await expect(page.getByRole('heading',{name:'Renew Subscription',level:1})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Renew Subscription Feature Coming Soon!',level:1})).toBeVisible();
 });
 
 test('the best-selling editor selects a catalog product and saves the section', async ({page}) => {

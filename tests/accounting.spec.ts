@@ -11,10 +11,10 @@ test('opens an entity, approves income and a regional expense, and exports the H
   const incomeMemo = name + ' sale';
   const expenseMemo = name + ' warehouse';
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('01000000001');
+  await page.getByLabel('Phone Number', { exact: true }).fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 
   await page.goto(origin + path + '?view=books');
   await page.getByLabel('Book code').fill(book);

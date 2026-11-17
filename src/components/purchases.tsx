@@ -13,6 +13,9 @@ import { PurchaseRateForm } from './purchase-rate-form';
 import { PurchaseRecordForm } from './purchase-record-form';
 import { OperationActions } from './operation-actions';
 import { Badge, Empty } from './tables';
+import { ProductionPurchaseFilters, ProductionPurchasePageSize, ProductionRatesFilters } from './production-purchase-filters';
+import { productionPurchasePath, productionRateFormPath, productionRatesPath, purchaseQueryPath } from '@/lib/production-purchase-query';
+import productionStyles from './production-purchases.module.css';
 import '@/app/purchases.css';
 
 const bdDate = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -47,21 +50,23 @@ function Pagination({ path, query, page, total }: {
   </nav>;
 }
 
-export async function AllPurchases({ auth, region, q }: { auth: Session; region: Region; q: Query }) {
+export async function AllPurchases({ auth, region, q, production = false }: { auth: Session; region: Region; q: Query; production?: boolean }) {
   if (!has(auth.staff, 'purchase.view')) throw new ApiError(403);
-  const [{ rows, page, total, filters }, vendors, locations] = await Promise.all([
-    purchaseList(auth, region, q), suppliers(auth),
+  const [{ rows, page, total, filters, size, limit }, vendors, locations] = await Promise.all([
+    purchaseList(auth, region, q, production), suppliers(auth),
     has(auth.staff, 'business_locations.view') ? loadLocations(auth, region) : [],
   ]);
   const canEdit = canEditPurchase(auth.staff);
   const canSeeCosts = has(auth.staff, 'purchase.price.view');
-  const columns = ['Purchase ID', 'Date', 'Business Location', 'Supplier', 'Total Items', 'Purchase Status',
+  const columns = [production ? 'Purchases Id' : 'Purchase ID', 'Date', 'Business Location', 'Supplier', 'Total Items', 'Purchase Status',
     ...(canSeeCosts ? ['Total Cost'] : []), 'Added By', ...(canEdit || canSeeCosts ? ['Actions'] : [])];
-  return <div className="purchases-workspace">
+  return <div className={'purchases-workspace ' + (production ? productionStyles.purchases : '')}>
     <header className="purchase-heading"><h1>All Purchases ({total.toLocaleString('en')})</h1>
-      {region === 'BD' && has(auth.staff, 'operations.purchase') && <Link className="button secondary" href={url('/desk/operations/purchases', {region})}>Purchasing and receiving</Link>}
+      {!production && region === 'BD' && has(auth.staff, 'operations.purchase') && <Link className="button secondary" href={url('/desk/operations/purchases', {region})}>Purchasing and receiving</Link>}
     </header>
-    <details className="panel purchase-filters" open={Object.values(filters).some(Boolean)}>
+    {production ? <ProductionPurchaseFilters filters={filters} locations={locations} vendors={vendors}
+      statuses={purchaseStatuses.map(value => ({ value, label: statusLabel(value) }))} region={region} limit={limit}/>
+      : <details className="panel purchase-filters" open={Object.values(filters).some(Boolean)}>
       <summary><Filter size={20}/> Filter</summary>
       <form action={adminPath(purchasePath)} className="purchase-filter-grid">
         <input type="hidden" name="region" value={region}/>
@@ -80,9 +85,9 @@ export async function AllPurchases({ auth, region, q }: { auth: Session; region:
         <div className="page-actions"><button className="button primary">Apply filters</button>
           <Link className="button secondary" href={url(purchasePath, { region })}>Clear filters</Link></div>
       </form>
-    </details>
+    </details>}
     <section className="panel purchase-list" aria-label="All purchases">
-      {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Purchases table">
+      {rows.length || production ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Purchases table">
         <table><thead><tr>{columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead>
           <tbody>{rows.map(row => {
             const id = str(row._id);
@@ -95,34 +100,49 @@ export async function AllPurchases({ auth, region, q }: { auth: Session; region:
               <td><PurchaseStatus status={str(row.status)}/></td>{canSeeCosts && <td>{cost(row.total_cost)}</td>}
               <td>{str(obj(row.created_by).full_name) || '—'}</td>
               {(canEdit || canSeeCosts) && <td className="purchase-actions-cell">{mongoId(id) && <PurchaseActions id={id} label={label}
-                edit={canEdit && row.inventory_ordered !== true ? url(path, { region, edit: '1' }) : undefined}
+                edit={canEdit && row.inventory_ordered !== true
+                  ? production ? purchaseQueryPath('/dashboard/purchase/edit/' + id, { region }) : url(path, { region, edit: '1' })
+                  : undefined}
                 invoice={canSeeCosts ? url(path, { region, invoice: '1' }) : undefined}/>}</td>}
             </tr>;
           })}</tbody></table>
       </div> : <Empty title="No purchases found"/>}
-      <Pagination path={purchasePath} query={{ ...filters, region }} page={page} total={total}/>
+      {production && !rows.length && <p className={productionStyles.noPurchases}>No data found!</p>}
+      {!production && <Pagination path={purchasePath} query={{ ...filters, region }} page={page} total={total}/>}
     </section>
+    {production && total > 0 && <nav className={productionStyles.purchasePages} aria-label="Purchase pages">
+      <ProductionPurchasePageSize path={productionPurchasePath} limit={limit} params={{ ...filters, region }}/>
+      <span>{(page - 1) * size + 1} - {Math.min(total, page * size)} of {total}</span>
+      <div>
+        {page > 1 ? <Link href={purchaseQueryPath(productionPurchasePath, { ...filters, region, limit, page: String(page - 1) })}>Previous</Link> : <button type="button" disabled>Previous</button>}
+        {limit !== 'all' && page * size < total ? <Link href={purchaseQueryPath(productionPurchasePath, { ...filters, region, limit, page: String(page + 1) })}>Next</Link> : <button type="button" disabled>Next</button>}
+      </div>
+    </nav>}
   </div>;
 }
 
-export async function DefaultRatePage({ auth, region, q }: { auth: Session; region: Region; q: Query }) {
+export async function DefaultRatePage({ auth, region, q, production = false }: { auth: Session; region: Region; q: Query; production?: boolean }) {
   if (!has(auth.staff, 'defaults.purchase')) throw new ApiError(403);
   const supplierId = param(q, 'supplier') ?? '';
   const supplier = mongoId(supplierId) ? supplierId : undefined;
   const page = purchasePage(q);
   const term = (param(q, 'q') ?? '').trim().slice(0, 80);
   const [result, vendors] = await Promise.all([
-    api(url('/purchase/default/all', { region, supplier, search: term, page: String(page), limit: String(perPage), sortBy: 'updatedAt' }), auth.token),
+    api(url('/purchase/default/all', { region, supplier, search: production ? undefined : term, page: String(page), limit: String(perPage), sortBy: 'updatedAt' }), auth.token),
     suppliers(auth),
   ]);
   const data = obj(result);
-  const rows = arr(data.data).map(obj).filter(row => (obj(row.product).region ?? 'BD') === region);
+  const rows = arr(data.data).map(obj).filter(row => (obj(row.product).region ?? 'BD') === region)
+    .filter(row => !production || !term || [name(row.product), str(obj(row.variant).sku)].some(text => text.toLowerCase().includes(term.toLowerCase())));
+  const total = Number(obj(data.meta).total) || 0;
+  const pageCount = Math.max(1, Math.ceil(total / perPage));
   const canSeeCosts = has(auth.staff, 'purchase.price.view');
-  return <div className="purchases-workspace purchase-rate-list">
-    <header className="purchase-heading"><div><h1>Default Purchase Rates</h1><p>The buy cost and supplier used when a variant is scanned into a purchase.</p></div>
-      {canOperate(auth.staff, 'purchase-rate') && <Link className="button primary" href={url(rateFormPath, { region })}><Plus size={17}/> Set rates</Link>}
+  return <div className={'purchases-workspace purchase-rate-list ' + (production ? productionStyles.rateList : '')}>
+    <header className="purchase-heading"><div><h1>Default Purchase Rates</h1><p>{production ? 'The buy cost + supplier used when a variant is scanned into a purchase.' : 'The buy cost and supplier used when a variant is scanned into a purchase.'}</p></div>
+      {canOperate(auth.staff, 'purchase-rate') && <Link className="button primary" href={url(production ? productionRateFormPath : rateFormPath, { region })}><Plus size={17}/> Set rates</Link>}
     </header>
-    <form action={adminPath(ratesPath)} className="panel padded purchase-rate-filters">
+    {production ? <ProductionRatesFilters supplier={supplier} term={term} vendors={vendors} region={region} page={page}/>
+    : <form action={adminPath(ratesPath)} className="panel padded purchase-rate-filters">
       <input type="hidden" name="region" value={region}/>
       {vendors.length > 0 && <label className="filter-label">Supplier<select name="supplier" defaultValue={supplier}>
         <option value="">All suppliers</option>{vendors.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -131,9 +151,9 @@ export async function DefaultRatePage({ auth, region, q }: { auth: Session; regi
         <span className="search-input"><Search size={17} aria-hidden/><input name="q" maxLength={80} placeholder="Name or SKU…" defaultValue={term}/></span>
       </label>
       <div className="page-actions"><button className="button primary">Apply filters</button><Link className="button secondary" href={url(ratesPath, { region })}>Clear</Link></div>
-    </form>
+    </form>}
     <section className="panel purchase-list" aria-label="Default purchase rates">
-      {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Rates table"><table>
+      {rows.length || production ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Rates table"><table>
         <thead><tr>{['Product', 'SKU', 'Supplier', ...(canSeeCosts ? ['Unit cost', 'Discount', 'Tax'] : [])]
           .map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead>
         <tbody>{rows.map(row => <tr key={str(row._id)}>
@@ -141,19 +161,29 @@ export async function DefaultRatePage({ auth, region, q }: { auth: Session; regi
           {canSeeCosts && <><td>{number(row.unit_cost)}</td><td>{number(row.discount)}</td><td>{number(row.tax)}</td></>}
         </tr>)}</tbody>
       </table></div> : <Empty title={term ? 'No matching rates' : 'No default purchase rates found'}/>}
-      <Pagination path={ratesPath} query={{ region, supplier, q: term }} page={page} total={Number(obj(data.meta).total) || 0}/>
+      {production && !rows.length && <p className={productionStyles.noRates}>No default rates found</p>}
+      {!production && <Pagination path={ratesPath} query={{ region, supplier, q: term }} page={page} total={total}/>}
     </section>
+    {production && <nav className={productionStyles.ratePages} aria-label="Default rate pages">
+      <span>{total} total</span>
+      <div>
+        {page > 1 ? <Link href={purchaseQueryPath(productionRatesPath, { region, supplier, q: term, page: String(page - 1) })}>Prev</Link> : <button type="button" disabled>Prev</button>}
+        <span>{page} / {pageCount}</span>
+        {page < pageCount ? <Link href={purchaseQueryPath(productionRatesPath, { region, supplier, q: term, page: String(page + 1) })}>Next</Link> : <button type="button" disabled>Next</button>}
+      </div>
+    </nav>}
   </div>;
 }
 
-export async function DefaultRateCreatePage({ auth, region }: { auth: Session; region: Region }) {
+export async function DefaultRateCreatePage({ auth, region, production = false }: { auth: Session; region: Region; production?: boolean }) {
   if (!canOperate(auth.staff, 'purchase-rate')) throw new ApiError(403);
-  return <div className="purchases-workspace purchase-rate-create">
+  const list = production ? productionRatesPath : ratesPath;
+  return <div className={'purchases-workspace purchase-rate-create ' + (production ? productionStyles.rateCreate : '')}>
     <header className="purchase-heading"><div className="purchase-heading-title">
-      <Link className="icon-button" href={url(ratesPath, { region })} aria-label="Back to rates"><ChevronLeft size={19}/></Link>
+      <Link className="icon-button" href={url(list, { region })} aria-label="Back to rates"><ChevronLeft size={19}/></Link>
       <h1>Default Purchase</h1>
-    </div><Link className="button secondary" href={url(ratesPath, { region })}><List size={17}/> View list</Link></header>
-    <PurchaseRateForm key={region} suppliers={await suppliers(auth)} region={region} maxLines={maxRateLines}/>
+    </div><Link className="button secondary" href={url(list, { region })}><List size={17}/> View list</Link></header>
+    <PurchaseRateForm key={region} suppliers={await suppliers(auth)} region={region} maxLines={maxRateLines} production={production}/>
   </div>;
 }
 

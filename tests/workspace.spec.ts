@@ -7,10 +7,10 @@ import { fixturePassword } from './fixture-password';
 
 async function signIn(page: Page, suffix: string, root = '') {
   await page.goto(root+'/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000'+suffix);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000'+suffix);
   await page.getByLabel('Password',{exact:true}).fill(fixturePassword());
-  await page.getByRole('button',{name:'Sign in'}).click();
-  await expect(page).toHaveURL(/\/desk\/overview$/);
+  await page.getByRole('button',{name:'Login'}).click();
+  await expect(page).toHaveURL(/\/dashboard\/overview$/);
 }
 
 const nativeHeadings: Record<string, string | RegExp> = {
@@ -28,6 +28,7 @@ const nativeHeadings: Record<string, string | RegExp> = {
 
 test('super admin opens every registered native view and the full preserved route inventory',async ({page}) => {
   await signIn(page,'1');
+  await page.goto('/desk/overview');
   await expect(page.getByRole('heading',{name:'Commerce overview'})).toBeVisible();
   await expect(page.getByRole('link', { name: /Orders to confirm/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Payments to verify/ })).toBeVisible();

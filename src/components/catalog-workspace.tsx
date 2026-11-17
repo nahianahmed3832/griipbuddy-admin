@@ -17,10 +17,13 @@ import { OperationActions } from './operation-actions';
 import { ProductCatalog } from './product-catalog';
 import { ProductEditForm, type VariantDraft } from './product-edit-form';
 import { ProductThumbnail } from './product-thumbnail';
+import { ProductionCountries, ProductionCountryEditor, ProductionCountryMissing, type Country } from './production-countries';
+import { ProductionProductDetail } from './production-product-detail';
 import { StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { Badge, Table } from './tables';
+import productEditorStyles from './production-product-editor.module.css';
 
-type Props = { auth: Session; q: Query; region: Region; id?: string };
+type Props = { auth: Session; q: Query; region: Region; id?: string; production?: boolean };
 const availability = ['active', 'pending', 'inactive'];
 const reviewStatuses = ['pending', 'approved', 'rejected'];
 const fields = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'];
@@ -58,9 +61,9 @@ function inputValue(record: RecordData, field: string) {
   if (Array.isArray(record[field])) return asLines(record[field]);
   return asInput(record[field]);
 }
-export async function ProductWorkspace({ auth, q, region, id }: Props) {
-  if (!id) return ProductCatalog({ auth, q, region });
-  const lookupSlug = param(q, 'lookup') === 'slug';
+export async function ProductWorkspace({ auth, q, region, id, production }: Props) {
+  if (!id) return ProductCatalog({ auth, q, region, production });
+  const lookupSlug = param(q, 'lookup') === 'slug' && !(production && mongoId(id));
   const creating = id === 'new' && !lookupSlug;
   const readId = !creating && (lookupSlug || !mongoId(id)) ? await productIdForSlug(id, auth, region) : id;
   if (!readId) throw new ApiError(404);
@@ -73,7 +76,7 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
   const maySeeCost = has(auth.staff, 'purchase.price.view');
   const mayDelete = canEditProduct('delete', auth);
   const canViewStock = has(auth.staff, 'stock.view');
-  const filters = catalogFilters(q, canViewStock, canViewStock && has(auth.staff, 'business_locations.view'));
+  const filters = catalogFilters(q, canViewStock, canViewStock && has(auth.staff, 'business_locations.view'), production);
   const listParams = catalogParams(filters, region);
   const current = url(catalogPath + '/' + readId, listParams);
   const back = url(catalogPath, listParams);
@@ -83,8 +86,8 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
     const [tree, brands, policies, countries, variantRecords] = await Promise.all([
       variantsOnly ? [] : loadCategoryTree(auth), variantsOnly ? [] : registryOptions('/brand/admin/all', 'brands', auth),
       variantsOnly ? [] : registryOptions('/return-policy', 'data', auth),
-      variantsOnly || region !== 'INTERNATIONAL' ? [] : registryOptions('/country/admin/all', 'countries', auth),
-      variantsOnly ? api('/product/variant/' + readId, auth.token) : [],
+      variantsOnly || !production && region !== 'INTERNATIONAL' ? [] : registryOptions('/country/admin/all', 'countries', auth),
+      variantsOnly || production && !creating ? api('/product/variant/' + readId, auth.token) : [],
     ]);
     const initial = creating ? {} : Object.fromEntries([
       ...productFields.map(({name}) => [name, inputValue(record, name)]), ...['brand', 'return_policy'].map(field => [field, reference(record[field])]),
@@ -92,6 +95,21 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
     ]);
     const drafts = variantDrafts(variantRecords, maySeeCost);
     const attributes = [...new Set([...arr(record.attributes).map(str), ...drafts.flatMap(row => Object.keys(row.attribute_values))].filter(Boolean))];
+    if (production) {
+      const target = creating ? undefined : readId;
+      const listQuery = back.slice(catalogPath.length);
+      return <div className={productEditorStyles.editor}>
+        <h1 className={productEditorStyles.heading}>{creating ? 'Create Product' : variantsOnly ? 'Update Product Attribute & Variant' : 'Update Product'}</h1>
+        <ProductEditForm key={title + readId} production changeRegion={has(auth.staff, 'international.access')} id={target} region={region}
+          tree={tree} initial={initial} brands={brands} policies={policies} countries={countries} selected={fields.map(key => reference(record[key]))}
+          allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly={variantsOnly} productListQuery={listQuery}/>
+        {!creating && !variantsOnly && <section>
+          <h2 className={productEditorStyles.heading}>Update Product Attribute &amp; Variant</h2>
+          <ProductEditForm production id={target} region={region} tree={[]} initial={initial} brands={[]} policies={[]} countries={[]} selected={[]}
+            allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly productListQuery={listQuery}/>
+        </section>}
+      </div>;
+    }
     return <><PageHeading eyebrow="COMMERCE / CATALOG" title={title} description={str(record.name) || 'Set up a listing in the selected market.'}/>
       <div className="page-actions"><Link className="button secondary" href={creating ? back : current}>{creating ? 'Back to all products' : 'Product details'}</Link></div>
       <section className="panel padded"><ProductEditForm key={title + readId} id={creating ? undefined : readId} region={region} tree={tree}
@@ -100,6 +118,9 @@ export async function ProductWorkspace({ auth, q, region, id }: Props) {
         variantOnly={variantsOnly} productListQuery={back.slice(catalogPath.length)}/></section>
     </>;
   }
+  if (production) return <ProductionProductDetail record={record} canSeeStock={canViewStock}
+    listHref={url('/dashboard/products', listParams)}
+    editHref={mayEdit ? url('/dashboard/update-product/' + readId, listParams) : undefined}/>;
   const [storedVariants, storefront] = await Promise.all([
     api('/product/variant/' + readId, auth.token),
     process.env.GRIIP_ADMIN_INTEGRATED === '1' && mayEdit
@@ -151,7 +172,36 @@ const registryResources = {
 const sameRegion = (row: RecordData, region: Region) => (str(obj(row.product).region) || 'BD') === region && mongoId(reference(row.product));
 const registryPath = (kind: Registry) => '/desk/' + (kind === 'countries' ? 'markets' : 'catalog') + '/' + kind;
 
-export async function CatalogRegistry({ auth, q, region, id, kind }: Props & { kind: Registry }): Promise<ReactElement> {
+function countryRecord(row: RecordData): Country {
+  return {
+    id: reference(row), name: str(row.name), code: str(row.code), currency: str(row.currency),
+    currencySymbol: str(row.currency_symbol), flag: str(row.flag_emoji), active: row.is_active === true,
+    serial: typeof row.serial === 'number' && Number.isSafeInteger(row.serial) ? row.serial : undefined,
+  };
+}
+
+async function countriesWorkspace(auth: Session, region: Region, id?: string) {
+  if (!has(auth.staff, 'product.view')) throw new ApiError(403);
+  const create = canEditRegistry('countries', 'create', auth) && has(auth.staff, 'product.create');
+  const edit = canEditRegistry('countries', 'edit', auth) && has(auth.staff, 'product.update');
+  if (id) {
+    if (id === 'new' ? !create : !edit) throw new ApiError(403);
+    try {
+      const country = id !== 'new' ? countryRecord(await readRegistry('countries', id, auth, region)) : undefined;
+      return <ProductionCountryEditor country={country} key={id} region={region}/>;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return <ProductionCountryMissing/>;
+      throw error;
+    }
+  }
+  const payload = obj(await api('/country/admin/all?page=1&limit=200', auth.token));
+  const rows = arr(payload.countries).map(obj).map(countryRecord).filter(row => mongoId(row.id));
+  return <ProductionCountries rows={rows} region={region} canCreate={create} canEdit={edit}
+    canDelete={canEditRegistry('countries', 'delete', auth)}/>;
+}
+
+export async function CatalogRegistry({ auth, q, region, id, kind, production }: Props & { kind: Registry }): Promise<ReactElement> {
+  if (production && kind === 'countries') return countriesWorkspace(auth, region, id);
   const resource = registryResources[kind]();
   if (!has(auth.staff, resource.permission)) throw new ApiError(403);
   const create = kind !== 'reviews' && canEditRegistry(kind, 'create', auth);

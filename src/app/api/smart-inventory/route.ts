@@ -1,5 +1,6 @@
 import { ApiError, getRegion, session } from '@/lib/api';
 import { canOperate } from '@/lib/operations';
+import { has } from '@/lib/sections';
 import { barcodeVariants, validateReceiptScan } from '@/lib/smart-inventory';
 
 export async function GET(request: Request) {
@@ -11,6 +12,9 @@ export async function GET(request: Request) {
   try {
     const region = getRegion(query.get('region') ?? undefined, auth.staff);
     if (action === 'variants' && canOperate(auth.staff, 'barcode-generate')) {
+      return Response.json(await barcodeVariants(value, auth, region));
+    }
+    if (action === 'catalog-variants' && has(auth.staff, 'barcode.view') && has(auth.staff, 'product.view') && value.length >= 2) {
       return Response.json(await barcodeVariants(value, auth, region));
     }
     if (action === 'validate' && canOperate(auth.staff, 'barcode-receive')) {

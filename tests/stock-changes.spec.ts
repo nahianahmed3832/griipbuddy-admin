@@ -28,10 +28,10 @@ async function location(page: Page, name: string, type: string) {
 test('stock staff transfer multiple products and expenses, then adjust warehouse stock and stock an outlet', async ({ page }) => {
   const suffix = String(Date.now()).slice(-8);
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('01000000001');
+  await page.getByLabel('Phone Number', { exact: true }).fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
   const warehouse = await location(page, 'Synthetic transfer warehouse ' + suffix, 'WAREHOUSE');
   const outlet = await location(page, 'Synthetic transfer outlet ' + suffix, 'OUTLET');
 

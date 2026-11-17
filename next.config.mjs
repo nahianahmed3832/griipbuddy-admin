@@ -26,7 +26,10 @@ const config = {
     }, {
       source: '/desk/orders/:path*',
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:;") }],
-    }, {
+    }, ...['/dashboard/orders/:path*', '/dashboard/order-details/:id', '/dashboard/create-order'].map(source => ({
+      source,
+      headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:;") }],
+    })), {
       source: '/desk/content/:path*',
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https:;") }],
     }];

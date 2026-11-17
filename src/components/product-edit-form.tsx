@@ -7,9 +7,13 @@ import { currencies, productFields, type Choice } from '@/lib/catalog-edit-field
 import type { CategoryOption } from '@/lib/catalog-list';
 import type { Region } from '@/lib/sections';
 import { CatalogConfirm, CatalogFields, saveCatalog } from './catalog-edit-form';
+import { ProductDescriptionEditor, ProductEditorPanel, ProductEditorSwitch, ProductSpecsEditor } from './production-product-editor-fields';
+import productionStyles from './production-product-editor.module.css';
 
 const taxonomy = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'];
 const taxonomyLabels = ['Category', 'Subcategory', 'Second subcategory', 'Third subcategory'];
+const productionTaxonomy = ['Category', 'Sub Category', 'Sub Sub Category (optional)', 'Third Sub Category (optional)'];
+const productionTaxonomyPlaceholders = ['Select a category', 'Select a sub category', 'Select a sub-sub category', 'Select a third-sub category'];
 const pricing = [['regular_price', 'Regular'], ['sale_price', 'Sale'], ['buying_price', 'Buying']] as const;
 type Prices = Record<string, string>;
 export type VariantDraft = {
@@ -19,7 +23,7 @@ export type VariantDraft = {
 function blankVariant(key: string): VariantDraft {
   return { key, sku: '', attribute_values: {}, base: { regular_price: '', sale_price: '0' }, prices: {}, image: '', images: '', videos: '', color_code: '' };
 }
-function CategorySelects({ tree, selected }: { tree: CategoryOption[]; selected: string[] }) {
+function CategorySelects({ tree, selected, production }: { tree: CategoryOption[]; selected: string[]; production?: boolean }) {
   const [path, setPath] = useState(selected);
   const uid = useId();
   let options = tree;
@@ -27,10 +31,10 @@ function CategorySelects({ tree, selected }: { tree: CategoryOption[]; selected:
     const level = options;
     const value = path[depth] ?? '';
     options = level.find(item => item.id === value)?.children ?? [];
-    return <div className="operation-field" key={name}><label htmlFor={uid + '-' + name}>{taxonomyLabels[depth]}</label>
+    return <div className={production ? productionStyles.field : 'operation-field'} key={name}><label htmlFor={uid + '-' + name}>{(production ? productionTaxonomy : taxonomyLabels)[depth]}</label>
       <select id={uid + '-' + name} name={name} value={value} required={depth <= 1} disabled={depth > 1 && !level.length && !value}
         onChange={event => setPath(path.slice(0, depth).concat(event.target.value))}>
-        <option value="">{depth ? 'None' : 'Choose a category'}</option>
+        <option value="">{production ? productionTaxonomyPlaceholders[depth] : depth ? 'None' : 'Choose a category'}</option>
         {!!value && !level.some(o => o.id === value) && <option value={value}>Current selection</option>}
         {level.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
       </select></div>;
@@ -149,12 +153,14 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
   </fieldset>;
 }
 
-export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false }: {
+export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false, production = false, changeRegion = false }: {
   id?: string; region: Region; tree: CategoryOption[]; brands: Choice[]; policies: Choice[]; countries: Choice[];
   selected: string[]; initial: Record<string,string>; allowCost: boolean; canDelete: boolean; initialVariants?: VariantDraft[];
-  initialAttributes?: string[]; variantOnly?: boolean; productListQuery: string;
+  initialAttributes?: string[]; variantOnly?: boolean; productListQuery: string; production?: boolean; changeRegion?: boolean;
 }) {
   const [attributesText, setAttributes] = useState(initialAttributes.join('\n'));
+  const [editorRegion, setEditorRegion] = useState(region);
+  const [formRevision, setFormRevision] = useState(0);
   const [variants, setVariants] = useState(initialVariants);
   useEffect(() => { if (variantOnly) { setAttributes(initialAttributes.join('\n')); setVariants(initialVariants); } }, [initialAttributes, initialVariants, variantOnly]);
   const busy = useRef(false);
@@ -169,18 +175,101 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
     setSaving(true); setError(''); setNotice('');
     const form = new FormData(event.currentTarget);
     const values = { ...Object.fromEntries(form), available_countries: form.getAll('available_countries'), attributes: list(attributesText), variants: variantPayload(variants) };
-    const stock = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'stock';
+    if (production && !variantOnly) {
+      for (const name of ['offer_tags', 'search_tags'] as const) {
+        const value = form.get(name);
+        if (typeof value === 'string') Object.assign(values, { [name]: value.split(',').join('\n') });
+      }
+    }
+    const intent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value');
+    const target = production ? editorRegion : region;
     try {
-      const record = await saveCatalog({ kind: 'products', id, region, action: variantOnly ? 'variants' : 'save', values });
-      if (stock) router.push('/desk/inventory/stock?region=' + region + '&product=' + encodeURIComponent(record));
-      else if (!id) router.push('/desk/catalog/products/' + encodeURIComponent(record) + productListQuery);
+      const record = await saveCatalog({ kind: 'products', id, region: target, action: variantOnly ? 'variants' : 'save', values });
+      if (intent === 'stock') router.push((production ? '/dashboard/check-outlet-stocks' : '/desk/inventory/stock') + '?region=' + target + '&product=' + encodeURIComponent(record));
+      else if (production && intent === 'new') {
+        setFormRevision(current => current + 1);
+        setAttributes('');
+        setVariants([]);
+        setNotice('Product created successfully.');
+        router.refresh();
+      } else if (production && !variantOnly) {
+        const list = new URLSearchParams(productListQuery);
+        list.set('region', target);
+        router.push('/dashboard/products?' + list);
+        router.refresh();
+      } else if (!id) router.push('/desk/catalog/products/' + encodeURIComponent(record) + productListQuery);
       else { setNotice('Saved.'); router.refresh(); }
     } catch (issue) { setError(issue instanceof Error ? issue.message : 'The product could not be saved.'); }
     finally { busy.current = false; setSaving(false); }
   }
+  const initialValue = (name: string) => initial[name] || productFields.find(field => field.name === name)?.defaultValue || '';
   return <>
-    <form className="stack-form" onSubmit={submit}>
-      {!variantOnly && <>
+    <form className={production ? productionStyles.form : 'stack-form'} onSubmit={submit} key={formRevision}>
+      {production && !variantOnly && <>
+        <ProductEditorPanel>
+          <label className={productionStyles.field}>Product Name
+            <input name="name" defaultValue={initial.name} required placeholder="Enter product name"/>
+          </label>
+          <label className={productionStyles.field}>Region
+            <select value={editorRegion} disabled={Boolean(id) || !changeRegion} onChange={event => setEditorRegion(event.target.value as Region)}>
+              <option value="BD">🇧🇩 Bangladesh (BD)</option><option value="INTERNATIONAL">🌍 International</option>
+            </select>
+          </label>
+          <ProductDescriptionEditor initial={initial.description ?? ''}/>
+          <ProductSpecsEditor initial={initial.dynamic_specs ?? '[]'}/>
+        </ProductEditorPanel>
+        <ProductEditorPanel title="General Setup">
+          <div className={productionStyles.fields}>
+            <CategorySelects tree={tree} selected={selected} production/>
+            <SelectRef name="brand" current={initial.brand} label="Brand (optional)" values={brands}/>
+            <label className={productionStyles.field}>Available Countries (optional)
+              <select name="available_countries" multiple disabled={editorRegion !== 'INTERNATIONAL'}
+                defaultValue={list(initial.available_countries ?? '')} size={Math.min(4, Math.max(2, countries.length))}>
+                {countries.map(country => <option key={country.value} value={country.value}>{country.label}</option>)}
+              </select>
+              <small>Leave empty for domestic (BDT) only. Set per-currency prices on each variant using the Global Prices column below.</small>
+            </label>
+            <label className={productionStyles.field}>Offer Tags
+              <input name="offer_tags" defaultValue={initial.offer_tags?.replaceAll('\n', ', ')} placeholder="Select offer tags"/>
+            </label>
+            <label className={productionStyles.field}>Search Tags
+              <input name="search_tags" defaultValue={initial.search_tags?.replaceAll('\n', ', ')} placeholder="Enter your search tags"/>
+            </label>
+            <label className={productionStyles.field}>Minimum Order Qty
+              <input name="min_order_qty" type="number" min="1" defaultValue={initialValue('min_order_qty')}/>
+            </label>
+            <label className={productionStyles.field}>Max Order Qty
+              <input name="max_order_qty" type="number" min="1" defaultValue={initialValue('max_order_qty')}/>
+            </label>
+            <ProductEditorSwitch label="Is Free Delivery?" hint="Wanna offer free delivery?" name="is_free_delivery" initial={initial.is_free_delivery === 'true'}/>
+            <label className={productionStyles.field}>Delivery Time
+              <input name="approximately_delivery_time" required defaultValue={initial.approximately_delivery_time || (id ? '' : '3-5 days')} placeholder="3-5 days"/>
+            </label>
+          </div>
+        </ProductEditorPanel>
+        <ProductEditorPanel title="Sale Channels"><div className={productionStyles.fields}>
+          <ProductEditorSwitch label="POS" hint="Is available on POS?" name="pos" initial={initial.pos === 'true'}/>
+          <ProductEditorSwitch label="Website" hint="Is available on website?" name="website" initial={initialValue('website') === 'true'}/>
+        </div></ProductEditorPanel>
+        <ProductEditorPanel title="Warranty &amp; Return Policy (Optional)"><div className={productionStyles.fields}>
+          <label className={productionStyles.field}>Warranty<input name="warranty" defaultValue={initial.warranty} placeholder="Enter warranty details"/></label>
+          <SelectRef name="return_policy" label="Return Policy" current={initial.return_policy} values={policies}/>
+        </div></ProductEditorPanel>
+        <ProductEditorPanel title="Thumbnail &amp; Slider Images">
+          <ImageUpload initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''}/>
+          <label className={productionStyles.field}>Short Videos (Story / Reels) (Optional)
+            <textarea name="short_videos" defaultValue={initial.short_videos} rows={3} placeholder="One video URL per line"/>
+          </label>
+        </ProductEditorPanel>
+        {['facebook','instagram','youtube','tiktok','is_published','shipping_cost','shipping_cost_per_unit','coin_per_order']
+          .map(name => <input key={name} type="hidden" name={name} value={initialValue(name) || (name === 'is_published' ? 'false' : '')}/>)}
+        <ProductEditorPanel title={id ? 'Root Level SKU' : 'Add Product Attribute & Variant'}>
+          <label className={productionStyles.field}>Root Level SKU
+            <input name="sku" required readOnly={Boolean(id)} defaultValue={initial.sku} placeholder="Enter root level SKU"/>
+          </label>
+        </ProductEditorPanel>
+      </>}
+      {!production && !variantOnly && <>
         <fieldset className="catalog-editor-group"><legend>Product listing</legend><div className="catalog-editor-grid">
           <CatalogFields fields={productFields.filter(field => !['thumbnail','slider_images'].includes(field.name))} initial={initial}/>
         </div></fieldset>
@@ -199,9 +288,15 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
         allowCost={allowCost} canDelete={canDelete} id={id}/>}
       {error && <p className="notice warn" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
-      <div className="page-actions"><button className="button primary" disabled={saving || variantOnly && !variants.length}>
+      {production ? <div className={productionStyles.saveActions}>
+        {!id && !variantOnly && <><button className={productionStyles.secondary} type="submit" value="stock" disabled={saving}>Save &amp; Open Stock</button>
+          <button className={productionStyles.secondary} type="submit" value="new" disabled={saving}>Save &amp; Add Another</button></>}
+        <button className={productionStyles.primary} type="submit" disabled={saving || variantOnly && !variants.length}>
+          {saving ? 'Processing...' : variantOnly ? 'Update Variants' : id ? 'Update Product' : 'Save'}
+        </button>
+      </div> : <div className="page-actions"><button className="button primary" disabled={saving || variantOnly && !variants.length}>
         {saving ? 'Saving…' : variantOnly ? 'Save variants' : id ? 'Save product' : 'Create product'}</button>
-        {!variantOnly && <button className="button secondary" value="stock" disabled={saving}>Save &amp; Open Stock</button>}</div>
+        {!variantOnly && <button className="button secondary" value="stock" disabled={saving}>Save &amp; Open Stock</button>}</div>}
     </form>
     {variantOnly && canDelete && id && <div className="page-actions">{variants.filter(row => row._id).map(row => <CatalogConfirm key={row.key}
       kind="products" id={id} region={region} action="delete-variant" values={{ variant: row._id }} label={'Delete ' + row.sku}

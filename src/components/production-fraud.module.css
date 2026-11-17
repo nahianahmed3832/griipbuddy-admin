@@ -1,0 +1,60 @@
+.page {
+  width: min(450px, 100%);
+  margin: 16px auto 0;
+}
+.page h1 { text-align: center; font: inherit; font-size: 24px; line-height: 32px; font-weight: 500; margin: 0 0 16px; }
+.form { position: relative; }
+.form > input {
+  display: block;
+  width: 100%;
+  height: 34px;
+  min-height: 0;
+  padding: 4px 42px 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.form > input::placeholder { color: inherit; opacity: 1; }
+.form > button {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 4px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 26px;
+  border: 1px solid white;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+}
+.form > button:disabled { opacity: .5; }
+.results {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 8px);
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 4px 12px #0002;
+}
+.close { position: absolute; top: 6px; right: 6px; appearance: none; border: 0; background: transparent; font: inherit; }
+.summary { display: grid; gap: 10px; text-align: left; color: #364153; font-size: 14px; }
+.summary :is(h2,h3) { font: inherit; font-weight: 600; margin: 0; }
+.track { display: block; height: 8px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: inherit; }
+.totals, .courierMetrics { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; text-align: center; }
+.totals div { border-radius: 8px; background: #eff6ff; padding: 8px; display: flex; flex-direction: column-reverse; }
+.totals div:nth-child(2) { background: #f0fdf4; }
+.totals div:nth-child(3) { background: #fef2f2; }
+.totals div:nth-child(4) { background: #faf5ff; }
+.summary dd { margin: 0; font-weight: 600; }
+.couriers { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.couriers article { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.couriers article header { display: flex; justify-content: space-between; gap: 6px; }
+.courierMetrics { grid-template-columns: repeat(3, minmax(0,1fr)); font-size: 12px; }
+.overall { text-align: center; background: #f9fafb; border-radius: 8px; padding: 8px; }

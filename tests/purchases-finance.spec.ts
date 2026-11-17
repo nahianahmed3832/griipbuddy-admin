@@ -5,10 +5,10 @@ const origin = process.env.GRIIP_ADMIN_PURCHASE_TEST_ORIGIN ?? 'http://127.0.0.1
 
 async function signIn(page: Page, suffix = '1') {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + suffix);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + suffix);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 }
 
 test('staff can update a supplier and save, filter and region-scope default rates', async ({ page }) => {

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Boxes, ChartNoAxesCombined, CircleAlert,
-  FileText, Info, RefreshCw, ShoppingBag } from 'lucide-react';
+  ChevronRight, FileText, Info, RefreshCw, ShoppingBag } from 'lucide-react';
 import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, reportFilterKeys, reportIds, reportQuery, type Query } from '@/lib/data';
@@ -13,6 +13,8 @@ import { ComparisonField, CurrencyField, LocationField, PeriodFields } from './o
 import { ProductThumbnail } from './product-thumbnail';
 import { Empty } from './tables';
 import { TrendChart } from './trend-chart';
+import { ProductionReportFilters } from './production-report-filters';
+import './production-reports.css';
 
 const shortcuts = [
   ['sales-summary', 'Sales Summary', 'sales_summary'],
@@ -38,12 +40,12 @@ const numericTypes = ['number','count','money','currency','cost','percent','days
 const unbrokenColumns = ['period','placedAt','phone','sku','order','status'];
 const formatPercentage = (value: number) => reportValue(value,'percent','BDT');
 
-function recordLink(key: string, raw: unknown, auth: Session, region: Region) {
+function recordLink(key: string, raw: unknown, auth: Session, region: Region, production?: boolean) {
   const parts = str(raw).split('/');
   const id = parts[3];
   if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'dashboard' || !mongoId(id ?? '')) return undefined;
-  if (key === 'order' && parts[2] === 'order-details' && has(auth.staff, 'order.view')) return url('/desk/orders/orders/' + id, {region});
-  if (key === 'product' && parts[2] === 'product-details' && has(auth.staff, 'product.view')) return url('/desk/catalog/products/' + id, {region});
+  if (key === 'order' && parts[2] === 'order-details' && has(auth.staff, 'order.view')) return url((production ? '/dashboard/order-details/' : '/desk/orders/orders/') + id, {region});
+  if (key === 'product' && parts[2] === 'product-details' && has(auth.staff, 'product.view')) return url((production ? '/dashboard/product-details/' : '/desk/catalog/products/') + id, {region});
 }
 
 function ReportMetrics({ kpis, currency }: { kpis: RecordData[]; currency: string }) {
@@ -74,14 +76,14 @@ function ReportMetrics({ kpis, currency }: { kpis: RecordData[]; currency: strin
   </div>;
 }
 
-function ReportChart({ series, currency }: { series: RecordData; currency: string }) {
+function ReportChart({ series, currency, production }: { series: RecordData; currency: string; production?: boolean }) {
   const lines = arr(series.lines).map(obj);
   const points = arr(series.points).map(obj);
   if (!lines.length || !points.length) return null;
   const tick = new Intl.DateTimeFormat('en-GB', {day:'numeric',month:'short',timeZone:'UTC'});
   return <section className="panel report-panel report-trend">
-    <h2>Sales trend</h2>
-    <TrendChart label="Booked value, delivered sales and net sales by period" lines={lines.map(line => str(line.label))}
+    {!production && <h2>Sales trend</h2>}
+    <TrendChart label="Booked value, delivered sales and net sales by period" showZero={production} lines={lines.map(line => str(line.label))}
       format={value => reportValue(value,'money',currency)}
       points={points.map(point => {
         const key = str(point.key);
@@ -92,8 +94,8 @@ function ReportChart({ series, currency }: { series: RecordData; currency: strin
   </section>;
 }
 
-function ReportTable({ table, auth, region, currency, path, query }: {
-  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>;
+function ReportTable({ table, auth, region, currency, path, query, production }: {
+  table: RecordData; auth: Session; region: Region; currency: string; path: string; query: Record<string,string | undefined>; production?: boolean;
 }) {
   const columns = arr(table.columns).map(obj);
   const rows = arr(table.rows).map(obj);
@@ -125,7 +127,7 @@ function ReportTable({ table, auth, region, currency, path, query }: {
       })}</tr></thead><tbody>{rows.map((row,index) => <tr key={index}>{columns.map(col => {
         const key = str(col.key);
         const value = reportValue(row[key],col.type,currency);
-        const href = recordLink(key,obj(row._links)[key],auth,region);
+        const href = recordLink(key,obj(row._links)[key],auth,region,production);
         const flag = tone(obj(row._tones)[key]);
         const content = href ? <Link className="table-link" href={href}>{value}</Link> : value;
         const cellClass = numericTypes.includes(str(col.type)) ? 'report-numeric' : unbrokenColumns.includes(key) ? 'report-nowrap' : undefined;
@@ -149,9 +151,33 @@ function ReportTable({ table, auth, region, currency, path, query }: {
   </section>;
 }
 
-export async function Reports({ auth, id, q, region }: { auth: Session; id?: string; q: Query; region: Region }) {
+export async function Reports({ auth, id, q, region, production = false }: {
+  auth: Session; id?: string; q: Query; region: Region; production?: boolean;
+}) {
+  const reportBase = production ? '/dashboard/reports' : '/desk/reports';
   if (!id) {
     const definitions = arr(await api(url('/analytics/reports', {region}),auth.token)).map(obj).filter(report => reportIds.includes(str(report.id)));
+    if (production) return <div className="production-report-center">
+      <header><h1>Reports</h1><p>{region === 'BD' ? 'Bangladesh' : 'International'} · Every report can be filtered, sorted and exported to CSV or Excel. Dates are {region === 'BD' ? 'Bangladesh time' : 'UTC'}.</p></header>
+      {Object.entries(domains).map(([key, domain]) => {
+        const available = definitions.filter(report => report.domain === key);
+        if (!available.length) return null;
+        return <section className={'production-report-category overview-' + domain.color} key={key} aria-label={domain.name}>
+          <h2><span className="overview-block-icon"><domain.icon size={16}/></span>{domain.name} <small>({available.length})</small></h2>
+          <div className="production-report-cards">{available.map(report => <Link
+            className="panel report-card" key={str(report.id)} href={url(reportBase + '/' + str(report.id), { region })}>
+            <h3>{str(report.title)}</h3><p>{str(report.description)}</p>
+            <footer><span>{str(report.dateBasis)}</span><strong>Open <ChevronRight size={15}/></strong></footer>
+          </Link>)}</div>
+        </section>;
+      })}
+      {(has(auth.staff, 'stock.view') || (region === 'BD' && has(auth.staff, 'expense.view'))) &&
+        <section className="production-report-other"><h2>Other reports</h2><div className="page-actions">
+          {has(auth.staff, 'stock.view') && <Link className="button secondary" href={url('/dashboard/check-outlet-stocks', {region})}>Stocks report by location</Link>}
+          {region === 'BD' && has(auth.staff, 'expense.view') && <Link className="button secondary" href="/dashboard/expense-report">Expense report</Link>}
+        </div></section>}
+      {!definitions.length && <Empty title="No report permissions" detail="Ask a workspace administrator for access to a specific report."/>}
+    </div>;
     return <>
       <PageHeading eyebrow="OPERATIONS / ANALYTICS" title="Reports" description="Review sales, fulfilment and inventory reports."/>
       {Object.entries(domains).map(([key, domain]) => {
@@ -176,7 +202,7 @@ export async function Reports({ auth, id, q, region }: { auth: Session; id?: str
     </>;
   }
   if (!reportIds.includes(id)) throw new ApiError(404);
-  const path = '/desk/reports/' + id;
+  const path = reportBase + '/' + id;
   const { period, from, to } = periodRange(q,id === 'sales-summary' ? '30' : 'today');
   const scope = reportQuery({...q,from,to},region);
   const page = param(q,'page');
@@ -203,46 +229,55 @@ export async function Reports({ auth, id, q, region }: { auth: Session; id?: str
   const context = [region === 'BD' ? 'Bangladesh' : 'International',currency,window,
     previous && 'Compared with ' + previous,basis].filter(Boolean).join(' · ');
 
-  return <div className={'report-workspace overview-' + domain.color}>
+  const filterInputs = <>
+      <input type="hidden" name="region" value={region}/>
+      {scope.sort && <input type="hidden" name="sort" value={scope.sort}/>}
+      {scope.order && <input type="hidden" name="order" value={scope.order}/>}
+      {dates && <PeriodFields period={period} from={query.from} to={query.to}/>}
+      <LocationField selected={scope.locations?.split(',') ?? []} locations={locations}/>
+      <CurrencyField region={region} currency={currency}/>
+      {filters.map(filter => {
+        const key = str(filter.key);
+        const value = str(params[key]);
+        return <label key={key}>{str(filter.label)}{filter.type === 'search'
+          ? <input type="search" name={key} maxLength={100} placeholder="Type to search" defaultValue={value}/>
+          : <select name={key} defaultValue={value}>{arr(filter.options).map(obj).map(option =>
+            <option key={str(option.value)} value={str(option.value)}>{str(option.label)}</option>)}</select>}</label>;
+      })}
+            {report.compares === true && (production
+      ? <><label className="production-report-compare"><input type="checkbox" role="switch" name="compare" value="previous"
+          defaultChecked={scope.compare !== 'none'}/>Compare with previous period</label>
+        <input type="hidden" name="filterApplied" value="1"/></>
+      : <ComparisonField compare={scope.compare !== 'none'}/>)}
+  </>;
+  const filterKey = JSON.stringify([period, query]);
+  return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
-      <Link className="table-link report-back" href={url('/desk/reports',{region})}><ArrowLeft size={16}/> All reports</Link>
+      <Link className="table-link report-back" href={url(reportBase,{region})}><ArrowLeft size={16}/> All reports</Link>
       <div className="report-title"><span className="overview-block-icon"><domain.icon size={22}/></span>
         <div><span className="report-domain">{domain.name}</span><h1>{str(report.title)}</h1></div>
       </div>
       <p className="report-description">{str(report.description)}</p>
       <p className="muted">{context}</p>
-      <div className="page-actions report-actions">
-        {asOf && <time className="muted" dateTime={generatedAt}>Data as of {asOf} Dhaka</time>}
+      <div className="page-actions report-actions" data-period={dates}>
+        {asOf && <time className="muted" dateTime={generatedAt}>Data as of {asOf}{!production && ' Dhaka'}</time>}
         <a className="button secondary" href={adminPath(url(path,{...query,page,period:dates ? period : undefined,refresh:'1'}))}><RefreshCw size={15}/> Refresh</a>
         <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'csv'}))}><ArrowDownToLine size={16}/> CSV</a>
         <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'xlsx'}))}><ArrowDownToLine size={16}/> Excel</a>
       </div>
     </header>
     {(dates || filters.length > 0 || locations.length > 0 || region === 'INTERNATIONAL') &&
-      <form key={JSON.stringify([period,query])} action={adminPath(path)} className="panel overview-filters report-filters">
-        <input type="hidden" name="region" value={region}/>
-        {scope.sort && <input type="hidden" name="sort" value={scope.sort}/>}
-        {scope.order && <input type="hidden" name="order" value={scope.order}/>}
-        {dates && <PeriodFields period={period} from={query.from} to={query.to}/>}
-        <LocationField selected={scope.locations?.split(',') ?? []} locations={locations}/>
-        <CurrencyField region={region} currency={currency}/>
-        {filters.map(filter => {
-          const key = str(filter.key);
-          const value = str(params[key]);
-          return <label key={key}>{str(filter.label)}{filter.type === 'search'
-            ? <input type="search" name={key} maxLength={100} placeholder="Type to search" defaultValue={value}/>
-            : <select name={key} defaultValue={value}>{arr(filter.options).map(obj).map(option =>
-              <option key={str(option.value)} value={str(option.value)}>{str(option.label)}</option>)}</select>}</label>;
-        })}
-        {report.compares === true && <ComparisonField compare={scope.compare !== 'none'}/>}
+      (production ? <ProductionReportFilters key={filterKey} path={path}>{filterInputs}</ProductionReportFilters> :
+      <form key={filterKey} action={adminPath(path)} className="panel overview-filters report-filters">
+        {filterInputs}
         <div className="page-actions"><button className="button primary">Apply filters</button>
           <Link className="button subtle" href={url(path,{region})}>Reset</Link></div>
-      </form>}
+      </form>)}
     {arr(data.restricted).length > 0 && <p className="notice">Some cost or margin figures are hidden by your permissions.</p>}
     <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency}/>
-    <ReportChart series={obj(data.series)} currency={currency}/>
+    <ReportChart series={obj(data.series)} currency={currency} production={production}/>
     {arr(data.tables).map(obj).map(table => <ReportTable key={str(table.id)} table={table} auth={auth} region={region}
-      currency={currency} path={path} query={{...query,period:dates ? period : undefined}}/>)}
+      currency={currency} path={path} query={{...query,period:dates ? period : undefined}} production={production}/>)}
     {arr(data.quality).map(obj).map((flag,index) => <div className="notice warn" key={index}><CircleAlert size={17}/>
       <p>{str(flag.message)}{reportNumber(flag.affected) !== null && reportNumber(flag.total) !== null &&
         <> ({String(flag.affected)} of {String(flag.total)})</>}</p></div>)}

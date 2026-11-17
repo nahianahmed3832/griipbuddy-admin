@@ -7,6 +7,7 @@ import { extname, isAbsolute, resolve, sep } from 'node:path';
 const require = createRequire(process.env.GRIIP_ADMIN_PARITY_PACKAGE ?? import.meta.url);
 const { chromium, request } = require('@playwright/test');
 const sharp = require('sharp');
+const editableTarget = process.env.GRIIP_ADMIN_PARITY_EDITABLE_TARGET === '1';
 
 const reportIds = [
   'sales-summary', 'sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts',
@@ -105,7 +106,7 @@ function environment(label) {
   const url = new URL(process.env[key + 'URL'] ?? '');
   const mount = url.pathname.replace(/\/$/, '');
   const local = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
-  const dev = label === 'TARGET' && ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(url.origin) && mount === '/admin';
+  const dev = !editableTarget && label === 'TARGET' && ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(url.origin) && mount === '/admin';
   if ((!local && !dev) || !['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new Error(`${key}URL must be an isolated loopback origin or the protected dev /admin URL.`);
   }
@@ -254,7 +255,8 @@ async function sessions(browser, viewport) {
 
 async function go(session, path) {
   const formerDocument = session.documentId();
-  const profile = session.signedIn && path.startsWith('/dashboard/') ? session.page.waitForResponse(response => {
+  const usesBrowserProfile = !editableTarget || session.endpoint.label !== 'TARGET';
+  const profile = usesBrowserProfile && session.signedIn && path.startsWith('/dashboard/') ? session.page.waitForResponse(response => {
     const url = new URL(response.url());
     return session.documentId() !== formerDocument && session.current(response.request()) && url.origin === session.endpoint.origin &&
       relativePath(url, session.endpoint).split('?')[0] === '/api/v1/user';
@@ -308,7 +310,7 @@ async function waitForOriginalControls(page, route, ids) {
 
 async function signIn(session, role) {
   const { page, endpoint } = session;
-  const root = endpoint.mount === '/admin' ? '/sign-in' : '/';
+  const root = endpoint.mount === '/admin' || (editableTarget && endpoint.label === 'TARGET') ? '/sign-in' : '/';
   if (page.url() === endpoint.urlFor(root)) await settled(page);
   else await go(session, root);
   const user = roles[role];
@@ -326,7 +328,8 @@ async function signIn(session, role) {
       page.waitForResponse(response => response.request().method() === 'POST' && loginApi.test(new URL(response.url()).pathname), { timeout }),
       form.getByRole('button', { name: /sign\s*in|log\s*in|continue|submit/i }).first().click(),
     ]);
-    if (!response.ok()) throw new Error(`Sign-in returned HTTP ${response.status()}.`);
+    const formRedirect = editableTarget && endpoint.label === 'TARGET' && response.status() === 303;
+    if (!response.ok() && !formRedirect) throw new Error(`Sign-in returned HTTP ${response.status()}.`);
     await page.waitForURL(url => url.origin === endpoint.origin && /\/dashboard(?:\/|$)/.test(url.pathname),
       { waitUntil: 'domcontentloaded', timeout });
     await settled(page);
@@ -438,12 +441,12 @@ async function compareScreens(pair, test, label, screenshot) {
       issues.push('owner did not reach the original dashboard');
     }
     const names = result => result.paths.map(asset => asset.name);
-    if (JSON.stringify(names(a)) !== JSON.stringify(names(b))) {
+    if (!editableTarget && JSON.stringify(names(a)) !== JSON.stringify(names(b))) {
       const left = names(a).filter(path => !names(b).includes(path));
       const right = names(b).filter(path => !names(a).includes(path));
       issues.push(`original static asset names differ (${left.length} reference-only, ${right.length} target-only)`);
     }
-    if (JSON.stringify(a.api) !== JSON.stringify(b.api)) {
+    if (!editableTarget && JSON.stringify(a.api) !== JSON.stringify(b.api)) {
       const failures = result => result.api.filter(request => /\([45]\d\d\)$/.test(request)).length;
       issues.push(`original API requests or outcomes differ (${failures(a)} reference errors, ${failures(b)} target errors)`);
       if (process.env.GRIIP_ADMIN_PARITY_PROGRESS === 'api') {
@@ -452,7 +455,7 @@ async function compareScreens(pair, test, label, screenshot) {
         console.log(`${prefix} API difference`, { reference: only(a, b), target: only(b, a) });
       }
     }
-    if (screenshot) {
+    if (screenshot && !editableTarget) {
       const styledAssets = result => result.paths.filter(asset => /\.(css|woff2)$/.test(asset.name));
       const designs = await Promise.all(results.map((result, index) => Promise.all(styledAssets(result)
         .map(async asset => [asset.name, await fingerprint(pair[index], asset)]))));
@@ -476,7 +479,8 @@ async function compareScreens(pair, test, label, screenshot) {
 async function restoreSessions(pair, role, label) {
   await Promise.all(pair.map(async session => {
     const cookies = await session.context.cookies(session.endpoint.urlFor('/dashboard/overview'));
-    if (session.signedIn && !cookies.some(cookie => cookie.name === 'accessToken')) {
+    const cookieName = editableTarget && session.endpoint.label === 'TARGET' ? 'griip_admin_step8' : 'accessToken';
+    if (session.signedIn && !cookies.some(cookie => cookie.name === cookieName)) {
       different.push(`${label} ${session.endpoint.label}: unexpectedly lost the staff session.`);
       await signIn(session, role);
     }
@@ -531,7 +535,8 @@ try {
       await Promise.all(pair.map(async session => {
         await go(session, '/dashboard/overview');
         const route = relativePath(new URL(session.page.url()), session.endpoint);
-        if (route !== '/' || !await session.page.getByRole('heading', { name: 'Login' }).isVisible()) {
+        const signedOutRoute = route === '/' || (editableTarget && route.split('?')[0] === '/sign-in');
+        if (!signedOutRoute || !await session.page.getByRole('heading', { name: 'Login' }).isVisible()) {
           different.push(`${session.endpoint.label}: anonymous dashboard did not return to the original sign-in screen`);
         }
       }));
@@ -574,5 +579,8 @@ if (endpoints.some(endpoint => endpoint.assetDirectory)) {
 if (missing.length) {
   console.log(`These record screens were checked with a missing record. Seed valid records and set GRIIP_ADMIN_PARITY_RECORDS: ${missing.join(', ')}`);
 }
-console.log('This check compares routes, asset identities and screenshots. Submitted forms and provider side effects require separate fixture acceptance.');
+console.log(editableTarget
+  ? 'Compared routes, accessibility trees, screenshots and browser actions. Source chunk hashes and client request shapes are excluded.'
+  : 'Compared routes, asset identities and screenshots.');
+console.log('Submitted forms and provider side effects require separate fixture acceptance.');
 if (different.length || (!pattern && missing.length)) process.exitCode = 1;

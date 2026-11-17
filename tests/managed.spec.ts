@@ -21,10 +21,10 @@ test.beforeAll(async ({request}) => {
 
 async function signIn(page: Page, staff = '1') {
   await page.goto(desk + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + staff);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + staff);
   await page.getByLabel('Password', {exact:true}).fill(fixturePassword());
-  await page.getByRole('button', {name:'Sign in',exact:true}).click();
-  await expect(page).toHaveURL(/\/desk\/overview$/);
+  await page.getByRole('button', {name:'Login',exact:true}).click();
+  await expect(page).toHaveURL(/\/dashboard\/overview$/);
 }
 
 async function edit(page: Page, name: string) {

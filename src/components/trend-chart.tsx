@@ -1,13 +1,15 @@
 type Point = { key: string; label: string; tick: string; values: (number | null)[] };
 
-export function TrendChart({ points, lines, label, format }: {
+export function TrendChart({ points, lines, label, format, showZero = false }: {
   points: Point[];
   lines: string[];
   label: string;
   format: (value: number) => string;
+  showZero?: boolean;
 }) {
   const values = points.flatMap(point => point.values.filter((value): value is number => value !== null));
-  const high = Math.max(1, ...values);
+  const hasActivity = values.some(value => value !== 0);
+  const high = Math.max(showZero && !hasActivity ? 4 : 1, ...values);
   const low = Math.min(0, ...values);
   const x = (index: number) => points.length > 1 ? 60 + index * 608 / (points.length - 1) : 364;
   const y = (value: number) => 166 - (value - low) / (high - low) * 146;
@@ -17,7 +19,7 @@ export function TrendChart({ points, lines, label, format }: {
   const labels = new Set(labelCount > 0 ? Array.from({length:labelCount + 1}, (_, i) => Math.round(i * last / labelCount)) : [0]);
 
   return <>
-    {values.some(value => value !== 0) ?
+    {(hasActivity || (showZero && values.length > 0)) ?
       <svg className="overview-chart" viewBox="0 0 700 200" role="img" aria-label={label}>
         {[1,.75,.5,.25,0].map(tick => {
           const value = low + (high - low) * tick;

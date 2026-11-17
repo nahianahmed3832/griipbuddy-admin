@@ -1,5 +1,5 @@
 import { api, ApiError, arr, obj, requestApi, str, url, type Session } from './api';
-import { barcodeConditions, barcodePattern, barcodeStatuses, type BarcodeRow, type BarcodeVariant } from './barcode-data';
+import { barcodeConditions, barcodePattern, barcodeStatuses, productionBarcodePageSizes, type BarcodeRow, type BarcodeVariant } from './barcode-data';
 import { param, perPage, type Query } from './data';
 import { canOperate } from './operations';
 import { has, type Region } from './sections';
@@ -24,7 +24,7 @@ function barcodeRow(input: unknown): BarcodeRow {
   };
 }
 
-export async function listBarcodes(auth: Session, region: Region, q: Query) {
+export async function listBarcodes(auth: Session, region: Region, q: Query, production = false) {
   if (!has(auth.staff, 'barcode.view')) throw new ApiError(403);
   const sku = (param(q, 'sku') ?? '').trim().slice(0, 100);
   const barcode = (param(q, 'barcode') ?? '').trim();
@@ -34,13 +34,15 @@ export async function listBarcodes(auth: Session, region: Region, q: Query) {
   const filters = { region, sku, barcode: barcodePattern.test(barcode) ? barcode : '',
     status: barcodeStatuses.includes(status) ? status : '', conditions: barcodeConditions.includes(conditions) ? conditions : '',
     is_used_barcode: ['true', 'false'].includes(used) ? used : '' };
+  const requested = Number(param(q, 'limit'));
+  const limit = production ? productionBarcodePageSizes.includes(requested) ? requested : 50 : perPage;
   const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  if (barcode && !filters.barcode) return { rows: [], total: 0, page, filters };
-  const data = obj(await api(url('/barcode', { ...filters, page: String(page), limit: String(perPage) }), auth.token));
+  if (barcode && !filters.barcode) return { rows: [], total: 0, page, filters, limit };
+  const data = obj(await api(url('/barcode', { ...filters, page: String(page), limit: String(limit) }), auth.token));
   const meta = obj(data.meta);
   if (meta.region !== region) throw new ApiError(502);
   const total = meta.total;
-  return { rows: arr(data.data).map(barcodeRow), total: typeof total === 'number' ? total : 0, page, filters };
+  return { rows: arr(data.data).map(barcodeRow), total: typeof total === 'number' ? total : 0, page, filters, limit };
 }
 
 export async function barcodeHistory(code: string, auth: Session, region: Region) {

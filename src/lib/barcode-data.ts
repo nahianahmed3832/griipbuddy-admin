@@ -1,5 +1,6 @@
 export const barcodePattern = /^[a-z\d-]{1,60}$/i;
 export const receiptLimit = 50;
+export const productionBarcodePageSizes = [10, 20, 50, 100];
 export const barcodeStatuses = ['QC_PENDING', 'IN_STOCK', 'ASSIGNED', 'ALLOCATED', 'PICKED', 'SHIPPED', 'SOLD', 'PENDING_RETURN',
   'RETURNED', 'DAMAGED', 'QUARANTINE', 'MISSING', 'EXPIRED', 'REFURBISHING', 'DISCARDED'];
 export const barcodeConditions = ['NEW', 'USED', 'REFURBISHED', 'OPEN_BOX', 'PACKAGING_DAMAGED', 'DEFECTIVE', 'PHYSICALLY_DAMAGED', 'SCRAP'];

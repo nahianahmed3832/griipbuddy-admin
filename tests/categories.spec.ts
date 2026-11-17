@@ -8,10 +8,10 @@ const categories = '/desk/catalog/categories';
 
 async function signIn(page: Page, phone: string) {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill(phone);
+  await page.getByLabel('Phone Number', { exact: true }).fill(phone);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 }
 
 test('create, find and edit categories in one tree on desktop and mobile', async ({ page }) => {

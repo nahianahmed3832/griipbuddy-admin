@@ -7,10 +7,10 @@ const writable = process.env.GRIIP_ADMIN_CUSTOMER_TEST_ORIGIN ?? 'http://127.0.0
 
 async function signIn(page: Page, origin: string, phone: string) {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill(phone);
+  await page.getByLabel('Phone Number', { exact: true }).fill(phone);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/desk\/overview$/);
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/dashboard\/overview$/);
 }
 
 test('the customer directory searches across accounts and links authorized staff to website orders', async ({ page, request }) => {

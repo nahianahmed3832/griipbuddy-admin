@@ -9,11 +9,13 @@ import { stockColumns, stockEndpoint, stockFilters, stockPath } from '@/lib/stoc
 import { PageHeading } from './dashboard';
 import { Table } from './tables';
 import { PrintReport } from './print-report';
+import { ProductionStockReport } from './production-stock-report';
 
-export async function StockReport({ auth, q, region, action }: {
-  auth: Session; q: Query; region: Region; action?: 'stock-adjust' | 'stock-transfer';
+export async function StockReport({ auth, q, region, action, production = false }: {
+  auth: Session; q: Query; region: Region; action?: 'stock-adjust' | 'stock-transfer'; production?: boolean;
 }) {
   if (!has(auth.staff, 'stock.view') || action && !canOperate(auth.staff, action)) throw new ApiError(403);
+  if (production && !action) return <ProductionStockReport auth={auth} q={q} region={region}/>;
   const filters = stockFilters(q, region);
   const printing = !action && param(q,'print') === '1';
   const page = printing ? 1 : Math.min(10000, Math.max(1, Number.parseInt(param(q,'page') ?? '', 10) || 1));

@@ -12,6 +12,9 @@ import { GenerateBarcodes, ReceiveBarcodes } from './barcode-forms';
 import { BarcodeRegister } from './barcode-register';
 import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
+import { BarcodeLogField, ProductionBarcodeRegister } from './production-barcode-register';
+import { ProductionStockDialog } from './production-stock-controls';
+import productionStyles from './production-smart-inventory.module.css';
 
 const eyebrow = 'INVENTORY / SMART INVENTORY';
 const barcodesPath = inventoryPath + '/barcodes';
@@ -21,8 +24,19 @@ function readable(value: string) {
   return value.toLowerCase().replaceAll('_', ' ').replace(/^./, first => first.toUpperCase());
 }
 
-export async function AllBarcodes({ auth, region, q }: { auth: Session; region: Region; q: Query }) {
-  const { rows, total, page, filters } = await listBarcodes(auth, region, q);
+export async function AllBarcodes({ auth, region, q, production = false }: { auth: Session; region: Region; q: Query; production?: boolean }) {
+  const { rows, total, page, filters, limit } = await listBarcodes(auth, region, production ? { ...q, barcode: undefined } : q, production);
+  if (production) {
+    const { region: market, ...applied } = filters;
+    const code = param(q, 'barcode') ?? '';
+    return <>
+      <ProductionBarcodeRegister key={JSON.stringify(applied) + page + limit + market} rows={rows} applied={applied} region={region}
+        canSearch={has(auth.staff, 'product.view')} total={total} limit={limit} page={page}/>
+      {code && <ProductionStockDialog compact label={code} closeUrl={url('/dashboard/barcodes', { ...applied, region, page: String(page), limit: String(limit) })}>
+        <BarcodeLogs auth={auth} region={region} q={q} production hideSearch/>
+      </ProductionStockDialog>}
+    </>;
+  }
   return <>
     <PageHeading eyebrow={eyebrow} title={`All Barcodes (${total.toLocaleString('en')})`} description="Find individual units, print labels, and review stock history.">
       {canOperate(auth.staff, 'barcode-generate') && <Link href={url(inventoryPath + '/generate-barcodes', { region })} className="button primary">
@@ -55,24 +69,32 @@ export async function AllBarcodes({ auth, region, q }: { auth: Session; region: 
   </>;
 }
 
-export function GenerateInventoryLabels({ auth, region }: { auth: Session; region: Region }) {
+export function GenerateInventoryLabels({ auth, region, production = false }: { auth: Session; region: Region; production?: boolean }) {
   if (!canOperate(auth.staff, 'barcode-generate')) throw new ApiError(403);
+  if (production) return <section className={productionStyles.generate}>
+    <header><h1>Generate Barcodes</h1><p>Create unique per-unit EAN-13 labels for a variant, then print them.</p></header>
+    <GenerateBarcodes key={region} region={region} production/>
+  </section>;
   return <>
     <PageHeading eyebrow={eyebrow} title="Generate Barcodes" description="Create unique EAN-13 labels for individual units. Receive the labels to add the units to stock."/>
     <GenerateBarcodes key={region} region={region}/>
   </>;
 }
 
-export async function ScanToReceive({ auth, region }: { auth: Session; region: Region }) {
+export async function ScanToReceive({ auth, region, production = false }: { auth: Session; region: Region; production?: boolean }) {
   if (!canOperate(auth.staff, 'barcode-receive')) throw new ApiError(403);
   const locations = await loadLocations(auth, region);
+  if (production) return <section className={productionStyles.receive}>
+    <header><h1>Scan to Purchase (Receive)</h1><p>Scan printed labels to receive them into stock. A costed purchase + lot is created automatically from each variant&apos;s default rate.</p></header>
+    <ReceiveBarcodes key={region} locations={locations} region={region} purchases={has(auth.staff, 'purchase.view') ? inventoryPath + '/purchases' : undefined} production/>
+  </section>;
   return <>
     <PageHeading eyebrow={eyebrow} title="Scan to Receive" description="Receive labeled units at a business location and record their purchase and stock lots."/>
     <ReceiveBarcodes key={region} locations={locations} region={region} purchases={has(auth.staff, 'purchase.view') ? inventoryPath + '/purchases' : undefined}/>
   </>;
 }
 
-export async function BarcodeLogs({ auth, region, q }: { auth: Session; region: Region; q: Query }) {
+export async function BarcodeLogs({ auth, region, q, production = false, hideSearch = false }: { auth: Session; region: Region; q: Query; production?: boolean; hideSearch?: boolean }) {
   if (!has(auth.staff, 'barcode.view')) throw new ApiError(403);
   const code = (param(q, 'barcode') ?? '').trim().slice(0, 61);
   let history: Awaited<ReturnType<typeof barcodeHistory>> | undefined;
@@ -84,13 +106,16 @@ export async function BarcodeLogs({ auth, region, q }: { auth: Session; region: 
       error = caught.status === 404 ? 'No unit matches that barcode in this market.' : caught.message;
     }
   }
-  return <>
-    <PageHeading eyebrow={eyebrow} title="Barcode Logs" description="Scan or enter a unit barcode to see its inventory history."/>
-    <form action={adminPath(logsPath)} className="panel filters barcode-filters" key={code + region}>
+  const formPath = production ? '/dashboard/barcodes/logs' : logsPath;
+  return <div className={production ? productionStyles.logs : undefined}>
+    {!production && <PageHeading eyebrow={eyebrow} title="Barcode Logs" description="Scan or enter a unit barcode to see its inventory history."/>}
+    {!hideSearch && <form action={adminPath(formPath)} className={production ? productionStyles.logsForm : 'panel filters barcode-filters'} key={code + region}>
       <input type="hidden" name="region" value={region}/>
-      <label className="filter-label">Scan or type a barcode<input name="barcode" maxLength={60} defaultValue={code} autoComplete="off" required/></label>
-      <button className="button primary"><Search size={16}/> Load history</button>
-    </form>
+      {production ? <BarcodeLogField code={code}/> : <>
+        <label className="filter-label">Scan or type a barcode<input name="barcode" maxLength={60} defaultValue={code} autoComplete="off" required/></label>
+        <button className="button primary"><Search size={16}/> Load history</button>
+      </>}
+    </form>}
     {error && <p className="notice warn" role="alert">{error}</p>}
     {history && <section className="panel">
       <div className="panel-header"><div><h2><code>{history.unit.barcode}</code></h2><p>{[history.unit.sku, history.unit.product].filter(Boolean).join(' · ')}</p></div>
@@ -106,5 +131,5 @@ export async function BarcodeLogs({ auth, region, q }: { auth: Session; region: 
         </li>;
       })}</ol> : <Empty title="No history recorded" detail="This unit has no inventory events on file."/>}
     </section>}
-  </>;
+  </div>;
 }

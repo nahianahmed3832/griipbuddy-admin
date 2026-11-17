@@ -44,10 +44,10 @@ async function fixtureDatabase<T>(work: (collection: (name: string) => FixtureCo
 
 async function signIn(page: Page, role = '1') {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + role);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + role);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 }
 
 async function confirm(page: Page, status = 200, path = '/api/operations') {

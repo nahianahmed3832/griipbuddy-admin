@@ -13,8 +13,14 @@ export const manualStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'INCOMPLETE',
 export const orderFilterKeys = ['q', 'sku', 'from', 'to', 'location', 'creator', 'called', 'filter'] as const;
 export type OrderFilters = Partial<Record<typeof orderFilterKeys[number], string>>;
 export type Address = { address?: string; thana?: string; district?: string; division?: string; city?: string; state?: string; postal_code?: string; country?: string };
-export type OrderItem = { name?: string; sku?: string; quantity?: number; image?: string; unitPrice?: number; amount?: number };
-export type Variant = { id: string; product: string; name: string; sku: string; attributes?: Record<string, string>; image?: string; price: number; stock: number };
+export type OrderItem = {
+  name?: string; sku?: string; quantity?: number; image?: string; unitPrice?: number; snapshotUnitPrice?: number;
+  amount?: number; attributes?: string[]; barcodes?: string[];
+};
+export type Variant = {
+  id: string; product: string; name: string; sku: string; attributes?: Record<string, string>; image?: string;
+  price: number; stock: number; regularPrice?: number; salePrice?: number;
+};
 export type Order = {
   _id: string; order_serial_id: number; invoice_number?: string; status: string; order_date?: string; createdAt?: string;
   customer_name?: string; customer_phone?: string; delivery_address?: Address; order_note?: string;
@@ -26,6 +32,7 @@ export type Order = {
 export type OrderNote = { text?: string; at?: string; by?: string };
 export type OrderDetail = Order & {
   sub_total?: number; total_discount?: number; delivery_charge?: number; tax?: number; payment_type?: string;
+  payment?: { amount?: number; date?: string; reference?: string; status?: string };
   notes: OrderNote[]; activity: OrderNote[];
   statusHistory: { status?: string; at?: string; by?: string }[];
   discounts: { type?: string; amount?: number; at?: string }[];

@@ -11,9 +11,9 @@ test.use({ actionTimeout: 10000, navigationTimeout: 20000 });
 
 async function signIn(page: Page, account = '1', origin = '') {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + account);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + account);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
   await expect(page).toHaveURL(/\/desk\//);
 }
 
@@ -45,11 +45,11 @@ test('legacy product edit links find exact slugs within the selected market', as
       ['/dashboard/update-product/new', 'Draft with reserved slug'],
     ]) {
       await page.goto(path);
-      await expect(page.getByRole('heading', { name: 'Edit product', level: 1 })).toBeVisible();
-      await expect(page.getByLabel('Product name', { exact: true })).toHaveValue(title);
+      await expect(page.getByRole('heading', { name: 'Update Product', level: 1 })).toBeVisible();
+      await expect(page.getByLabel('Product Name', { exact: true })).toHaveValue(title);
     }
     await page.goto('/dashboard/create-product');
-    await expect(page.getByRole('heading', { name: 'Create product', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Create Product', level: 1 })).toBeVisible();
     for (const path of ['/dashboard/update-product/fixture-int', '/dashboard/update-product/fixture']) {
       expect((await page.goto(path))?.status()).toBe(404);
     }

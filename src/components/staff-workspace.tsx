@@ -8,6 +8,7 @@ import { activityPath, dateLabel, directory, endpoint, permissionInfo, roleDirec
   type Options, type Paged, type RoleRecord, type StaffEvent, type StaffRecord } from '@/lib/staff-access';
 import { PageHeading } from './dashboard';
 import { RoleEditor, StaffForm, StaffLifecycle } from './staff-forms';
+import { ProductionRoleDirectory, ProductionStaffDirectory } from './production-staff-directory';
 import '@/app/staff-access.css';
 
 const title = 'ADMINISTRATION / STAFF & ACCESS';
@@ -48,7 +49,7 @@ function NoResults({ title, detail, kind }: { title: string; detail: string; kin
   return <div className="empty"><span className="empty-icon"><Icon size={21} aria-hidden="true"/></span><h3>{title}</h3><p>{detail}</p></div>;
 }
 
-export async function StaffWorkspace({ auth, view, id, q }: { auth: Session; view: string; id?: string; q: Query }) {
+export async function StaffWorkspace({ auth, view, id, q, production = false }: { auth: Session; view: string; id?: string; q: Query; production?: boolean }) {
   if (!superAdmin(auth.staff)) throw new ApiError(403);
   const write = canWrite(auth.staff);
   const enrollment = staffEnrollmentAvailable();
@@ -86,6 +87,9 @@ export async function StaffWorkspace({ auth, view, id, q }: { auth: Session; vie
   }
   if (view === 'roles') {
     const result = await api(url(endpoint + '/roles', { page, q: search }), auth.token) as Paged<RoleRecord>;
+    if (production) return <ProductionRoleDirectory rows={result.rows} create={write && has(auth.staff, 'role.create')}>
+      <Pages path="/dashboard/role" result={result} filters={{ q: search }}/>
+    </ProductionRoleDirectory>;
     return <><PageHeading eyebrow={title} title="Roles and permissions" description="See who uses each role and review what it allows.">
       {write && has(auth.staff, 'role.create') && <Link className="button primary" href={roleDirectory + '/new'}><Plus size={16}/> Create role</Link>}</PageHeading>
       <section className="panel"><header className="panel-header"><div><h2>Role directory</h2><p>{result.total} {result.total === 1 ? 'role' : 'roles'}</p></div></header>
@@ -122,6 +126,9 @@ export async function StaffWorkspace({ auth, view, id, q }: { auth: Session; vie
     </>;
   }
   const result = await api(url(endpoint + '/directory', { page, q: search, status }), auth.token) as Paged<StaffRecord>;
+  if (production) return <ProductionStaffDirectory rows={result.rows} self={auth.staff.id} create={canInvite}>
+    <Pages path="/dashboard/staffs" result={result} filters={{ q: search, status }}/>
+  </ProductionStaffDirectory>;
   return <><PageHeading eyebrow={title} title="Staff directory" description="Review team access across all business locations.">
     {canInvite && <Link className="button primary" href={directory + '/new'}><Plus size={16}/> Invite staff</Link>}</PageHeading>
     <section className="panel"><header className="panel-header"><div><h2>Staff accounts</h2><p>{result.total} {result.total === 1 ? 'account' : 'accounts'}</p></div></header>

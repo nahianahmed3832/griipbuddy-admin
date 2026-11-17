@@ -34,15 +34,18 @@ export function purchaseFilters(q: Query) {
   };
 }
 
-export async function purchaseList(auth: Session, region: Region, q: Query) {
+export async function purchaseList(auth: Session, region: Region, q: Query, production = false) {
   if (!has(auth.staff, 'purchase.view')) throw new ApiError(403);
   const filters = purchaseFilters(q);
-  const page = purchasePage(q);
+  const requested = param(q, 'limit') ?? '';
+  const limit = production && ['20', '40', '60', '80', '100', 'all'].includes(requested) ? requested : String(perPage);
+  const size = limit === 'all' ? 10000 : Number(limit);
+  const page = limit === 'all' ? 1 : purchasePage(q);
   const data = obj(await api(url('/purchase', {
-    ...filters, region, page: String(page), limit: String(perPage), sortBy: 'purchase_date',
+    ...filters, region, page: String(page), limit: String(size), sortBy: 'purchase_date',
   }), auth.token));
   const rows = arr(data.data).map(obj).filter(row => obj(row.business_location)._id && (obj(row.business_location).region ?? 'BD') === region);
-  return { rows, page, filters, total: Number(obj(data.meta).total) || 0 };
+  return { rows, page, filters, size, limit, total: Number(obj(data.meta).total) || 0 };
 }
 
 export async function purchaseRecord(auth: Session, region: Region, id: string) {

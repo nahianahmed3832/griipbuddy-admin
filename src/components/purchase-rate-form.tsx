@@ -10,8 +10,8 @@ type Choice = { value: string; label: string };
 type Result = { saved: string[]; failed: { id: string; message: string }[] };
 const endpoint = adminPath('/api/purchases/rates');
 
-export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: Choice[]; region: Region; maxLines: number }) {
-  const [supplier, setSupplier] = useState(suppliers.length === 1 ? suppliers[0].value : '');
+export function PurchaseRateForm({ suppliers, region, maxLines, production = false }: { suppliers: Choice[]; region: Region; maxLines: number; production?: boolean }) {
+  const [supplier, setSupplier] = useState(!production && suppliers.length === 1 ? suppliers[0].value : '');
   const [term, setTerm] = useState('');
   const [options, setOptions] = useState<RateOption[]>([]);
   const [lines, setLines] = useState<RateOption[]>([]);
@@ -109,7 +109,7 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
       <section className="panel padded purchase-rate-picker">
         <label className="filter-label">Supplier
           <select value={supplier} onChange={event => { setSupplier(event.target.value); search('', false); }} required>
-            <option value="">Select a supplier</option>{suppliers.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            <option value="">{production ? 'Select supplier' : 'Select a supplier'}</option>{suppliers.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         {!suppliers.length && <p className="muted">No active suppliers are available.</p>}
@@ -117,7 +117,7 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
           <label className="filter-label">Search products by name or SKU
             <span className="search-input"><Search size={17} aria-hidden/><input ref={input} role="combobox" aria-autocomplete="list"
               aria-expanded={showResults} aria-controls={listId} aria-activedescendant={activeId} autoComplete="off" maxLength={80}
-              disabled={!supplier || lines.length >= maxLines} value={term} placeholder="Enter a product name or SKU"
+              disabled={!supplier || lines.length >= maxLines} value={term} placeholder={production ? 'Search product...' : 'Enter a product name or SKU'}
               onFocus={() => setOpen(true)} onChange={event => search(event.target.value, true)} onKeyDown={keys}/></span>
           </label>
           <div className="purchase-suggestions" hidden={!showResults}>
@@ -134,7 +134,7 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
         </div>
       </section>
       <section className="panel padded purchase-rate-lines" aria-label="Selected variants">
-        <h2>Selected variants</h2>
+        <h2>{production ? 'Selected Items' : 'Selected variants'}</h2>
         {lines.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Rates to save"><table>
           <thead><tr><th scope="col">Product</th><th scope="col">SKU</th><th scope="col">Unit cost</th><th scope="col">Discount</th><th scope="col">Tax</th><th scope="col">Remove</th></tr></thead>
           <tbody>{lines.map(line => <tr key={line.id}><td>{line.name}</td><td><code>{line.sku}</code></td>
@@ -143,7 +143,7 @@ export function PurchaseRateForm({ suppliers, region, maxLines }: { suppliers: C
               value={line[key]} onChange={event => setLines(previous => previous.map(item => item.id === line.id ? { ...item, [key]: event.target.value } : item))}/></td>)}
             <td><button type="button" className="icon-button" aria-label={'Remove ' + line.sku} onClick={() => setLines(previous => previous.filter(item => item.id !== line.id))}><Trash2 size={15}/></button></td>
           </tr>)}</tbody>
-        </table></div> : <p className="muted">Search for products to add their variants here.</p>}
+        </table></div> : <p className="muted">{production ? 'Search and select products to set their default purchase rate.' : 'Search for products to add their variants here.'}</p>}
       </section>
       {message && <p className="notice" role="status">{message}</p>}
       {error && <p className="notice warn purchase-error" role="alert">{error}</p>}

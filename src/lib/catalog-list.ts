@@ -14,29 +14,30 @@ export type CategoryOption = { id: string; name: string; children: CategoryOptio
 export type Choice = { value: string; label: string };
 export type CatalogFilters = ReturnType<typeof catalogFilters>;
 
-export function catalogFilters(query: Query, canViewStock: boolean, canViewLocations: boolean) {
+export function catalogFilters(query: Query, canViewStock: boolean, canViewLocations: boolean, production = false) {
   const sort = param(query, 'sort') ?? '';
   const publication = param(query, 'filter');
   const stock = param(query, 'stock');
-  const location = param(query, 'location') ?? '';
+  const location = param(query, 'location') ?? (production ? param(query, 'businessLocation') : undefined) ?? '';
   const page = Number(param(query, 'page'));
   const size = Number(param(query, 'size'));
   const category: string[] = [];
   for (const key of categoryKeys) {
-    const id = param(query, key) ?? '';
+    const productionKeys = { category: 'category', subcategory: 'subCategory', subSubcategory: 'subSubCategory', thirdSubcategory: 'thirdSubCategory' };
+    const id = param(query, key) ?? (production ? param(query, productionKeys[key]) : undefined) ?? '';
     if (!mongoId(id)) break;
     category.push(id.toLowerCase());
   }
   return {
-    q: (param(query, 'q') ?? '').trim().slice(0, 80),
-    searchBy: param(query, 'searchBy') === 'sku' ? 'sku' : 'text',
+    q: (param(query, 'q') ?? (production ? param(query, 'sku') : undefined) ?? '').trim().slice(0, 80),
+    searchBy: production || param(query, 'searchBy') === 'sku' ? 'sku' : 'text',
     filter: publication === 'true' || publication === 'false' ? publication : '',
     category,
     stock: canViewStock && (stock === 'in' || stock === 'out') ? stock : '',
     location: canViewLocations && mongoId(location) ? location.toLowerCase() : '',
     sort: Object.hasOwn(catalogSorts, sort) ? sort as keyof typeof catalogSorts : 'newest' as const,
     page: Number.isInteger(page) ? Math.min(10000, Math.max(1, page)) : 1,
-    size: catalogPageSizes.includes(size) ? size : catalogPageSizes[0],
+    size: (production ? [...catalogPageSizes, 80, 100] : catalogPageSizes).includes(size) ? size : catalogPageSizes[0],
   };
 }
 

@@ -13,10 +13,10 @@ test('staff can create, quote, receive, edit, export and manage a pre-order', as
   const suffix = String(Date.now()).slice(-8);
   const product = 'GriipBuddy reference ' + suffix;
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('01000000001');
+  await page.getByLabel('Phone Number', { exact: true }).fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 
   await page.goto(origin + path);
   await page.getByRole('link', { name: 'Create pre-order', exact: true }).click();

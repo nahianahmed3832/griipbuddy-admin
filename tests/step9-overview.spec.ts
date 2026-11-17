@@ -15,10 +15,10 @@ test.skip(process.env.GRIIP_ADMIN_INTEGRATED !== '1' || process.env.GRIIP_ADMIN_
 
 async function signIn(page: Page, suffix = '1') {
   await page.goto(admin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + suffix);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + suffix);
   await page.getByLabel('Password', {exact:true}).fill(fixturePassword());
-  await page.getByRole('button', {name:'Sign in',exact:true}).click();
-  await expect(page).toHaveURL(/\/desk\/overview$/);
+  await page.getByRole('button', {name:'Login',exact:true}).click();
+  await expect(page).toHaveURL(/\/dashboard\/overview$/);
 }
 
 test('managed policy, storefront order, Overview and private receipt share one Step 9 record', async ({ page, browser, request }, testInfo) => {

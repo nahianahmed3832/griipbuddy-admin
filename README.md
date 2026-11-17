@@ -1,5 +1,15 @@
 # GriipBuddy commerce admin
 
+## Editable production admin reconstruction
+
+The editable candidate uses the normal Next.js build from `src/`. All 98 dashboard bookmarks stay on their production URLs and render the editable shell. The checklist distinguishes source route coverage from completed screen and workflow parity. The archived production image is a separate comparison reference. The [route and workflow checklist](evidence/editable-production-parity.md) tracks the remaining screens and acceptance checks.
+
+Use the isolated recovery API for local verification. Set `GRIIP_ADMIN_TARGET=fixture`, point `GRIIP_ADMIN_FIXTURE_PORT` to its loopback port, and set `NEXT_PUBLIC_GRIIP_ADMIN_PREFIX=/admin` both when building and when starting to test the mounted routes. The backend branch `codex/editable-admin-order-paging` supports the numeric production page sizes.
+
+Use `tests/editable-production-routes.mjs` for a fixture HTTP sweep of all 102 route patterns. Set `GRIIP_ADMIN_ROUTE_FIXTURE` to the isolated backend fixture module and `GRIIP_ADMIN_ROUTE_RECORDS` to the JSON mapping printed by the backend’s `recovery/seed-editable-admin-routes.cjs`. Seed both comparison fixtures with their respective API port offsets. This sweep checks reachability and response status.
+
+Set `GRIIP_ADMIN_PARITY_EDITABLE_TARGET=1` when running the original admin comparator against the source build. Provide two loopback origins and synthetic accounts. The comparator then checks the visible experience without requiring identical JavaScript and CSS hashes.
+
 ## Original admin on protected dev
 
 The protected release uses the preserved GriipBuddy admin build `euAYl85haEyQ5Bfnz2vP3`. The [Dockerfile](deploy/original-admin/Dockerfile) pins the original image, retains its screens and assets, and installs the Next.js runtime from this repository's lockfile. The build adapter mounts the existing admin at `/admin` and connects it to the isolated dev API. [Original route manifest](evidence/legacy-routes.txt)

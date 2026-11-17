@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Boxes, PackageSearch, Plus, X } from 'lucide-react';
 import { ApiError, arr, canWrite, legacyUrl, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
+import { canEditProduct } from '@/lib/catalog-admin';
+import { canOperate } from '@/lib/operations';
 import { basePricing, catalogFilters, catalogPageSizes, catalogParams, catalogPath, catalogSorts, categoryKeys,
   loadCatalog, loadCategoryTree, productCategory, stockOverview } from '@/lib/catalog-list';
 import { permitted, type Query } from '@/lib/data';
@@ -9,15 +11,16 @@ import { adminPath } from '@/lib/paths';
 import { has, resources, type Region } from '@/lib/sections';
 import { CatalogExport, CatalogFiltersForm } from './catalog-controls';
 import { ProductThumbnail } from './product-thumbnail';
+import { ProductionProductList, type ProductListing } from './production-product-list';
 
 const count = (value: number) => value.toLocaleString('en');
 const money = (value: number) => '৳' + value.toLocaleString('en', { maximumFractionDigits: 2 });
 
-export async function ProductCatalog({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
+export async function ProductCatalog({ auth, q, region, production = false }: { auth: Session; q: Query; region: Region; production?: boolean }) {
   if (!permitted(resources.catalog.products, auth)) throw new ApiError(403);
   const showStock = has(auth.staff, 'stock.view');
   const showLocations = showStock && has(auth.staff, 'business_locations.view');
-  const f = catalogFilters(q, showStock, showLocations);
+  const f = catalogFilters(q, showStock, showLocations, production);
   const params = catalogParams(f, region);
   const href = (changes: Record<string, string | undefined> = {}) => url(catalogPath, { ...params, page: undefined, ...changes });
   const reset = url(catalogPath, { region });
@@ -28,6 +31,34 @@ export async function ProductCatalog({ auth, q, region }: { auth: Session; q: Qu
   ]);
   const tree = treeResult ?? [];
   const locations = locationResult ?? [];
+  if (production) {
+    const listings = data.rows.flatMap((record): ProductListing[] => {
+      const id = str(record._id);
+      if (!mongoId(id)) return [];
+      const variant = obj(arr(record.variants)[0]);
+      const price = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+      const thumbnail = str(record.thumbnail);
+      const allowedOrigin = process.env.GRIIP_ADMIN_IMAGE_ORIGIN;
+      let image = '';
+      if (allowedOrigin && thumbnail) {
+        try {
+          const address = new URL(thumbnail);
+          if (address.protocol === 'https:' && address.origin === allowedOrigin && !address.username && !address.password) image = address.href;
+        } catch { /* Unresolvable legacy thumbnail uses the preserved placeholder. */ }
+      }
+      const categories = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'].map(key => str(obj(record[key]).name_en) || str(obj(record[key]).name));
+      const outlets = showLocations ? arr(record.stocks).map(obj).flatMap(stock =>
+        (Array.isArray(stock.business_location) ? stock.business_location : [stock.business_location]).map(obj)
+          .map(location => str(location.name) || str(location.business_location_name)).filter(Boolean)) : [];
+      return [{ id, name: str(record.name), sku: str(record.sku), thumbnail: image, categories,
+        regular: price(variant.regular_price), sale: price(variant.sale_price), channels: Object.entries(obj(record.sale_channels))
+          .filter(([, enabled]) => enabled === true).map(([name]) => name), outlets, published: record.is_published === true }];
+    });
+    return <ProductionProductList rows={listings} filters={f} total={data.total ?? listings.length} tree={tree} locations={locations}
+      region={region} canCreate={canEditProduct('create', auth)} canEdit={canEditProduct('edit', auth)}
+      canDelete={canEditProduct('delete', auth)} canPublish={canOperate(auth.staff, 'product-publication')} viewStock={showLocations}/>;
+  }
+
   const classic = legacyUrl('products');
   const mayCreate = has(auth.staff, 'product.create');
   const canCreate = mayCreate && canWrite(auth.staff);

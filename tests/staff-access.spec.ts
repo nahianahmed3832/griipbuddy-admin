@@ -10,9 +10,9 @@ test('a staff member can set a password and the owner can revoke access', async 
   const phone = '01999' + sequence;
   const password = 'Example warehouse passphrase ' + sequence;
   await page.goto(base + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('01000000001');
+  await page.getByLabel('Phone Number', { exact: true }).fill('01000000001');
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Login' }).click();
   await page.waitForURL('**/desk/overview');
   await page.goto(base + '/desk/staff/roles/new');
   await page.getByLabel('Start from a template').selectOption('Warehouse viewer');
@@ -42,9 +42,9 @@ test('a staff member can set a password and the owner can revoke access', async 
     await invitee.getByRole('button', { name: 'Activate account' }).click();
     await expect(invitee.getByRole('heading', { name: 'Account is ready' })).toBeVisible();
     await invitee.getByRole('link', { name: 'Go to staff sign-in' }).click();
-    await invitee.getByLabel('Staff email or phone number').fill(phone);
+    await invitee.getByLabel('Phone Number', { exact: true }).fill(phone);
     await invitee.getByLabel('Password', { exact: true }).fill(password);
-    await invitee.getByRole('button', { name: 'Sign in' }).click();
+    await invitee.getByRole('button', { name: 'Login' }).click();
     await invitee.waitForURL('**/desk/overview');
 
     await page.goto(base + '/desk/staff/staff?q=' + encodeURIComponent(name));

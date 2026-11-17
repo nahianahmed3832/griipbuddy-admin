@@ -7,10 +7,10 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIW
 
 async function signIn(page: Page, suffix = '1') {
   await page.goto(origin + '/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('0100000000' + suffix);
+  await page.getByLabel('Phone Number', { exact: true }).fill('0100000000' + suffix);
   await page.getByLabel('Password', { exact: true }).fill(fixturePassword());
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(origin + '/desk/overview');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await expect(page).toHaveURL(origin + '/dashboard/overview');
 }
 
 test('staff can create a barcode order, read its private receipt and follow up from All Orders', async ({ page }) => {
