@@ -47,9 +47,9 @@ export async function posRegisterFilters(q: Query, auth: Session) {
   };
 }
 
-type Filters = Awaited<ReturnType<typeof posRegisterFilters>>;
+export type PosRegisterFilters = Awaited<ReturnType<typeof posRegisterFilters>>;
 
-function registerRow(row: RecordData, filters: Filters): PosRegisterRow {
+function registerRow(row: RecordData, filters: PosRegisterFilters): PosRegisterRow {
   const items = arr(row.products).map(obj);
   const customer = first(row.user);
   const location = first(row.business_location);
@@ -66,7 +66,7 @@ function registerRow(row: RecordData, filters: Filters): PosRegisterRow {
   if (filters.canSeeProfit) amounts.profit = number(row.profit);
   const moneyCells = Object.fromEntries(Object.entries(amounts).map(([key, value]) => [key, posMoney(value) + ' Tk']));
   return {
-    id: str(row._id), serial, amounts,
+    id: str(row._id), serial, amounts, subtotal: number(row.sub_total ?? row.total_amount),
     cells: {
       date: dateText, invoice: [serial && '#' + serial, str(row.invoice_number)].filter(Boolean).join('\n'),
       customer: [str(customer.full_name) || 'Walk-in Customer', str(row.customer_phone)].filter(Boolean).join('\n'),
@@ -78,7 +78,7 @@ function registerRow(row: RecordData, filters: Filters): PosRegisterRow {
   };
 }
 
-export async function loadPosRegisterPage(auth: Session, filters: Filters, page = filters.page, size = filters.size) {
+export async function loadPosRegisterPage(auth: Session, filters: PosRegisterFilters, page = filters.page, size = filters.size) {
   if (!filters.valid) return { total: 0, rows: [] };
   const payload = obj(await api(url('/pos/sale', {
     ...filters.input, sale_serial_id: filters.serial, page: String(page), limit: String(size),
@@ -87,9 +87,13 @@ export async function loadPosRegisterPage(auth: Session, filters: Filters, page 
   return { total: number(obj(payload.meta).total), rows: sales.map(row => registerRow(row, filters)).filter(row => mongoId(row.id)) };
 }
 
-export async function loadPosRegisterTotals(auth: Session, filters: Filters): Promise<Partial<Record<'sales' | 'profit' | 'cost' | 'discount' | 'due' | 'count', number>>> {
+export async function readPosRegisterReport(auth: Session, filters: PosRegisterFilters) {
+  return filters.valid ? obj(await api(url('/pos/admin/report', filters.input), auth.token)) : {};
+}
+
+export async function loadPosRegisterTotals(auth: Session, filters: PosRegisterFilters): Promise<Partial<Record<'sales' | 'profit' | 'cost' | 'discount' | 'due' | 'count', number>>> {
   if (!filters.valid) return {};
-  const data = obj(await api(url('/pos/admin/report', filters.input), auth.token));
+  const data = await readPosRegisterReport(auth, filters);
   return {
     sales: number(data.totalSales), discount: number(data.totalDiscount), due: number(data.totalDue), count: number(data.numberOfSales),
     ...(filters.canSeeCost && { cost: number(data.totalCost) }), ...(filters.canSeeProfit && { profit: number(data.totalProfit) }),
@@ -208,7 +212,7 @@ export async function changePosSale(id: string, action: unknown, payload: Record
   });
 }
 
-export function posRegisterTitle(filters: Filters) {
+export function posRegisterTitle(filters: PosRegisterFilters) {
   if (!filters.from) return '';
   const weekday = new Intl.DateTimeFormat('en-US', { timeZone: posTimeZone, weekday: 'short' });
   const shortDate = (day: string) => {

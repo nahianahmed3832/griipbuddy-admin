@@ -93,8 +93,8 @@ export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, 
       {(['xlsx', 'pdf'] as const).map((action) => {
         const Icon = action === 'xlsx' ? FileSpreadsheet : File;
         const name = action === 'xlsx' ? 'Download Excel' : 'Download PDF';
-        return total && shown.length ? <a key={action} className={action === 'pdf' ? styles.primary : styles.secondary}
-          href={route({ action, columns: shown.map(([key]) => key).join(',') }, '/api/pos')}><Icon size={15}/>{name}</a>
+        return total ? <a key={action} className={action === 'pdf' ? styles.primary : styles.secondary}
+          href={route({ action }, '/api/pos')}><Icon size={15}/>{name}</a>
           : <button key={action} className={styles.secondary} disabled><Icon size={15}/>{name}</button>;
       })}
     </div>

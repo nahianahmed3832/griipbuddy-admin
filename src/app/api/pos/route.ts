@@ -1,9 +1,6 @@
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { utils, write } from 'xlsx';
 import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
-import { changePosSale, loadPosRegisterPage, posRegisterFilters, posReturnDetails, readPosSale, searchPosCustomers, searchPosItems } from '@/lib/production-pos';
-import { posColumns } from '@/lib/pos';
+import { changePosSale, posRegisterFilters, posReturnDetails, readPosSale, searchPosCustomers, searchPosItems } from '@/lib/production-pos';
+import { posRegisterExport } from '@/lib/pos-export';
 import { has } from '@/lib/sections';
 
 const noStore = { 'Cache-Control': 'private, no-store' };
@@ -26,32 +23,7 @@ export async function GET(request: Request) {
       return Response.json(posReturnDetails(await readPosSale(q.get('id') || '', auth)), { headers: noStore });
     }
     if (action !== 'xlsx' && action !== 'pdf') return new Response('Unknown sale action.', { status: 404 });
-    const filters = await posRegisterFilters(Object.fromEntries(q), auth);
-    const columns = posColumns.filter(([key]) => (key !== 'cost' || filters.canSeeCost) && (key !== 'profit' || filters.canSeeProfit)
-      && (!q.has('columns') || q.get('columns')!.split(',').includes(key)));
-    if (!columns.length) return new Response('Choose at least one export field.', { status: 400 });
-    const { rows, total } = await loadPosRegisterPage(auth, filters, 1, 250);
-    if (total > 10000) return new Response('Choose a smaller date range to export up to 10,000 sales.', { status: 422 });
-    for (let page = 2; page <= Math.ceil(total / 250); page++) rows.push(...(await loadPosRegisterPage(auth, filters, page, 250)).rows);
-    const headers = columns.map(([, label]) => label);
-    const records = rows.map(row => columns.map(([key]) => row.amounts[key] ?? row.cells[key] ?? ''));
-    let bytes: ArrayBuffer;
-    if (action === 'xlsx') {
-      const workbook = utils.book_new();
-      utils.book_append_sheet(workbook, utils.aoa_to_sheet([headers, ...records]), 'Sales Report');
-      bytes = write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
-    } else {
-      const pdf = new jsPDF({ orientation: 'landscape' });
-      pdf.setFontSize(16);
-      pdf.text('Sales Reports', 14, 16);
-      autoTable(pdf, { startY: 23, head: [headers], body: records, styles: { fontSize: 7, overflow: 'linebreak' },
-        headStyles: { fillColor: '#dcf0e8', textColor: '#101010' } });
-      bytes = pdf.output('arraybuffer');
-    }
-    return new Response(bytes, { headers: { ...noStore, 'X-Content-Type-Options': 'nosniff',
-      'Content-Type': action === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="sales-report.' + action + '"',
-    } });
+    return await posRegisterExport(action, await posRegisterFilters(Object.fromEntries(q), auth), auth);
   } catch (error) { return failure(error); }
 }
 

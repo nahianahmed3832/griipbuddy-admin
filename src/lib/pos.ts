@@ -39,4 +39,4 @@ export const posColumns = [
   ['method', 'Payment Method'], ['creator', 'Added By'], ['due', 'Amount Due'], ['note', 'Sale Note'], ['paymentNote', 'Payment Note'],
 ] as const;
 export type PosColumn = typeof posColumns[number][0];
-export type PosRegisterRow = { id: string; serial: string; cells: Partial<Record<PosColumn, string>>; amounts: Partial<Record<PosColumn, number>> };
+export type PosRegisterRow = { id: string; serial: string; subtotal: number; cells: Partial<Record<PosColumn, string>>; amounts: Partial<Record<PosColumn, number>> };
