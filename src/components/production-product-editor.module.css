@@ -66,8 +66,10 @@
 .multipleOptions label { display: flex; gap: 6px; align-items: center; }
 .editor .multipleOptions input[type="checkbox"] { width: 15px; height: 15px; min-height: 0; }
 .field > label { display: grid; gap: 8px; }
-.tags { display: flex; gap: 4px; flex-wrap: wrap; }
-.tags button { border: 1px solid var(--editor-line); border-radius: 5px; background: #f4f4f5; padding: 4px 6px; font: inherit; }
+.tagInput { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; border: 1px solid var(--editor-line); border-radius: 8px; min-height: 36px; padding: 4px 12px; box-shadow: 0 1px 2px #0001; }
+.editor .tagInput input { flex: 1 1 60px; padding: 0; border: 0; border-radius: 0; box-shadow: none; width: 0; height: 26px; min-height: 26px; outline: none; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #f4f4f5; font-size: 12px; line-height: 16px; font-weight: 500; }
+.tag button { display: grid; place-items: center; padding: 0; border: 0; color: inherit; font: inherit; line-height: inherit; background: transparent; }
 @media (min-width: 768px) { .propertyMain { grid-template-columns: repeat(2,minmax(0,1fr)); } .propertyMeasures { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 
 .imageFields { display: grid; gap: 24px; }

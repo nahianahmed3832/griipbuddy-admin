@@ -2,7 +2,7 @@
 
 import { AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown, Code, Heading1, Heading2, Heading3, Italic, List, ListOrdered,
   Pilcrow, Quote, Redo2, Strikethrough, Undo2, type LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import styles from './production-product-editor.module.css';
 
 const formats: readonly [string, LucideIcon, string, string?][] = [
@@ -186,6 +186,7 @@ export function ProductPropertiesEditor({ field, initial }: { field: 'product_sp
 export function ProductTagsInput({ label, name, placeholder, initial, limit = 60 }: {
   label: string; name: string; placeholder: string; initial: string; limit?: number;
 }) {
+  const id = useId();
   const [tags, setTags] = useState(initial.split('\n').filter(Boolean));
   const [draft, setDraft] = useState('');
   function add() {
@@ -194,12 +195,16 @@ export function ProductTagsInput({ label, name, placeholder, initial, limit = 60
     setDraft('');
   }
   return <div className={styles.field}>
-    <label>{label}<input placeholder={placeholder} value={draft} maxLength={200} disabled={tags.length >= limit}
-      onChange={event => setDraft(event.target.value)} onBlur={add} onKeyDown={event => {
-        if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); }
-      }}/></label>
-    {tags.length > 0 && <div className={styles.tags}>{tags.map(tag => <button type="button" key={tag} onClick={() => setTags(current => current.filter(item => item !== tag))}
-      aria-label={'Remove ' + tag}>{tag} <span aria-hidden="true">×</span></button>)}</div>}
+    <label htmlFor={id}>{label}</label>
+    <div className={styles.tagInput}>
+      {tags.map(tag => <span className={styles.tag} key={tag}>{tag}<button type="button"
+        onClick={() => setTags(current => current.filter(item => item !== tag))} aria-label={'Remove ' + tag}>×</button></span>)}
+      <input id={id} placeholder={placeholder} value={draft} maxLength={200} disabled={tags.length >= limit}
+        onChange={event => setDraft(event.target.value)} onBlur={add} onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add(); }
+          if (event.key === 'Backspace' && !draft) setTags(current => current.slice(0, -1));
+        }}/>
+    </div>
     <input type="hidden" name={name} value={tags.join('\n')}/>
   </div>;
 }
