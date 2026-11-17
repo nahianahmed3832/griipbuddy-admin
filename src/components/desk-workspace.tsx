@@ -31,6 +31,7 @@ import { AllPurchases, PurchaseRecordPage, DefaultRatePage, DefaultRateCreatePag
 import { SuppliersPage } from '@/components/suppliers-page';
 import { CourierFraud } from '@/components/courier-fraud';
 import { ProductionFraudPage } from '@/components/production-fraud';
+import { ProductionHeaderPage } from '@/components/production-header';
 import { StockChangesPage } from '@/components/stock-changes-page';
 import { StockReport } from '@/components/stock-report';
 import { LocationsPage } from '@/components/locations-page';
@@ -157,9 +158,12 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         <CommerceReceipts key={param(q, 'receipt')} writable={canWrite(auth.staff)} initial={param(q, 'receipt')}/>
       </>;
     }
-    else if (sectionId === 'content' && active === 'offer' && view.length === 1) content = await GlobalOffer({ auth, region });
+    else if (production && sectionId === 'content' && active === 'announcements' && !view[1]) {
+      content = await ProductionHeaderPage({ auth, region });
+    }
+    else if (sectionId === 'content' && active === 'offer' && view.length === 1) content = await GlobalOffer({ auth, region, production: Boolean(production) });
     else if (sectionId === 'content' && active && (active === 'workspace' || Object.hasOwn(contentViews, active)) && view.length <= 1) {
-      content = await ContentWorkspace({ auth, region, section: contentViews[active] });
+      content = await ContentWorkspace({ auth, region, section: contentViews[active], production: Boolean(production) });
     }
     else if (sectionId === 'content' && region !== 'BD') throw new ApiError(403);
     else if (sectionId === 'catalog' && active === 'products') content = await ProductWorkspace({ auth, q, region, id: view[1], production: Boolean(production) });

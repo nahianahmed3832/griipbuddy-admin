@@ -27,7 +27,7 @@ const config = {
     }, {
       source: '/desk/orders/:path*',
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:;") }],
-    }, ...['/dashboard/orders/:path*', '/dashboard/order-details/:id', '/dashboard/create-order'].map(source => ({
+    }, ...['/dashboard/orders/:path*', '/dashboard/order-details/:id', '/dashboard/create-order', '/dashboard/pre-orders/:path*'].map(source => ({
       source,
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:;") }],
     })), {
