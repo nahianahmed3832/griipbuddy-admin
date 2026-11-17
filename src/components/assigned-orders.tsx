@@ -16,6 +16,7 @@ type Assignment = {
 };
 const productionPageSizes = ['20', '40', '60', '80', '100'];
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+const literalSearch = (value?: string) => value?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function assignmentOrder(value: unknown): Order {
   const row = obj(value);
@@ -50,7 +51,8 @@ async function productionAssigned({ auth, region, q }: { auth: Session; region: 
   const limit = productionPageSizes.find(value => value === param(q, 'limit')) ?? '20';
   const scope = { startDate: filters.from, endDate: filters.to, business_location_id: filters.location };
   const [data, tally, locations] = await Promise.all([
-    api(url('/order', { ...scope, region, page: String(page), limit, searchQuery: filters.q, sku: filters.sku, filter,
+    api(url('/order', { ...scope, region, page: String(page), limit, searchQuery: literalSearch(filters.q?.replace(/^#(?=\d)/, '')),
+      sku: literalSearch(filters.sku), filter,
       is_assigned_to_business_location: 'true' }), auth.token).then(obj),
     api(region === 'BD' ? url('/assigned-orders/status/count', scope)
       : url('/order/status/count', { ...scope, region, is_assigned_to_business_location: 'true' }), auth.token).then(obj),
