@@ -84,7 +84,10 @@ function ProductionOverviewFilters({ region, selected, period, from, to, compare
       if (typeof value === 'string' && value) params.append(key, value);
     }
     params.set('period', choice);
-    for (const [key, value] of Object.entries(changes)) params.set(key, value);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
     router.replace('/dashboard/overview?' + params, { scroll: false });
   }
   function apply(event: FormEvent<HTMLFormElement>) {
