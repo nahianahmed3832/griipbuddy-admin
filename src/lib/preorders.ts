@@ -1,6 +1,8 @@
 import { adminPath } from './paths';
 
 export const preOrdersPath = '/desk/orders/preorders';
+export const productionPreOrdersPath = '/dashboard/pre-orders';
+export const productionPreOrderSizes = [20, 40, 60, 80, 100] as const;
 export const preOrderActionStatus = 'ACTION_REQUIRED';
 export const preOrderStatuses = [
   'REQUESTED', 'QUOTED', 'CONFIRMED', 'PURCHASED', 'SHIPPED_TO_BD', 'ARRIVED_IN_BD',
@@ -13,7 +15,7 @@ export type FilterKey = typeof preOrderFilterKeys[number];
 export type PreOrderFilters = Partial<Record<FilterKey, string>>;
 export type NumberedFilters = PreOrderFilters & { page?: string };
 export type Address = { address?: string; division?: string; district?: string; thana?: string };
-type Staff = { _id?: string; full_name?: string };
+type Staff = { _id?: string; full_name?: string; role?: string | { name?: string } };
 export type PreOrderItem = {
   source_type: 'EXTERNAL' | 'LISTED';
   product?: string | { _id?: string; name?: string; thumbnail?: string } | null;
@@ -56,14 +58,28 @@ export type PreOrderRow = PreOrderItem & {
   consignment_id?: number;
   transfer_to_courier?: boolean;
   estimated_delivery_time?: string;
-  payment_receipts?: { _id?: string; file?: string; amount?: number; method?: string; note?: string; uploaded_at?: string; uploaded_by_name?: string }[];
+  payment_receipts?: { _id?: string; file?: string; amount?: number; method?: string; note?: string; uploaded_at?: string; uploaded_by_name?: string; uploaded_by?: Staff }[];
   status_history?: { _id?: string; status?: string; changed_at?: string; changed_by?: Staff | string }[];
   logs?: { _id?: string; action?: string; time?: string }[];
-  call_logs?: { _id?: string; called_at?: string; called_by_name?: string }[];
+  call_logs?: { _id?: string; called_at?: string; called_by_name?: string; called_by?: Staff }[];
   sms_logs?: { _id?: string; message?: string; status?: string; sent_at?: string; sent_by_name?: string }[];
   admin_notes?: { _id?: string; note?: string; added_at?: string; added_by?: Staff }[];
 };
 export type Products = { id: string; name: string; sku: string; image?: string; price?: number; attributes?: Record<string, string> }[];
+
+export function preOrderMedia(value: string | undefined, origin: string, allowExternal = false) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    if (['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password &&
+      (allowExternal || parsed.origin === origin)) return parsed.href;
+    return undefined;
+  } catch {
+    const path = value.replace(/^\//, '');
+    if (!origin || !/^(?:[a-z\d_-]+\/)+[a-z\d_.-]+$/i.test(path) || path.split('/').some(part => ['.', '..'].includes(part))) return undefined;
+    return origin + '/' + path;
+  }
+}
 
 export function preOrderQuery(params: URLSearchParams | PreOrderFilters): PreOrderFilters {
   const get = (key: FilterKey) => params instanceof URLSearchParams ? params.get(key) ?? '' : params[key] ?? '';

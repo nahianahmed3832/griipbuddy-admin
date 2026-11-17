@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { api, ApiError, arr, mongoId, obj, str, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
@@ -7,7 +8,7 @@ import { addressLabel, money, orderDate } from '@/lib/website-orders';
 import {
   inboundPreOrderStatuses, outboundPreOrderStatuses, preOrderActionStatus, preOrderApiParams, preOrderFilterKeys, preOrderItems,
   preOrderNumber, preOrderProduct, preOrderQuery, preOrderRequestUrl, preOrderStatuses, preOrdersPath,
-  preOrderUrl, statusText, type PreOrderRow,
+  preOrderUrl, productionPreOrderSizes, productionPreOrdersPath, statusText, type PreOrderRow,
 } from '@/lib/preorders';
 import type { Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
@@ -15,16 +16,24 @@ import { Badge } from './tables';
 import { PreOrderDetailActions } from './preorders-actions';
 import { PreOrderForm } from './preorders-form';
 import { PreOrdersTable } from './preorders-table';
+import { ProductionPreOrderDetail } from './preorders-production-detail';
+import { ProductionPreOrdersIndex } from './preorders-production-index';
 import styles from './preorders.module.css';
 
 const root = '/pre-order';
-const pageSize = 20;
+const defaultPageSize = 20;
 
-export async function PreOrdersPage({ auth, q, region, view }: { auth: Session; q: Query; region: Region; view: string[] }) {
+export async function PreOrdersPage({ auth, q, region, view, productionLayout = false }: {
+  auth: Session; q: Query; region: Region; view: string[]; productionLayout?: boolean;
+}) {
   const access = preOrderAccess(auth, region);
+  const loadMedia = async () => str(obj(await api(root + '/workspace/media-origin', auth.token)).origin);
   const id = view[1];
   if (id === 'create') {
     if (!access.create) throw new ApiError(403);
+    if (productionLayout) return <div className={`${styles.production} ${styles.formPage}`}>
+      <h1>Create Pre-Order</h1><PreOrderForm allowProducts={access.products} productionLayout mediaOrigin={await loadMedia()}/>
+    </div>;
     return <div className={styles.workspace}>
       <PageHeading eyebrow="COMMERCE / PRE-ORDERS" title="Create pre-order" description="Add catalog items or external references, delivery information, and the initial quote." />
       <PreOrderForm allowProducts={access.products} />
@@ -35,29 +44,44 @@ export async function PreOrdersPage({ auth, q, region, view }: { auth: Session; 
     const item = await api(root + '/' + id, auth.token) as PreOrderRow;
     if (param(q, 'edit') === '1') {
       if (!access.update) throw new ApiError(403);
+      if (productionLayout) return <div className={`${styles.production} ${styles.formPage}`}>
+        <header className={styles.inline}><Link href={productionPreOrdersPath + '/' + id} className={styles.iconButton}
+          aria-label="Back to pre-order"><ArrowLeft size={16}/></Link><h1>Edit {preOrderNumber(item)}</h1></header>
+        <PreOrderForm row={item} allowProducts={access.products} productionLayout mediaOrigin={await loadMedia()}/>
+      </div>;
       return <div className={styles.workspace}>
         <PageHeading eyebrow="COMMERCE / PRE-ORDERS" title={'Edit ' + preOrderNumber(item)} description="Update products, customer, delivery, quote, and batch information." />
         <PreOrderForm row={item} allowProducts={access.products} />
       </div>;
     }
-    const mediaOrigin = str(obj(await api(root + '/workspace/media-origin', auth.token)).origin);
+    const mediaOrigin = await loadMedia();
+    if (productionLayout) return <ProductionPreOrderDetail row={item} update={access.update} mediaOrigin={mediaOrigin}
+      batches={access.update ? arr(await api(root + '/batches', auth.token)).map(str).filter(Boolean) : []}/>;
     return <PreOrderDetail row={item} update={access.update} remove={access.remove} mediaOrigin={mediaOrigin} />;
   }
 
   const filterInput = Object.fromEntries(preOrderFilterKeys.map(key => [key, param(q, key)]));
-  const filters = preOrderQuery({ ...filterInput, status: filterInput.status ?? param(q, 'filter') });
+  const filters = preOrderQuery({ ...filterInput, q: filterInput.q ?? (productionLayout ? param(q, 'searchQuery') : undefined),
+    status: filterInput.status ?? param(q, 'filter') });
   const upstream = preOrderApiParams(filters);
   const page = Math.max(1, Math.min(10000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const [listing, counts, batchData, creators] = await Promise.all([
+  const pageSize = productionLayout ? productionPreOrderSizes.find(size => String(size) === param(q, 'limit')) ?? defaultPageSize : defaultPageSize;
+  const [listing, counts, batchData, creators, mediaOrigin] = await Promise.all([
     api(preOrderUrl(root, { ...upstream, page: String(page), limit: String(pageSize) }), auth.token),
     api(preOrderUrl(root + '/status/count', { batch: filters.batch, startDate: filters.from, endDate: filters.to }), auth.token),
     api(root + '/batches', auth.token),
-    api(root + '/workspace/creators', auth.token),
+    productionLayout ? [] : api(root + '/workspace/creators', auth.token),
+    productionLayout ? loadMedia() : '',
   ]);
   const rows = arr(obj(listing).data) as PreOrderRow[];
   const total = Number(obj(obj(listing).meta).total) || 0;
   const batches = arr(batchData).map(str).filter(Boolean);
   const count = (status: string) => Number(obj(counts)[status]) || 0;
+  if (productionLayout) {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(new Date());
+    return <ProductionPreOrdersIndex rows={rows} total={total} filters={filters} counts={Object.fromEntries(['ALL', ...preOrderStatuses].map(status => [status, count(status)]))}
+      batches={batches} access={access} page={page} pageSize={pageSize} mediaOrigin={mediaOrigin} today={today}/>;
+  }
   const destinations = [
     { title: 'All', status: undefined, count: count('ALL') },
     { title: 'China to Bangladesh', status: inboundPreOrderStatuses.join(','), count: inboundPreOrderStatuses.reduce((n, status) => n + count(status), 0) },
