@@ -64,14 +64,14 @@ function rowRegion(row: RecordData) {
   return declared === 'INTERNATIONAL' ? 'INTERNATIONAL' : declared === 'BD' ? 'BD' : undefined;
 }
 
-export async function loadResource(resource: Resource, auth: Session, q: Query, region: Region) {
+export async function loadResource(resource: Resource, auth: Session, q: Query, region: Region, pageSize = perPage) {
   if (!permitted(resource, auth)) throw new ApiError(403);
   const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const rawSearch = (param(q, 'q') ?? '').trim().slice(0, 80);
   const search = rawSearch.replace(regexCharacters, '\\$&');
   const filter = param(q, 'filter');
   const params: Record<string, string | undefined> = {
-    ...resource.params, page: String(page), limit: String(perPage),
+    ...resource.params, page: String(page), limit: String(pageSize),
     ...(resource.region ? { region } : {}),
   };
   if (resource.search && search) {
@@ -124,7 +124,7 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
   }
   const count = obj(envelope.meta).total;
   return { rows: records, page, total: !enforceRegion && typeof count === 'number' ? count : undefined,
-    hasNext: typeof count === 'number' ? page * perPage < count : initialLength === perPage, search: rawSearch };
+    hasNext: typeof count === 'number' ? page * pageSize < count : initialLength === pageSize, search: rawSearch };
 }
 
 export const reportIds = ['sales-summary','sales-by-product','order-status','pending-fulfilment','returns-rts','stock-valuation',

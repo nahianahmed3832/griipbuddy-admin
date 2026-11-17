@@ -8,6 +8,7 @@ import { adminPath } from '@/lib/paths';
 import { productionCmsPreview } from '@/lib/production-cms-media';
 import type { Region } from '@/lib/sections';
 import { saveCatalog } from './catalog-edit-form';
+import { RegistryPageSize } from './production-registry-size';
 import { ProductionCatalogActions } from './production-catalog-actions';
 import styles from './production-catalog.module.css';
 import design from './production-catalog-details.module.css';
@@ -44,8 +45,8 @@ function ProductImage({ source }: { source: string }) {
   return src ? <img className={design.thumbnail} src={src} alt=""/> : <span className={design.placeholder}><ImageIcon size={16}/></span>;
 }
 
-export function ProductionRegistryList({ rows, kind, region, page, hasNext, total, search, filter, product, rating, canCreate, canEdit, canDelete }: {
-  rows: RegistryRow[]; kind: RegistryKind; region: Region; page: number; hasNext: boolean; total?: number; search?: string; filter?: string;
+export function ProductionRegistryList({ rows, kind, region, page, limit, pageSize, hasNext, total, search, filter, product, rating, canCreate, canEdit, canDelete }: {
+  rows: RegistryRow[]; kind: RegistryKind; region: Region; page: number; limit: string; pageSize: number; hasNext: boolean; total?: number; search?: string; filter?: string;
   product?: string; rating?: string; canCreate: boolean; canEdit: boolean; canDelete: boolean;
 }) {
   const router = useRouter();
@@ -63,9 +64,11 @@ export function ProductionRegistryList({ rows, kind, region, page, hasNext, tota
     } catch (failure) { setIssue(failure instanceof Error ? failure.message : 'Could not save the change.'); }
     finally { pending.current = false; }
   }
+  const params = { region: region === 'INTERNATIONAL' ? region : '', q: search, filter, product, rating };
+  const offset = (page - 1) * pageSize;
   const href = (number: number) => {
     const qs = new URLSearchParams();
-    Object.entries({ region: region === 'INTERNATIONAL' ? region : '', q: search, filter, product, rating, page: number > 1 ? String(number) : '' })
+    Object.entries({ ...params, limit: limit === '20' ? undefined : limit, page: number > 1 ? String(number) : '' })
       .forEach(([key, value]) => { if (value) qs.set(key, value); });
     return route.list + (qs.size ? '?' + qs.toString() : '');
   };
@@ -85,7 +88,7 @@ export function ProductionRegistryList({ rows, kind, region, page, hasNext, tota
           return <tr key={row.id}>
             {kind === 'brands' ? <><td>{row.name}</td><td><div className={design.tags}>{row.tags.map(tag => <span key={tag}>{tag}</span>)}</div></td></>
               : <>
-                <td>{(page - 1) * 20 + index + 1}</td><td><ProductImage source={row.product.image}/></td>
+                <td>{offset + index + 1}</td><td><ProductImage source={row.product.image}/></td>
                 <td><p>{row.product.name}</p><small className={design.muted}>{kind === 'faqs' && 'Slug: '}{row.product.slug}</small></td>
                 {kind === 'faqs' ? <td className={design.description}>{row.question}</td>
                   : <><td>{row.rating}</td><td>{row.title}</td><td className={design.description}>{row.content}</td></>}
@@ -110,7 +113,8 @@ export function ProductionRegistryList({ rows, kind, region, page, hasNext, tota
       </table>
     </div>
     {(kind !== 'brands' || page > 1 || hasNext) && <nav className={design.pages} aria-label="Pages">
-      <span>20</span><span>{rows.length ? (page - 1) * 20 + 1 : 0} - {(page - 1) * 20 + rows.length} of {total ?? (page - 1) * 20 + rows.length}</span>
+      {kind !== 'brands' && <RegistryPageSize current={limit} choices={['20','40','60','80','100','all']} path={route.list} params={params}/>}
+      <span>{rows.length ? offset + 1 : 0} - {offset + rows.length} of {total ?? offset + rows.length}</span>
       {page > 1 ? <Link className={styles.outline} href={href(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
       {hasNext ? <Link className={styles.outline} href={href(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
     </nav>}
@@ -238,7 +242,7 @@ export function ProductionFaqEditor({ region, chosenProduct }: {
 
 function ReplyForm({ row, kind, region }: { row: RegistryRow; kind: 'faqs' | 'reviews'; region: Region }) {
   const router = useRouter();
-  const [reply, setReply] = useState(kind === 'reviews' ? row.reply : row.answer);
+  const [reply, setReply] = useState(kind === 'reviews' ? '' : row.answer);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -249,7 +253,7 @@ function ReplyForm({ row, kind, region }: { row: RegistryRow; kind: 'faqs' | 're
     try {
       await saveCatalog({ kind, region, id: row.id, action: 'reply', values: { content: reply } });
       if (kind === 'faqs') router.push(scope(routes.faqs.list, region));
-      else setNote('Reply saved.');
+      else { setReply(''); setNote('Reply saved.'); }
       router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save the reply.'); }
     finally { setBusy(false); }
@@ -257,11 +261,11 @@ function ReplyForm({ row, kind, region }: { row: RegistryRow; kind: 'faqs' | 're
   return <form onSubmit={save} className={design.forms}>
     <label className={styles.field}>{kind === 'faqs' ? 'Your Answer:' : 'SUBMIT A REPLY'}
       <textarea value={reply} onChange={event => setReply(event.target.value)}
-        disabled={busy} maxLength={2000} required placeholder={kind === 'faqs' ? 'Write your answer…' : 'Write your professional response…'}/>
+        disabled={busy} maxLength={2000} required placeholder={kind === 'faqs' ? 'Type your reply here...' : 'Write your professional response...'}/>
     </label>
     {error && <p className={styles.error} role="alert">{error}</p>}{note && <p role="status">{note}</p>}
-    <div className={design.submit}>
-      {kind === 'reviews' && <button className={styles.outline} type="button" onClick={() => { setReply(row.reply); setNote(''); setError(''); }}>Cancel</button>}
+    <div className={kind === 'faqs' ? design.heading : design.submit}>
+      {kind === 'reviews' && <button className={styles.outline} type="button" onClick={() => { setReply(''); setNote(''); setError(''); }}>Cancel</button>}
       <button className={styles.primary} disabled={busy || !reply.trim()}>{busy ? 'Saving…' : kind === 'faqs' ? 'Submit Reply' : 'Post Reply'}</button>
     </div>
   </form>;
@@ -270,44 +274,61 @@ function ReplyForm({ row, kind, region }: { row: RegistryRow; kind: 'faqs' | 're
 export function ProductionRegistryDetail({ row, kind, region, canEdit, showAttachments }: {
   row: RegistryRow; kind: 'faqs' | 'reviews'; region: Region; canEdit: boolean; showAttachments: boolean;
 }) {
-  const review = kind === 'reviews';
   const product = row.product;
-  const info = review
-    ? [['Customer', row.creator || 'Anonymous User', UserRound],
-      ['Helpful vote', 'Upvote: ' + row.upvotes + ', DownVote: ' + row.downvotes, ThumbsUp],
-      ['Reviewed On', date(row.created, true), CalendarDays]] as const
-    : [['Product:', product.name, null], ['SKU:', product.sku, null], ['Slug:', product.slug, null]] as const;
-  return <section className={styles.page + ' ' + (review ? design.review : '')}>
-    <header className={design.heading}><Link href={scope(routes[kind].list, region)} className={styles.outline}>
-      <ChevronLeft size={16}/>{review ? 'Back to Review' : 'Back to Faq'}</Link></header>
-    <div className={styles.header}><h1>{review ? 'REVIEW DETAILS' : 'FAQ Details'}</h1>
-      {review && <span className={styles.activeBadge} data-active="true">{row.status.toUpperCase()}</span>}</div>
+  if (kind === 'faqs') return <section className={styles.page}>
+    <header className={design.heading}><Link href={scope(routes.faqs.list, region)} className={styles.outline}><ChevronLeft size={16}/>Back to Faq</Link></header>
+    <div className={design.faqDetail}>
+      <h1>FAQ Details</h1>
+      <div className={design.faqPanels}>
+        <div className={design.faqQuestion}>
+          <div><strong>Question:</strong><p>{row.question}</p></div>
+          {canEdit ? <ReplyForm row={row} kind="faqs" region={region}/> : <p>{row.answer}</p>}
+        </div>
+        <aside className={design.faqProduct}><h2>Product:</h2>
+          {product.image && <ProductImage source={product.image}/>}
+          <p>{product.name}</p>
+          <small className={design.muted}>SKU: {product.sku}</small>
+          <small className={design.muted}>Slug: {product.slug}</small>
+        </aside>
+      </div>
+    </div>
+  </section>;
+
+  const info = [
+    ['Customer', row.creator || 'Anonymous User', UserRound],
+    ['Helpful vote', 'Upvote: ' + row.upvotes + ', DownVote: ' + row.downvotes, ThumbsUp],
+    ['Reviewed On', date(row.created, true), CalendarDays],
+  ] as const;
+  return <section className={styles.page + ' ' + design.review}>
+    <header className={design.heading}><Link href={scope(routes.reviews.list, region)} className={styles.outline}>
+      <ChevronLeft size={16}/>Back to Review</Link></header>
+    <div className={styles.header}><h1>REVIEW DETAILS</h1>
+      <span className={styles.activeBadge} data-active="true">{row.status.toUpperCase()}</span></div>
     <div className={design.twoPart}>
       <div className={design.forms}>
         <section className={design.plainPanel}>
-          {review ? <>
-            <div className={design.stars} aria-label={row.rating + ' out of 5 stars'}>{[1,2,3,4,5].map(number =>
-              <Star key={number} size={20} data-filled={number <= row.rating}/>)}</div>
-            <h2 className={design.reviewTitle}>{row.title}</h2><p className={design.reviewContent}>{row.content}</p>
-            {row.media.map((asset, index) => {
-              const src = imageUrl(asset.url);
-              return src ? <a key={src + index} href={src} target="_blank" rel="noreferrer">{asset.type || 'Media'} {index + 1}</a> : null;
-            })}
-            {showAttachments && row.attachments.map((type, index) => {
-              const src = adminPath('/api/storefront?' + new URLSearchParams({ id: row.id, index: String(index) }));
-              // eslint-disable-next-line @next/next/no-img-element
-              return type === 'video/mp4' ? <video key={src} src={src} controls preload="metadata"/> : <img key={src} src={src} alt={'Review attachment ' + (index + 1)}/>;
-            })}
-            {row.reply && <aside className={design.previousReply}><strong>Previous Reply</strong><p>{row.reply}</p></aside>}
-          </> : <p><strong>Question:</strong> {row.question}</p>}
-          {!review && canEdit && <ReplyForm row={row} kind={kind} region={region}/>}
-          {!review && !canEdit && row.answer && <p>{row.answer}</p>}
+          <div className={design.stars} aria-label={row.rating + ' out of 5 stars'}>{[1,2,3,4,5].map(number =>
+            <Star key={number} size={20} data-filled={number <= row.rating}/>)}</div>
+          <h2 className={design.reviewTitle}>{row.title}</h2><p className={design.reviewContent}>{row.content}</p>
+          {row.reply && <aside className={design.previousReply}><strong>Previous Reply</strong><p>{row.reply}</p></aside>}
         </section>
-        {review && canEdit && <ReplyForm row={row} kind={kind} region={region}/>}
+        {canEdit && <ReplyForm row={row} kind="reviews" region={region}/>}
       </div>
       <aside className={design.plainPanel}>
-        {review && <h2>Product Details</h2>}
-        {product.name && review && <p>{product.name}</p>}
+        <h2>Product Details</h2>
+        {row.media.map((asset, index) => {
+          const src = imageUrl(asset.url);
+          if (!src) return null;
+          if (asset.type.startsWith('video')) return <a key={src + index} href={src} target="_blank" rel="noreferrer">Video {index + 1}</a>;
+          // eslint-disable-next-line @next/next/no-img-element
+          return <a key={src + index} href={src} target="_blank" rel="noreferrer"><img src={src} className={design.reviewAttachment} alt={'Review attachment ' + (index + 1)}/></a>;
+        })}
+        {showAttachments && row.attachments.map((type, index) => {
+          const src = adminPath('/api/storefront?' + new URLSearchParams({ id: row.id, index: String(index) }));
+          if (type === 'video/mp4') return <video className={design.reviewAttachment} key={src} src={src} controls preload="metadata"/>;
+          // eslint-disable-next-line @next/next/no-img-element
+          return <img className={design.reviewAttachment} key={src} src={src} alt={'Review attachment ' + (index + 1)}/>;
+        })}
         <dl className={design.recordData}>{info.map(([label, value, Icon]) => <div key={label}>
           <dt>{Icon && <Icon size={16}/>} {label}</dt><dd>{value || '—'}</dd></div>)}</dl>
       </aside>

@@ -9,6 +9,7 @@ import type { Region } from '@/lib/sections';
 import { purchasePage } from '@/lib/purchases';
 import { PageHeading } from './dashboard';
 import { DeleteSupplier, SupplierEditor } from './supplier-editor';
+import { RegistryPageSize } from './production-registry-size';
 import { ProductionCatalogActions } from './production-catalog-actions';
 import { Badge, Table } from './tables';
 import '@/app/purchases.css';
@@ -78,13 +79,7 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
         </tr>)}{!current.length && <tr><td colSpan={headings.length} className={styles.empty}>No suppliers found.</td></tr>}</tbody>
       </table></div>
       <nav className={design.pages} aria-label="Supplier pages">
-        <form action={adminPath(livePath)}>
-          <input type="hidden" name="region" value={region}/>
-          <select className={styles.select} name="limit" aria-label="Rows per page" defaultValue={String(limit)}>
-            {sizes.map(value => <option key={value}>{value}</option>)}
-          </select>
-          <button className={styles.outline}>Apply</button>
-        </form>
+        <RegistryPageSize current={String(limit)} choices={sizes} path={livePath} params={{ region, q: search, type }}/>
         <span>{current.length ? start + 1 : 0} - {start + current.length} of {suppliers.length}</span>
         {page > 1 ? <Link className={styles.outline} href={link(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
         {start + limit < suppliers.length ? <Link className={styles.outline} href={link(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}

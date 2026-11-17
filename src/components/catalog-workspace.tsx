@@ -229,8 +229,8 @@ function registryRow(row: RecordData): RegistryRow {
     creator: str(obj(row.createdBy).full_name) || str(obj(row.user).full_name) || str(obj(row.customer).full_name), created: str(row.createdAt),
     updated: str(row.updatedAt), rating: Number(row.rating) || 0, title: str(row.title), content: str(row.content),
     media: arr(row.media).map(value => ({url:str(obj(value).url),type:str(obj(value).type)})), attachments: arr(row.storefrontMediaTypes).map(str),
-    upvotes: Number(row.upvotes ?? row.upvote ?? obj(row.helpfulVotes).upvote) || 0,
-    downvotes: Number(row.downvotes ?? row.downvote ?? obj(row.helpfulVotes).downvote) || 0, reply: str(obj(row.sellerReply).content),
+    upvotes: Number(row.upvotes ?? obj(row.helpfulVotes).upvotes) || 0,
+    downvotes: Number(row.downvotes ?? obj(row.helpfulVotes).downvotes) || 0, reply: str(obj(row.sellerReply).content),
   };
 }
 
@@ -326,14 +326,18 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
   const scoped = kind === 'faqs' || kind === 'reviews';
   if (scoped && productId && !mongoId(productId)) throw new ApiError(404);
   const rowResource = scoped ? { ...resource, params: { ...(productId ? { product: productId } : {}), ...(kind === 'reviews' && rating && /^[1-5]$/.test(rating) ? { rating } : {}) } } : resource;
-  const list = await loadResource(rowResource, auth, q, region);
+  const requestedLimit = param(q, 'limit') ?? '';
+  const limit = production && scoped && ['20','40','60','80','100','all'].includes(requestedLimit) ? requestedLimit : '20';
+  const all = limit === 'all';
+  const pageSize = all ? 10000 : Number(limit);
+  const list = await loadResource(rowResource, auth, all ? { ...q, page: '1' } : q, region, pageSize);
   const search = param(q, 'q');
   const filter = param(q, 'filter');
   const page = (value: number) => url(base, { region, filter, q: search, product: productId, rating, page: String(value) });
   const filtered = scoped ? list.rows.filter(row => sameRegion(row, region)) : list.rows;
   if (production && (kind === 'brands' || kind === 'faqs' || kind === 'reviews')) return <ProductionRegistryList
     rows={filtered.filter(row => mongoId(reference(row))).map(registryRow)} kind={kind} region={region}
-    page={list.page} hasNext={list.hasNext} total={scoped ? undefined : list.total} search={search} filter={filter} product={productId}
+    page={list.page} limit={limit} pageSize={pageSize} hasNext={!all && list.hasNext} total={scoped && !productId ? undefined : list.total} search={search} filter={filter} product={productId}
     rating={rating} canCreate={create} canEdit={canEditRegistry(kind, 'edit', auth)} canDelete={canEditRegistry(kind, 'delete', auth)}/>;
   const rows = filtered.filter(row => mongoId(reference(row))).map(row => ({ id: reference(row), values: resource.columns.map(column => columnText(row, column)), href: url(base + '/' + reference(row), { region }) }));
   return <><PageHeading eyebrow={kind === 'countries' ? 'OPERATIONS / MARKETS' : 'COMMERCE / CATALOG'} title={resource.title} description=""/>
