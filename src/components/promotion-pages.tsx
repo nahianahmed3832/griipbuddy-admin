@@ -3,7 +3,7 @@ import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type Session } fr
 import { couponAmounts, couponScopes } from '@/lib/promotion-fields';
 import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
-import { CouponForm, OfferForm } from './promotion-forms';
+import { CouponForm, OfferForm, ProductionOfferForm, type OfferOption } from './promotion-forms';
 import { OperationActions } from './operation-actions';
 
 type Fields = Record<string, string | boolean>;
@@ -35,7 +35,7 @@ export async function CouponEditor({ auth, region, id }: { auth: Session; region
   </>;
 }
 
-export async function GlobalOffer({ auth, region }: { auth: Session; region: Region }) {
+export async function GlobalOffer({ auth, region, production = false }: { auth: Session; region: Region; production?: boolean }) {
   if (region !== 'BD' || !has(auth.staff, 'cms.view')) throw new ApiError(403);
   const [offer, source] = await Promise.all([
     api('/cms/offer-page', auth.token).then(obj),
@@ -43,12 +43,14 @@ export async function GlobalOffer({ auth, region }: { auth: Session; region: Reg
   ]);
   const items = Array.isArray(source) ? source : arr(obj(source).subcategories);
   const selected = arr(offer.applied_subcategories).map(reference).filter(mongoId);
-  const options = new Map();
+  const options = new Map<string, OfferOption>();
   for (const item of [...items, ...arr(offer.applied_subcategories)]) {
     const id = reference(item);
     const raw = obj(item);
     const label = str(raw.name) || str(raw.name_en) || str(raw.slug) || id;
-    if (mongoId(id) && !options.has(id)) options.set(id, { id, label });
+    const category = obj(raw.category);
+    const group = str(category.name_en) || str(category.slug);
+    if (mongoId(id) && !options.has(id)) options.set(id, { id, label, group, slug: str(raw.slug) });
   }
   const config = obj(offer.pageConf);
   const timer = obj(config.timer_config);
@@ -58,10 +60,13 @@ export async function GlobalOffer({ auth, region }: { auth: Session; region: Reg
     title: str(config.title), show_timer: timer.show_timer !== false, mode: str(timer.mode) || 'countdown',
     ...Object.fromEntries(Object.entries(obj(config.header)).map(([key,value]) => ['header.' + key, str(value)])),
   };
+  const writable = canWrite(auth.staff) && has(auth.staff, 'cms.create');
+  if (production) return <ProductionOfferForm initial={{ ...fields, offer_start_date: minute(offer.offer_start_date).slice(0, 10) }}
+    options={[...options.values()]} selected={selected} writable={writable}/>;
   return <>
     <PageHeading eyebrow="STOREFRONT / CONTENT" title="Global offer" description="Manage the Bangladesh offer page, headline, timer and eligible subcategories.">
       <Link className="button secondary" prefetch={false} href={'/desk/content/offer?refresh=' + Date.now()}>Refresh</Link>
     </PageHeading>
-    <OfferForm initial={fields} options={[...options.values()]} selected={selected} writable={canWrite(auth.staff) && has(auth.staff, 'cms.create')}/>
+    <OfferForm initial={fields} options={[...options.values()]} selected={selected} writable={writable}/>
   </>;
 }
