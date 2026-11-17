@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
@@ -11,6 +11,7 @@ import type { BarcodeVariant } from '@/lib/barcode-data';
 type Choice = { value: string; label: string };
 const newExpense: PurchaseExtra = { type: '', amount: '', note: '' };
 const purchaseFields = [{ key: 'quantity', label: 'Quantity' }, { key: 'cost', label: 'Unit cost' }, { key: 'discount', label: 'Discount' }, { key: 'tax', label: 'Tax' }] as const;
+const skuRoot = (sku: string) => sku.trim().split('-')[0].toUpperCase();
 
 export function PurchaseRecordForm({ record, suppliers, locations, region }: {
   record: PurchaseEditRecord; suppliers: Choice[]; locations: Choice[]; region: Region;
@@ -55,7 +56,7 @@ export function PurchaseRecordForm({ record, suppliers, locations, region }: {
   function selectProduct(option: BarcodeVariant) {
     const key = nextKey.current++;
     const line: PurchaseEditLine = {
-      variant: '', title: option.name, sku: option.sku, quantity: '1', cost: '', discount: '0', tax: '0',
+      variant: '', title: option.name, sku: option.sku, quantity: '1', cost: '0', discount: '0', tax: '0',
     };
     setLines(rows => rows.length < 50 && !rows.some(row => row.sku === option.sku) ? [...rows, { ...line, key }] : rows);
     changeSearch('');
@@ -113,7 +114,13 @@ export function PurchaseRecordForm({ record, suppliers, locations, region }: {
         <tbody>{lines.map((line, index) => <tr key={line.key}><td><code>{line.sku}</code><br/><small>{line.title}</small></td>
           {purchaseFields.map(({ key, label }) => <td key={key}><input aria-label={label + ' for item ' + (index + 1)} required disabled={disabled}
             inputMode={key === 'quantity' ? 'numeric' : 'decimal'} pattern={key === 'quantity' ? '[0-9]{1,6}' : '[0-9]{1,8}(\.[0-9]{1,2})?'} value={line[key]}
-            onChange={event => setLines(rows => rows.map(row => row.key === line.key ? { ...row, [key]: event.target.value } : row))}/></td>)}
+            onChange={event => setLines(rows => rows.map(row => row.key === line.key ? { ...row, [key]: event.target.value } : row))}/>
+            {index === 0 && lines.length > 1 && (key === 'cost' || key === 'discount') && <button type="button" className="icon-button"
+              disabled={disabled} aria-label={'Apply ' + label.toLowerCase() + ' to matching SKUs'} onClick={() => {
+                const root = skuRoot(line.sku);
+                setLines(rows => rows.map(row => skuRoot(row.sku) === root ? { ...row, [key]: line[key] } : row));
+              }}><Copy size={16}/></button>}
+          </td>)}
           <td><button type="button" className="icon-button" disabled={lines.length < 2 || disabled} aria-label={'Remove item ' + (index + 1)}
             onClick={() => setLines(rows => rows.filter(row => row.key !== line.key))}><Trash2 size={16}/></button></td>
         </tr>)}</tbody></table></div>

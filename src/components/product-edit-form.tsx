@@ -88,9 +88,10 @@ function variantPayload(variants: VariantDraft[]) {
     images: list(images), videos: list(videos),
   }));
 }
-function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id, production, uploading, setUploading }: {
+function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id, production, uploading, setUploading, sliderImages }: {
   attributesText: string; setAttributes: (value: string) => void; variants: VariantDraft[]; setVariants: Dispatch<SetStateAction<VariantDraft[]>>;
   allowCost: boolean; canDelete: boolean; id?: string; production: boolean; uploading: boolean; setUploading: (value: boolean) => void;
+  sliderImages: string[];
 }) {
   const attributes = [...new Set(list(attributesText))];
   const [matrix, setMatrix] = useState<Record<string, string>>({});
@@ -165,6 +166,12 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
         const images = [...new Set(variants.filter(row => row.attribute_values[imageSource]?.trim() === value).flatMap(row => list(row.images)))];
         return <fieldset key={value} className="catalog-editor-group">
           <legend>{value}</legend>
+          {!!sliderImages.length && <div>
+            <h3>Select from Slider Images ({sliderImages.length})</h3>
+            {sliderImages.map((image, index) => <button type="button" className="button secondary" key={image}
+              aria-pressed={images.includes(image)} onClick={() => updateGroupImages(imageSource, value, current => images.includes(image)
+                ? current.filter(url => url !== image) : [...new Set([...current, image])])}>Slider image {index + 1}</button>)}
+          </div>}
           <label className="operation-field">Upload New Image<input type="file" accept="image/jpeg,image/png,image/webp"
             aria-label={'Upload New Image for ' + value} onChange={event => {
               const file = event.currentTarget.files?.[0];
@@ -341,7 +348,8 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
         </div></fieldset>
       </>}
       {(variantOnly || !id) && <VariantMatrix attributesText={attributesText} setAttributes={setAttributes} variants={variants} setVariants={setVariants}
-        allowCost={allowCost} canDelete={canDelete} id={id} production={production} uploading={uploading} setUploading={setUploading}/>}
+        allowCost={allowCost} canDelete={canDelete} id={id} production={production} uploading={uploading} setUploading={setUploading}
+        sliderImages={[...new Set(list(initial.slider_images ?? ''))]}/>}
       {error && <p className="notice warn" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {production ? <div className={productionStyles.saveActions}>

@@ -20,6 +20,7 @@
 .receive { max-width: 768px; }
 .register h1,.receive h1,.generate h1 { margin: 0; color: var(--b-ink); font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: 0; }
 .generate header p,.receive header p { color: var(--b-muted); margin: 0; }
+.logDetails { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; }
 .registerFilters, .barcodeTable, .barcodePages,.logsForm,.generate :global(.barcode-form),.receive :global(.panel) {
   border: 1px solid var(--b-line);
   border-radius: 16px;

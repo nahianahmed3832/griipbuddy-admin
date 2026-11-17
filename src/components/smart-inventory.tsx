@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Barcode, Search } from 'lucide-react';
-import { ApiError, canWrite, str, url, type Session } from '@/lib/api';
+import { ApiError, canWrite, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { barcodeConditions, barcodeStatuses } from '@/lib/barcode-data';
 import { param, perPage, type Query } from '@/lib/data';
@@ -14,6 +14,7 @@ import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
 import { BarcodeLogField, ProductionBarcodeRegister } from './production-barcode-register';
 import { ProductionStockDialog } from './production-stock-controls';
+import { ProductThumbnail } from './product-thumbnail';
 import productionStyles from './production-smart-inventory.module.css';
 
 const eyebrow = 'INVENTORY / SMART INVENTORY';
@@ -122,6 +123,7 @@ export async function BarcodeLogs({ auth, region, q, production = false, hideSea
       </>}
     </form>}
     {error && <p className="notice warn" role="alert">{error}</p>}
+    {history && production && !hideSearch && <BarcodeDetails detail={history.detail} region={region}/>}
     {history && <section className="panel">
       <div className="panel-header"><div><h2><code>{history.unit.barcode}</code></h2><p>{[history.unit.sku, history.unit.product].filter(Boolean).join(' · ')}</p></div>
         {history.unit.status && <Badge value={history.unit.status}/>}
@@ -139,5 +141,53 @@ export async function BarcodeLogs({ auth, region, q, production = false, hideSea
       {reset && !['SOLD', 'ASSIGNED', 'PENDING_RETURN'].includes(history.unit.status) &&
         <BarcodeMaintenance unit={history.unit} region={region} reset closeUrl={closeUrl}/>}
     </section>}
+  </div>;
+}
+
+function BarcodeDetails({ detail, region }: { detail: RecordData; region: Region }) {
+  const product = obj(detail.product);
+  const variant = obj(detail.variant);
+  const lot = obj(detail.lot);
+  const stock = obj(detail.stock);
+  const source = obj(lot.source);
+  const value = (input: unknown) => typeof input === 'number' ? String(input) : str(input) || '—';
+  const time = (input: unknown) => {
+    const date = new Date(str(input));
+    return Number.isFinite(date.getTime()) ? <time dateTime={date.toISOString()}>
+      {date.toLocaleString('en-GB', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC' })}</time> : '—';
+  };
+  return <div className={productionStyles.logDetails}>
+    <section className="panel padded">
+      <h2>Product Information</h2><ProductThumbnail size={72} source={product.thumbnail}/>
+      <p>{value(product.name)}</p>
+      <dl className="details-grid">
+        <div><dt>Product SKU</dt><dd>{value(product.sku)}</dd></div>
+        <div><dt>Variant SKU</dt><dd>{value(variant.sku ?? detail.sku)}</dd></div>
+        <div><dt>Attributes</dt><dd>{Object.entries(obj(variant.attribute_values)).map(([label, setting]) => label + ': ' + value(setting)).join(' · ') || '—'}</dd></div>
+        <div><dt>Regular price</dt><dd>{value(variant.regular_price)}</dd></div>
+        <div><dt>Sale price</dt><dd>{value(variant.sale_price)}</dd></div>
+      </dl>
+    </section>
+    <section className="panel padded">
+      <h2>Lot Information</h2>{lot._id ? <dl className="details-grid">
+        <div><dt>Lot number</dt><dd>{value(lot.lot_number)}</dd></div>
+        <div><dt>Available / Total</dt><dd>{value(lot.qty_available)} / {value(lot.qty_total)}</dd></div>
+        <div><dt>Source</dt><dd>{value(source.type)}</dd></div>
+        <div><dt>Ref</dt><dd>{value(source.ref_id)}</dd></div>
+      </dl> : <p>Not linked to a lot yet.</p>}
+    </section>
+    <section className="panel padded">
+      <h2>Stock Status</h2>{stock._id ? <dl className="details-grid">
+        <div><dt>Available</dt><dd>{value(stock.available_quantity)}</dd></div>
+        <div><dt>Sold</dt><dd>{value(stock.total_sold)}</dd></div>
+        <div><dt>Reserved</dt><dd>{value(stock.qty_reserved)}</dd></div>
+      </dl> : <p>Not linked to stock yet.</p>}
+    </section>
+    <section className="panel padded">
+      <h2>Timestamps</h2><dl className="details-grid">
+        <div><dt>Created at</dt><dd>{time(detail.createdAt)}</dd></div>
+        <div><dt>Last updated</dt><dd>{time(detail.updatedAt)}</dd></div>
+      </dl>
+    </section>
   </div>;
 }

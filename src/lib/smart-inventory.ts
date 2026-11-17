@@ -49,7 +49,7 @@ export async function barcodeHistory(code: string, auth: Session, region: Region
   if (!barcodePattern.test(code)) throw new ApiError(400, 'Enter a valid barcode.');
   const detail = obj(await api(url('/barcode/' + code, { region }), auth.token));
   if (detail.region !== region) throw new ApiError(502);
-  return { unit: barcodeRow(detail), logs: arr(detail.updated_logs).map(obj).reverse() };
+  return { unit: barcodeRow(detail), logs: arr(detail.updated_logs).map(obj).reverse(), detail };
 }
 
 export async function barcodeVariants(term: string, auth: Session, region: Region): Promise<BarcodeVariant[]> {

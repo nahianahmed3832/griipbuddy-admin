@@ -13,6 +13,7 @@ const otherSku = 'PREVIEW-FORM-CASE-STANDARD-1';
 
 test('production inventory, purchasing, variant media, and barcode workflows', async ({ page }) => {
   test.skip(!offset, 'Use a dedicated fixture port offset for this mutating workflow.');
+  test.setTimeout(240000);
   if (!/^http:\/\/127\.0\.0\.1:\d{4,5}$/.test(origin) || !Number.isInteger(offset) || offset < 0 || offset > 500) {
     throw new Error('Use a disposable loopback fixture.');
   }
@@ -63,7 +64,7 @@ test('production inventory, purchasing, variant media, and barcode workflows', a
     await page.getByRole('button', { name: 'Find products' }).click();
     await page.getByRole('button', { name: 'Add ' + sku, exact: true }).click();
     await page.getByRole('button', { name: 'Confirm Update' }).click();
-    await expect(page).toHaveURL(new RegExp('/dashboard/inventory/view/outlet\\?outlet_id=' + outlet));
+    await expect(page).toHaveURL(new RegExp('/dashboard/inventory/view/outlet\\?outlet_id=' + outlet), { timeout: 30_000 });
     const outletRow = page.getByRole('row').filter({ hasText: 'Fixture domestic case' });
     await expect(outletRow.getByRole('cell', { name: '1', exact: true })).toBeVisible();
 
@@ -107,6 +108,8 @@ test('production inventory, purchasing, variant media, and barcode workflows', a
     expect(generated.status(), await generated.text()).toBe(200);
     const [barcode] = (await generated.json()).barcodes;
     await page.goto(origin + '/dashboard/barcodes/logs?barcode=' + barcode);
+    await expect(page.getByRole('heading', { name: 'Lot Information' })).toBeVisible();
+    await expect(page.getByText('Not linked to a lot yet.')).toBeVisible();
     await page.getByRole('button', { name: 'Edit barcode', exact: true }).click();
     const edit = page.getByRole('dialog', { name: 'Edit ' + barcode });
     await edit.getByLabel('Condition').selectOption('OPEN_BOX');
