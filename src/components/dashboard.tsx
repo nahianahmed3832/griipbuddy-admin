@@ -117,15 +117,16 @@ const outcomes = [
 ] as const;
 
 function Funnel({ data, production }: { data: RecordData; production?: boolean }) {
-  const total = number(data.total) ?? 0;
+  const visible = production ? outcomes.filter(([key]) => key !== 'other') : outcomes;
+  const total = production ? visible.reduce((sum,[key]) => sum + (number(data[key]) ?? 0),0) : number(data.total) ?? 0;
   return <div className={"overview-subpanel" + (production ? " production-overview-funnel" : "")}><h3>Where the orders placed in this period are now</h3>
     <p className="muted">{production ? 'Orders a customer returned after delivery count as delivered; returned to sender means it never reached them.' :
       'Customer returns after delivery count as delivered. Returned to sender means the parcel never reached the customer.'}</p>
-    {total > 0 && <div className="overview-funnel" aria-hidden="true">{outcomes.map(([key,,tone]) =>
+    {total > 0 && <div className="overview-funnel" aria-hidden="true">{visible.map(([key,,tone]) =>
       <span key={key} className={'outcome-' + tone} style={{ width: ((number(data[key]) ?? 0) / total * 100) + '%' }}/>)}</div>}
     {production && total === 0 ? <p className="muted overview-funnel-empty">No orders placed in this period</p> :
-      <ul className="overview-funnel-labels">{outcomes.filter(([key]) => key !== 'other' || number(data.other)).map(([key,label,tone]) =>
-        <li key={key}><i className={'outcome-' + tone}/>{label} <b>{count(data[key])}</b>{total > 0 && <small>{percent((number(data[key]) ?? 0) / total)}</small>}</li>)}</ul>}
+      <ul className="overview-funnel-labels">{visible.filter(([key]) => key !== 'other' || number(data.other)).map(([key,label,tone]) =>
+        <li key={key}><i className={'outcome-' + tone}/>{label}{production ? ': ' : ' '}<b>{count(data[key])}</b>{total > 0 && <small>{production ? '(' + Math.round((number(data[key]) ?? 0) / total * 100) + '%)' : percent((number(data[key]) ?? 0) / total)}</small>}</li>)}</ul>}
   </div>;
 }
 

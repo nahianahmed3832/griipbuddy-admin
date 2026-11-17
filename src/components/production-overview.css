@@ -315,3 +315,7 @@
 .production-overview .overview-bars li > span:last-of-type { font-weight:600; color:#0f172b; }
 .production-overview .production-overview-funnel > p:not(.overview-funnel-empty) { margin-top:-4px; margin-bottom:8px; font-size:12px; line-height:16px; }
 .production-overview .production-overview-funnel > .overview-funnel-empty { margin-top:0; font-size:14px; line-height:20px; }
+
+.production-overview .overview-funnel-labels { display:flex; flex-wrap:wrap; gap:4px 16px; }
+.production-overview .overview-funnel-labels li { display:inline-flex; align-items:center; gap:6px; color:#314158; font-size:12px; font-weight:500; line-height:16px; }
+.production-overview .overview-funnel-labels b { color:#0f172b; font-weight:700; }
