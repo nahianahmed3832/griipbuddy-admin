@@ -8,6 +8,7 @@ import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { LocationForm } from './location-form';
 import { ProductThumbnail } from './product-thumbnail';
+import styles from './warehouse-inventory.module.css';
 
 function record(raw: unknown): LocationRecord {
   const row = obj(raw);
@@ -190,15 +191,16 @@ async function LocationInventory({ auth, region, q, type }: { auth: Session; reg
   const requested = param(q, 'limit') ?? '20';
   const size = limitOptions.includes(requested) ? requested : '20';
   const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const payload = location ? obj(await api(url('/business-location/stock/all', {
-    region, businessLocationIds: location.id, page: String(page), limit: size,
+  const warehouseRows = type === 'warehouse';
+  const payload = location ? obj(await api(url(warehouseRows ? '/stocks/workspace/warehouse-inventory/records' : '/business-location/stock/all', {
+    region, [warehouseRows ? 'warehouse' : 'businessLocationIds']: location.id, page: String(page), limit: size,
   }), auth.token)) : {};
-  const rows = arr(payload.data).map(obj);
-  const total = Number(obj(payload.meta).total) || 0;
+  const rows = arr(warehouseRows ? payload.rows : payload.data).map(obj);
+  const total = Number(warehouseRows ? payload.total : obj(payload.meta).total) || 0;
   const link = (number: number) => url(path, { region, [key]: selected, limit: size, page: String(number) });
   const amount = (value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('en').format(value) : '—';
-  return <section className="panel padded">
-    <h1>{label} Inventory</h1>
+  return <section className={warehouseRows ? styles.page : 'panel padded'}>
+    <h1>{warehouseRows && location ? location.name : label} Inventory</h1>
     <form className="location-filters" action={adminPath(path)}>
       <input type="hidden" name="region" value={region}/>
       <label>Select {label}<select name={key} defaultValue={selected ?? ''}>
@@ -209,20 +211,30 @@ async function LocationInventory({ auth, region, q, type }: { auth: Session; reg
       <button className="button secondary" type="submit">View inventory</button>
     </form>
     {!location ? <p>Please select a {label}.</p> : !rows.length ? <p>No inventory found for this {type}.</p> :
-      <div className="table-scroll" role="region" aria-label={label + ' stock'} tabIndex={0}>
-        <table><thead><tr>{(type === 'outlet'
-          ? ['Image', 'Product Name', 'Variants', 'Total Qty', 'Regular Price', 'Sale Price']
-          : ['Items', 'SKU', 'Regular Price', 'Sale Price', 'Quantity', 'Barcode']).map(column =>
+      warehouseRows ? <div className={styles.recordList}>{rows.map(row => {
+        const variants = arr(row.variants).map(obj);
+        const units = variants.reduce((sum, variant) => sum + (typeof variant.quantity === 'number' ? variant.quantity : 0), 0);
+        return <details className={styles.card} key={str(row.product)}>
+          <summary className={styles.productSummary}><ProductThumbnail source={row.image} size={48}/><strong>{str(row.name)}</strong>
+            <span>{units} units</span><span>{variants.length} {variants.length === 1 ? 'variant' : 'variants'}</span></summary>
+          <div className={styles.table} role="region" aria-label={str(row.name) + ' inventory'} tabIndex={0}>
+            <table><thead><tr>{['Items', 'SKU', 'Regular Price', 'Sale Price', 'Quantity', 'Barcode'].map(column =>
+              <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{variants.map((variant, index) => <tr key={str(variant.sku) + index}>
+                <td>{str(row.name)}{Object.keys(obj(variant.attribute_values)).length > 0 && ' (' + Object.values(obj(variant.attribute_values)).map(str).join(' - ') + ')'}</td>
+                <td>{str(variant.sku)}</td><td>{region === 'BD' ? '৳' : ''}{amount(variant.regular_price)}</td>
+                <td>{region === 'BD' ? '৳' : ''}{amount(variant.sale_price)}</td><td>{amount(variant.quantity)}</td><td>{str(variant.barcode) || '—'}</td>
+              </tr>)}</tbody></table>
+          </div>
+        </details>;
+      })}</div> : <div className="table-scroll" role="region" aria-label={label + ' stock'} tabIndex={0}>
+        <table><thead><tr>{['Image', 'Product Name', 'Variants', 'Total Qty', 'Regular Price', 'Sale Price'].map(column =>
           <th scope="col" key={column}>{column}</th>)}</tr></thead>
           <tbody>{rows.map(row => {
             const product = obj(row.product);
             const attributes = Object.values(obj(row.attribute_values)).map(str).filter(Boolean).join(' · ');
-            return type === 'outlet' ? <tr key={str(row._id)}><td><ProductThumbnail source={product.thumbnail} size={42}/></td>
+            return <tr key={str(row._id)}><td><ProductThumbnail source={product.thumbnail} size={42}/></td>
               <td>{str(product.name)}</td><td>{attributes || str(row.sku)}</td><td>{amount(row.available_quantity)}</td>
-              <td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td></tr> :
-              <tr key={str(row._id)}><td>{str(product.name)}{attributes && <small> · {attributes}</small>}</td>
-                <td>{str(row.sku)}</td><td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td>
-                <td>{amount(row.available_quantity)}</td><td>{str(row.barcode) || '—'}</td></tr>;
+              <td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td></tr>;
           })}</tbody>
         </table>
       </div>}

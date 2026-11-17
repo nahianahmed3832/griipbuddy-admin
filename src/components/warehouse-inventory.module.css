@@ -18,3 +18,8 @@
 .table th { text-align: left; font-size: 14px; }
 .table th, .table td { padding: 6px; min-width: 105px; }
 .actions:last-child { justify-content: space-between; }
+.recordList { display: grid; gap: 12px; }
+.productSummary { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.productSummary strong { flex: 1; }
+.productSummary span { padding: 4px 8px; border: 1px solid #e0e0e4; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.recordList details[open] .table { margin-top: 16px; }
