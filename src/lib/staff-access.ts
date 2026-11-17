@@ -6,7 +6,7 @@ export const endpoint = '/staff-access';
 export type Option = { id: string; name: string };
 export type Options = { roles: (Option & { permissions: string[] })[]; locations: (Option & { region: string })[] };
 export type StaffRecord = Option & {
-  email?: string; phone: string; role: string; roleId: string; status: string; locationId: string;
+  email?: string; gender?: string; phone: string; role: string; roleId: string; status: string; locationId: string;
   location?: string; revision: string | null; setupExpiresAt?: string; setupRevoked: boolean; protected: boolean; permissions: string[];
 };
 export type RoleRecord = Option & {

@@ -42,39 +42,41 @@
   font-weight: 600;
   line-height: 28px;
 }
-.production-report-category h2 small { color: var(--report-muted); font-size: 14px; font-weight: 400; }
+.production-report-category h2 small { color: var(--report-muted); font-size: 14px; font-weight: 500; }
 .production-report-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .production-report-cards a {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   min-width: 0;
   padding: 16px;
-  gap: 6px;
+  gap: 12px;
   border: 1px solid var(--report-border);
   border-top: 4px solid var(--section-color);
-  border-radius: 12px;
-  background: white;
+  border-radius: 8px;
+  background: var(--surface);
   box-shadow: var(--report-shadow);
   color: var(--report-text);
 }
-.production-report-cards a:hover { box-shadow: 0 4px 9px rgb(0 0 0 / 12%); }
+.production-report-cards a:hover { transform: translateY(-2px); box-shadow: 0 4px 9px rgb(0 0 0 / 12%); }
+.production-report-card-description { display: grid; gap: 6px; }
 .production-report-cards h3 { font-size: 16px; font-weight: 600; line-height: 24px; }
 .production-report-cards p { color: var(--report-copy); font-size: 14px; line-height: 20px; }
-.production-report-cards footer {
+.production-report-card-footer {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  flex: 1;
-  margin-top: 6px;
   color: var(--report-muted);
   font-size: 12px;
   line-height: 16px;
 }
-.production-report-cards footer strong {
+.production-report-card-footer p { color: inherit; font: inherit; }
+.production-report-card-footer span {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
   color: var(--section-color);
   font-size: 14px;
   font-weight: 600;

@@ -10,6 +10,7 @@ const csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 's
 const config = {
   poweredByHeader: false,
   devIndicators: false,
+  ...(process.env.GRIIP_ADMIN_STANDALONE === '1' && { output: 'standalone' }),
   basePath: ['/admin', '/operations-preview', '/pilot-operations'].includes(process.env.NEXT_PUBLIC_GRIIP_ADMIN_PREFIX) ? process.env.NEXT_PUBLIC_GRIIP_ADMIN_PREFIX : '',
   experimental: { cpus: 2 },
   async headers() {

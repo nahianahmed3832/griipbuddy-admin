@@ -1,0 +1,25 @@
+name: griipbuddy-editable-devadmin
+services:
+  admin:
+    image: ${GRIIP_EDITABLE_DEVADMIN_IMAGE:?Use the verified editable image}
+    network_mode: host
+    environment:
+      NEXT_PUBLIC_GRIIP_ADMIN_PREFIX: /admin
+      GRIIP_ADMIN_TARGET: integration
+      GRIIP_ADMIN_PUBLIC_ORIGIN: https://devadmin.griipbuddy.com
+      GRIIP_ADMIN_INTEGRATED: "1"
+      GRIIP_ADMIN_MANAGED: "1"
+      GRIIP_ADMIN_INTEGRATION_STAFF_ENROLLMENT: "1"
+      GRIIP_ADMIN_STAFF_EMAIL: ${GRIIP_ADMIN_STAFF_EMAIL:?Use the protected fixture account}
+      GRIIP_ADMIN_STAFF_PHONE: ${GRIIP_ADMIN_STAFF_PHONE:?Use the protected fixture account}
+      GRIIP_ADMIN_FRAUD_LOOKUP: "1"
+      GRIIP_ADMIN_LEGACY_MEDIA_ORIGIN: http://127.0.0.1:4359
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4361/admin/sign-in').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

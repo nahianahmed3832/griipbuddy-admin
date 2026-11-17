@@ -3,9 +3,10 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Copy, Search, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Search, ShieldAlert } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import { dateLabel, permissionInfo, roleDirectory, templates, type Options, type RoleRecord, type SetupLink, type StaffRecord } from '@/lib/staff-access';
+import styles from './production-staff-editor.module.css';
 
 async function submit(action: string, values: object, id?: string) {
   const response = await fetch(adminPath('/api/staff-access'), {
@@ -33,7 +34,7 @@ function SetupReceipt({ receipt, href }: { receipt: SetupLink; href: string }) {
   </section>;
 }
 
-export function StaffForm({ row, options, back }: { row?: StaffRecord; options: Options; back: string }) {
+export function StaffForm({ row, options, back, production = false }: { row?: StaffRecord; options: Options; back: string; production?: boolean }) {
   const router = useRouter();
   const [roleId, setRoleId] = useState(row?.roleId ?? '');
   const [pending, setPending] = useState(false);
@@ -46,6 +47,15 @@ export function StaffForm({ row, options, back }: { row?: StaffRecord; options: 
     setError('');
     const data = new FormData(event.currentTarget);
     try {
+      if (production) {
+        await submit(row ? 'staff-update' : 'staff-create', {
+          full_name: data.get('name'), email: data.get('email'), role_ref: roleId, phone_number: data.get('phone'),
+          business_location: data.get('location') || null, gender: data.get('gender'),
+          password: data.get('password'), confirmation: data.get('confirmation'),
+        }, row?.id);
+        router.refresh(); router.push(back);
+        return;
+      }
       const result = await submit(row ? 'staff-edit' : 'invite', {
         full_name: data.get('name'), email: data.get('email'), role_ref: roleId,
         business_location: data.get('location') || null,
@@ -57,6 +67,31 @@ export function StaffForm({ row, options, back }: { row?: StaffRecord; options: 
     finally { setPending(false); }
   }
   if (receipt) return <SetupReceipt receipt={receipt} href={back}/>;
+  if (production) return <form className={styles.editor} onSubmit={save}>
+    <Link className={styles.back} href={back}><ArrowLeft size={16}/> Back to Staffs</Link>
+    <h1>{row ? 'Update Staff' : 'Add New Staff'}</h1>
+    <fieldset className={styles.fields} disabled={pending}>
+      <label>Full Name<input name="name" required maxLength={120} defaultValue={row?.name}/></label>
+      <label>Email<input name="email" type="email" maxLength={254} defaultValue={row?.email}/></label>
+      <label>Phone Number<input name="phone" type="tel" inputMode="tel" required pattern={'\\+?[0-9]{8,16}'} defaultValue={row?.phone}/></label>
+      <label>Role<select name="role" value={roleId} onChange={event => setRoleId(event.target.value)} required>
+        <option value="">Select a role</option>
+        {row && !options.roles.some(option => option.id === row.roleId) && <option value={row.roleId}>{row.role}</option>}
+        {options.roles.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
+      </select></label>
+      <label>Password<input name="password" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
+      <label>Confirm Password<input name="confirmation" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
+      <label>Gender<select name="gender" defaultValue={row?.gender === 'FEMALE' ? 'FEMALE' : 'MALE'}><option>MALE</option><option>FEMALE</option></select></label>
+      <label>Access Outlet<select name="location" defaultValue={row?.locationId ?? ''}>
+        <option value="">Select outlet</option>
+        {row?.locationId && !options.locations.some(option => option.id === row.locationId) && <option value={row.locationId}>{row.location}</option>}
+        {options.locations.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
+      </select></label>
+    </fieldset>
+    {error && <p className="notice warn" role="alert">{error}</p>}
+    <div className={styles.actions}><button className="button primary" type="submit" disabled={pending || !roleId}>
+      {pending ? 'Saving…' : row ? 'Update Staff' : 'Add New Staff'}</button></div>
+  </form>;
   return <form onSubmit={save} className="staff-form">
     <section className="panel staff-block">
       <h2>Staff details</h2>
@@ -138,8 +173,20 @@ export function StaffLifecycle({ row, back, enrollment }: { row: StaffRecord; ba
   </section>;
 }
 
-export function RoleEditor({ role, catalog, writable, canDelete }: {
-  role: RoleRecord | null; catalog: string[]; writable: boolean; canDelete: boolean;
+const productionGroups: Record<string, string> = {
+  order: 'Order', pre_order: 'Pre Order', product: 'Product', purchase: 'Purchase', barcode: 'Barcode', stock: 'Stock',
+  pos: 'Pos', courier: 'Courier', supplier: 'Supplier', business_locations: 'Business Locations', user: 'User', role: 'Role',
+  cms: 'Cms', faq: 'Faq', review: 'Review', coupon: 'Coupon', expense: 'Expense', report: 'Report',
+  'manage-permissions': 'Manage Permissions', overview: 'Overview', amounts: 'Overview And Amount Access', international: 'Region',
+};
+
+function productionGroup(permission: string) {
+  if (permission === 'purchase.price.view' || permission === 'potential.profit.view' || permission.startsWith('overview.amount')) return 'amounts';
+  return permission.split('.')[0];
+}
+
+export function RoleEditor({ role, catalog, writable, canDelete, production = false }: {
+  role: RoleRecord | null; catalog: string[]; writable: boolean; canDelete: boolean; production?: boolean;
 }) {
   const router = useRouter();
   const [name, setName] = useState(role?.name ?? '');
@@ -169,15 +216,47 @@ export function RoleEditor({ role, catalog, writable, canDelete }: {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEdit) return;
-    if (!review) { setReview(true); return; }
+    if (!production && !review) { setReview(true); return; }
     setError(''); setPending(true);
     try {
       await submit(role ? 'role-edit' : 'role-create', {
         role_name: name, permissions: selected, ...(role && { revision: role.revision }),
       }, role?.id);
-      router.refresh(); router.push(roleDirectory);
+      router.refresh(); router.push(production ? '/dashboard/role' : roleDirectory);
     } catch (err) { setError(message(err)); }
     finally { setPending(false); }
+  }
+  if (production) {
+    const visible = catalog.filter(permission => Object.hasOwn(productionGroups, productionGroup(permission)));
+    function checkPermissions(permissions: string[], value: boolean) {
+      change(value ? [...new Set([...selected, ...permissions])] : selected.filter(permission => !permissions.includes(permission)));
+    }
+    return <form className={styles.editor} onSubmit={save}>
+      <Link className={styles.back} href="/dashboard/role"><ArrowLeft size={16}/> Back to Roles</Link>
+      <div className={styles.roleHeading}><h1>{role ? 'Update Role' : 'Add New Role'}</h1>
+        {canEdit && <button className="button primary" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save Role'}</button>}</div>
+      <label className={styles.roleName}>Role Name<input name="name" value={name} onChange={event => setName(event.target.value)}
+        readOnly={!canEdit || role?.builtIn} required minLength={2} maxLength={80}/></label>
+      <label className={styles.selectAll}><input type="checkbox" checked={visible.length > 0 && visible.every(permission => selected.includes(permission))}
+        disabled={!canEdit || pending} onChange={event => checkPermissions(visible, event.target.checked)}/> SELECT ALL PERMISSIONS</label>
+      <div className={styles.permissions}>
+        {Object.entries(productionGroups).map(([group, label]) => {
+          const permissions = visible.filter(permission => productionGroup(permission) === group);
+          if (!permissions.length) return null;
+          const count = permissions.filter(permission => selected.includes(permission)).length;
+          return <section className={styles.permissionGroup} key={group}>
+            <h2>{label}</h2><small>{count} / {permissions.length} selected</small>
+            {permissions.map(permission => {
+              const suffix = permission.split('.').at(-1) ?? permission;
+              return <label key={permission} className={styles.permission}><input type="checkbox" checked={selected.includes(permission)}
+                aria-label={permissionInfo(permission).label} disabled={!canEdit || pending}
+                onChange={event => checkPermissions([permission], event.target.checked)}/>{suffix[0].toUpperCase() + suffix.slice(1)}</label>;
+            })}
+          </section>;
+        })}
+      </div>
+      {error && <p className="notice warn" role="alert">{error}</p>}
+    </form>;
   }
   return <>
     <form onSubmit={save} className="staff-form">

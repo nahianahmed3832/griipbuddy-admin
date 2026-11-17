@@ -2,16 +2,12 @@
   display: grid;
   align-items: center;
   min-height: 70vh;
-  padding: 24px 40px;
+  padding: 24px 64px;
 }
 .card {
-  display: grid;
-  justify-items: center;
-  gap: 20px;
-  padding: 24px;
-  border-radius: 14px;
+  width: 100%;
+  padding-bottom: 20px;
   text-align: center;
-  background: var(--surface);
 }
 .icon {
   display: grid;
@@ -22,10 +18,11 @@
   background: #6d70fc;
   color: white;
   box-shadow: 0 4px 6px -1px #0002, 0 2px 4px -2px #0002;
+  margin: 0 auto 16px;
   animation: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;
 }
 .icon svg { width: 32px; height: 32px; }
-.card h1 {
+.title {
   color: #6d70fc;
   margin: 0;
   font: inherit;
@@ -34,14 +31,13 @@
   font-weight: 700;
   letter-spacing: normal;
 }
-.card p { color: var(--production-muted); }
+.card p { color: var(--production-muted); margin: 12px 0 0; }
 @keyframes pulse { 50% { opacity: .5; } }
 @media (max-width: 767px) {
   .wrapper { padding: 16px; }
-  .card { gap: 12px; padding: 16px; }
-  .card h1 { font-size: 18px; line-height: 28px; }
-  .card p { font-size: 14px; }
-  .icon { width: 40px; height: 40px; }
+  .title { font-size: 18px; line-height: 28px; }
+  .card p { font-size: 14px; margin-top: 8px; }
+  .icon { width: 40px; height: 40px; margin-bottom: 8px; }
   .icon svg { width: 20px; height: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { .icon { animation: none; } }

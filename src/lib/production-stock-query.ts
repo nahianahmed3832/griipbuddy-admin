@@ -21,4 +21,3 @@ export function stockSearchPath(filters: ProductionStockFilters, other: Record<s
   });
   return productionStockPath + (query.size ? '?' + query : '');
 }
-

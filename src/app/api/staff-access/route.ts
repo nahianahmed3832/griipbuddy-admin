@@ -1,5 +1,6 @@
 import { ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str } from '@/lib/api';
 import { endpoint } from '@/lib/staff-access';
+import { has } from '@/lib/sections';
 
 const send = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -17,6 +18,29 @@ export async function POST(req: Request) {
     }
     const id = str(body.id);
     if (id && !mongoId(id)) return send({ message: 'Invalid account or role ID.' }, 400);
+    if (action === 'staff-create' || action === 'staff-update') {
+      const edit = action === 'staff-update';
+      if (edit !== Boolean(id)) return send({ message: 'Invalid account target.' }, 400);
+      const auth = await session();
+      if (!auth) return send({ message: 'Sign in to continue.' }, 401);
+      if (!canWrite(auth.staff) || !has(auth.staff, edit ? 'user.update' : 'user.create') || (!edit && !staffEnrollmentAvailable())) {
+        return send({ message: 'Staff management is read-only in this workspace.' }, 403);
+      }
+      const values = obj(body.values);
+      const password = str(values.password);
+      if ((!edit || password) && ([...password].length < 15 || [...password].length > 128 || password !== values.confirmation)) {
+        return send({ message: 'Enter matching passwords containing 15 to 128 characters.' }, 400);
+      }
+      const response = await requestApi(edit ? '/user/update/staff/' + id : '/user/recruit/staff', auth.token, {
+        method: edit ? 'PUT' : 'POST',
+        body: JSON.stringify({ full_name: str(values.full_name), email: str(values.email), phone_number: str(values.phone_number),
+          gender: str(values.gender), role_ref: str(values.role_ref), business_location: values.business_location || null,
+          ...(password && { password }) }),
+      });
+      const result = obj(await response.json());
+      if (!response.ok) return send({ message: response.status < 500 && str(result.message) || 'The staff API could not save the account.' }, response.status);
+      return result.success === true ? send({ success: true }, response.status) : send({ message: 'The staff API returned an unexpected response.' }, 502);
+    }
     const targets: Record<string, [string, string, boolean]> = {
       accept: ['POST', '/accept', false],
       invite: ['POST', '/directory', false],

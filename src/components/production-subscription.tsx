@@ -3,10 +3,10 @@ import styles from './production-subscription.module.css';
 
 export function ProductionSubscription({ name }: { name: string }) {
   return <div className={styles.wrapper}>
-    <section className={styles.card} aria-labelledby="subscription-notice">
+    <div className={styles.card}>
       <span className={styles.icon}><Clock aria-hidden="true"/></span>
-      <h1 id="subscription-notice">{name} Feature Coming Soon!</h1>
+      <div className={styles.title} data-slot="card-title">{name} Feature Coming Soon!</div>
       <p>We&apos;ll inform you when this feature becomes available to use.</p>
-    </section>
+    </div>
   </div>;
 }

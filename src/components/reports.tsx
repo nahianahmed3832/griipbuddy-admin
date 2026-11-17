@@ -162,12 +162,12 @@ export async function Reports({ auth, id, q, region, production = false }: {
       {Object.entries(domains).map(([key, domain]) => {
         const available = definitions.filter(report => report.domain === key);
         if (!available.length) return null;
-        return <section className={'production-report-category overview-' + domain.color} key={key} aria-label={domain.name}>
-          <h2><span className="overview-block-icon"><domain.icon size={16}/></span>{domain.name} <small>({available.length})</small></h2>
+        return <section className={'production-report-category overview-' + domain.color} key={key}>
+          <h2><span className="overview-block-icon"><domain.icon size={18}/></span>{domain.name}<small>({available.length})</small></h2>
           <div className="production-report-cards">{available.map(report => <Link
             className="panel report-card" key={str(report.id)} href={url(reportBase + '/' + str(report.id), { region })}>
-            <h3>{str(report.title)}</h3><p>{str(report.description)}</p>
-            <footer><span>{str(report.dateBasis)}</span><strong>Open <ChevronRight size={15}/></strong></footer>
+            <div className="production-report-card-description"><h3>{str(report.title)}</h3><p>{str(report.description)}</p></div>
+            <div className="production-report-card-footer"><p>{str(report.dateBasis)}</p><span>Open <ChevronRight size={16}/></span></div>
           </Link>)}</div>
         </section>;
       })}

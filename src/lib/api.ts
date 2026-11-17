@@ -55,12 +55,13 @@ export function integratedCheckoutEnabled() {
 }
 
 export function hosted() {
-  return ['https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
+  return ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com']
+    .includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
 }
 
 function protectedIntegration() {
   return process.env.GRIIP_ADMIN_TARGET === 'integration' &&
-    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
+    ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
 }
 
 function integrationStaffEnrollment() {

@@ -81,6 +81,7 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
     const edit = write && has(auth.staff, create ? 'role.create' : 'role.update');
     if (create && !edit) throw new ApiError(403);
     const { catalog, role } = await api(url(endpoint + '/role-editor', { id: create ? undefined : id }), auth.token) as { catalog: string[]; role: RoleRecord | null };
+    if (production) return <RoleEditor role={role} catalog={catalog} writable={edit} canDelete={false} production/>;
     return <><PageHeading eyebrow={title} title={role?.name ?? 'Create role'}
       description="Grant the permissions staff need for this role. Review the effect before saving."/>
       <RoleEditor role={role} catalog={catalog} writable={edit} canDelete={write && has(auth.staff, 'role.delete')}/></>;
@@ -105,6 +106,7 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
   if (id === 'new') {
     if (!canInvite) throw new ApiError(403);
     const options = await api(endpoint + '/options', auth.token) as Options;
+    if (production) return <StaffForm options={options} back="/dashboard/staffs" production/>;
     return <><PageHeading eyebrow={title} title="Invite staff" description="Assign a role and create a one-time link for the staff member to set their password."/>
       <StaffForm options={options} back={directory}/></>;
   }
@@ -112,6 +114,9 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
     const row = await api(endpoint + '/directory/' + id, auth.token) as StaffRecord;
     const editable = write && has(auth.staff, 'user.update') && !row.protected && row.id !== auth.staff.id;
     const options = editable ? await api(endpoint + '/options', auth.token) as Options : null;
+    if (production && options && row.status !== 'PENDING' && !row.setupExpiresAt) {
+      return <StaffForm row={row} options={options} back="/dashboard/staffs" production/>;
+    }
     return <><PageHeading eyebrow={title} title={row.name} description={row.protected ? 'This super administrator account is protected.' : 'Review this staff member’s assigned role and current access.'}>
       <Link href={directory} className="button secondary"><ArrowLeft size={15}/> Back to staff</Link></PageHeading>
       <section className="panel staff-block staff-summary">
