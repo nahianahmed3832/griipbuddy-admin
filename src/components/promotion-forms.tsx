@@ -219,7 +219,7 @@ export function ProductionOfferForm({ initial, writable, options, selected }: {
       return;
     }
     setValidation('');
-    await submit('save-offer', { ...values, applied_subcategory: ids,
+    await submit('save-offer', { ...values, offer_start_date: values.offer_start_date + 'T00:00:00Z', applied_subcategory: ids,
       header: Object.fromEntries(offerHeader.map(([key]) => [key, values['header.' + key]])) });
   }
 
