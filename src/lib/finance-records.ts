@@ -17,3 +17,17 @@ export const expenseLabel = (value: string) => value === 'ADs' ? 'Advertising' :
 export const expenseId = (value: string) => /^EXP-\d{1,16}$/i.test(value);
 export type FinanceChoice = { id: string; name: string; parent?: string; type?: string };
 export type FinanceChoices = { category: FinanceChoice[]; subcategory: FinanceChoice[]; sales_channel: FinanceChoice[]; payment_source: FinanceChoice[] };
+
+const dashboardFinancePaths: Record<FinanceView, string> = {
+  expenses: '/dashboard/expenses',
+  'expense-report': '/dashboard/expense-report',
+  'expense-categories': '/dashboard/expense-categories',
+  'expense-subcategories': '/dashboard/expense-subcategories',
+  channels: '/dashboard/sales-channels',
+  sources: '/dashboard/payment-sources',
+};
+
+export function productionFinancePath(view: FinanceView, id?: string) {
+  if (view === 'expenses' && id) return id === 'new' ? '/dashboard/create-expense' : '/dashboard/update-expense/' + id;
+  return dashboardFinancePaths[view];
+}

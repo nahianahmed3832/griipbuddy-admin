@@ -1,16 +1,18 @@
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { Ellipsis, Plus, Search } from 'lucide-react';
 import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { dateParam, param, perPage, printable, type Query } from '@/lib/data';
-import { expenseId, expenseLabel, expenseStatuses, expenseViews, financePath, ledgerStatuses, paymentMethods,
+import { expenseId, expenseLabel, expenseStatuses, expenseViews, financePath, ledgerStatuses, paymentMethods, productionFinancePath,
   type FinanceChoices, type FinanceView } from '@/lib/finance-records';
 import { adminPath } from '@/lib/paths';
+import { expenseAttachmentPath } from '@/lib/finance-attachment';
 import { purchasePage } from '@/lib/purchases';
 import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
-import { FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
+import { FinanceDialog, FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
 import { Badge, Table } from './tables';
 import '@/app/purchases.css';
+import styles from './production-finance.module.css';
 
 const reference = (value: unknown) => str(obj(value)._id) || str(value);
 const name = (value: unknown) => str(obj(value).name) || str(obj(value).title);
@@ -63,7 +65,7 @@ function Filters({ view, filters, search, choices }: {
   </form>;
 }
 
-function selectedFilters(q: Query, view: FinanceView) {
+function selectedFilters(q: Query, view: FinanceView): Record<string, string | undefined> {
   const expenses = view === 'expenses' || view === 'expense-report';
   const status = (expenses ? expenseStatuses : ledgerStatuses).find(value => value === param(q, 'status'));
   const category = validId(param(q, 'category') ?? '');
@@ -80,8 +82,12 @@ function breakdown(source: unknown) {
   return Object.entries(obj(source)).map(([key, value]) => ({ id: key, values: [expenseLabel(key), String(obj(value).count ?? 0), coins(obj(value).amount)] }));
 }
 
-async function ExpenseReport({ auth, q }: { auth: Session; q: Query }) {
+async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query; production?: boolean }) {
   const filters = selectedFilters(q, 'expense-report');
+  if (production) {
+    filters.status = param(q, 'status') === undefined ? 'paid' : filters.status;
+    filters.is_approved = param(q, 'is_approved') === undefined ? 'true' : filters.is_approved;
+  }
   const [result, choices] = await Promise.all([
     api(url('/expense/report', filters), auth.token), choicesFor(auth, ['category', 'subcategory', 'payment_source']),
   ]);
@@ -94,6 +100,60 @@ async function ExpenseReport({ auth, q }: { auth: Session; q: Query }) {
       ...arr(category.subcategories).map(obj).map((row, index) => ({ id: str(category.categoryId) + '-' + index,
         values: [label + ' / ' + str(row.title), String(row.transactionCount ?? 0), coins(row.totalAmount)] }))];
   });
+  if (production) {
+    const currency = new Intl.NumberFormat('en-BD', { maximumFractionDigits: 2 });
+    const numeric = (value: unknown) => currency.format(Number(value) || 0);
+    const group = (title: string, source: unknown, keys: string[]) => <section className={styles.card}><h2>{title}</h2>
+      <dl className={styles.breakdown}>{keys.map(key => {
+        const record = obj(obj(source)[key]);
+        return <div key={key} style={{ display: 'contents' }}><dt>{({ true: 'Approved', false: 'Unapproved', mobile_banking: 'Mobile Banking' } as Record<string,string>)[key] ?? expenseLabel(key)}</dt>
+          <dd>{numeric(record.amount)} ({numeric(record.count)})</dd></div>;
+      })}</dl></section>;
+    const select = (field: string, all: string, entries: { id: string; name: string }[]) => <label key={field}>
+      <select aria-label={all} name={field} defaultValue={filters[field] || ''}>
+        <option value="">{all}</option>{entries.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+      </select></label>;
+    const labels = (values: string[]) => values.map(id => ({ id, name: id === 'mobile_banking' ? 'Mobile Banking' : expenseLabel(id) }));
+    const reportRows = arr(report.data).map(obj).flatMap(row => {
+      const title = str(row.title);
+      return [{ title, id: str(row.categoryId), transactions: row.transactionCount, sum: row.totalAmount },
+        ...arr(row.subcategories).map(obj).map((sub, index) => ({ title: title + ' / ' + str(sub.title), id: str(row.categoryId) + '-' + index,
+          transactions: sub.transactionCount, sum: sub.totalAmount }))];
+    });
+    return <>
+      <header className={styles.heading}><h1>Expense Report</h1><p>Spend analytics across categories, statuses and payment methods.</p></header>
+      <div className={styles.report}>
+        <p className={styles.notice}>Showing paid, approved expenses (what the Overview counts). Change Status or Approval to include pending or rejected ones. Dates are Bangladesh days.</p>
+        <form className={styles.filters} action={adminPath(productionFinancePath('expense-report'))}>
+          <label>From<input name="start_date" type="date" defaultValue={filters.start_date}/></label>
+          <label>To<input name="end_date" type="date" defaultValue={filters.end_date}/></label>
+          {select('status', 'All statuses', labels(expenseStatuses))}
+          {select('payment_method', 'All methods', labels(paymentMethods))}
+          {select('is_approved', 'All approvals', [{ id: 'true', name: 'Approved' }, { id: 'false', name: 'Unapproved' }])}
+          {select('category', 'All categories', choices.category)}
+          {select('subcategory', 'All subcategories', choices.subcategory)}
+          {select('payment_source', 'All sources', choices.payment_source)}
+          <button className="button primary">Apply</button>
+        </form>
+        <div className={styles.summary}>
+          {[['Grand Total', meta.grand_total], ['Transactions', meta.total_transactions], ['Avg. Transaction', meta.average_transaction], ['Categories', arr(report.data).length]].map(([label, value]) =>
+            <section key={String(label)} className={styles.card}><h2>{String(label)}</h2><p>{numeric(value)}</p></section>)}
+        </div>
+        <div className={styles.breakdowns}>
+          {group('By Status', meta.status_breakdown, ['paid', 'pending', 'rejected'])}
+          {group('By Payment Method', meta.payment_method_breakdown, paymentMethods)}
+          {group('By Approval', meta.approval_breakdown, ['true', 'false'])}
+        </div>
+        <section className={styles.card + ' ' + styles.records}>
+          <table><thead><tr><th>Category / Subcategory</th><th>Transactions</th><th>Avg</th><th>Total</th></tr></thead>
+            <tbody>{reportRows.length ? reportRows.map(row => <tr key={row.id}><td>{row.title}</td><td>{numeric(row.transactions)}</td>
+              <td>{numeric(Number(row.sum) / Math.max(Number(row.transactions) || 0, 1))}</td><td>{numeric(row.sum)}</td></tr>)
+              : <tr><td className={styles.empty} colSpan={4}>No expenses match these filters.</td></tr>}</tbody>
+          </table>
+        </section>
+      </div>
+    </>;
+  }
   return <><PageHeading eyebrow="PAYMENTS" title="Expense report" description="Review spending by category, status, approval and payment source."/>
     <Filters view="expense-report" filters={filters} choices={choices}/>
     <section className="panel padded"><h2>Expense totals</h2><dl className="details-grid">
@@ -119,14 +179,105 @@ function fieldsForRecord(row: RecordData) {
   };
 }
 
-export async function FinanceRecordsPage({ auth, region, q, view, id }: { auth: Session; region: Region; q: Query; view: FinanceView; id?: string }) {
+const financeTableLabels: Record<Exclude<FinanceView, 'expense-report'>, { title: string; description: string; singular: string; none: string; columns: string[] }> = {
+  expenses: { title: 'Expenses', description: '', singular: 'Expense', none: 'No expenses match these filters.',
+    columns: ['Expense ID', 'Title', 'Category', 'Amount', 'Payment', 'Status', 'Approval', 'Date', 'Actions'] },
+  'expense-categories': { title: 'Expense Categories', description: 'Top-level buckets for organising expenses (e.g. Marketing, Salary, Rent).',
+    singular: 'Category', none: 'No categories yet.', columns: ['Title','SKU','Type','Status','Created','Actions'] },
+  'expense-subcategories': { title: 'Expense Subcategories', description: 'Finer breakdowns under a parent category (e.g. Facebook Ads under Marketing).',
+    singular: 'Subcategory', none: 'No subcategories yet.', columns: ['Title','Parent Category','SKU','Type','Status','Actions'] },
+  channels: { title: 'Sales Channels', description: 'Ad platforms that ADs-type expenses are attributed to.',
+    singular: 'Channel', none: 'No sales channels yet.', columns: ['Name','Slug','Status','Created','Actions'] },
+  sources: { title: 'Payment Sources', description: 'Where expenses are paid from (e.g. BD Office, China, Personal).',
+    singular: 'Source', none: 'No payment sources yet.', columns: ['Name','Slug','Status','Created','Actions'] },
+};
+
+function ProductionFinanceRecords({ view, records, total, search, filters, options, canAdd, canUpdate, canApprove, canRemove, page, pageLink }: {
+  view: Exclude<FinanceView, 'expense-report'>; records: RecordData[]; total: number; search: string; filters: Record<string, string | undefined>;
+  options: FinanceChoices; canAdd: boolean; canUpdate: boolean; canApprove: boolean; canRemove: boolean; page: number; pageLink: (page: number) => string;
+}) {
+  const copy = financeTableLabels[view];
+  const expenses = view === 'expenses';
+  const date = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka' }).format(new Date(value)) : '—';
+  const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+  const filter = (field: string, all: string, rows: { id: string; name: string }[]) => <label key={field}><select name={field} aria-label={all}
+    defaultValue={filters[field] || ''}><option value="">{all}</option>{rows.map(row => <option value={row.id} key={row.id}>{row.name}</option>)}</select></label>;
+  const label = (items: string[]) => items.map(id => ({ id, name: expenseLabel(id) }));
+  return <>
+    <header className={styles.heading + ' ' + styles.headerRow}>
+      <div><h1>{copy.title}</h1><p>{expenses ? total + ' total' : copy.description}</p></div>
+      {canAdd && (expenses ? <Link className="button primary" href={productionFinancePath(view, 'new')}><Plus size={16}/> Add Expense</Link>
+        : <FinanceDialog title={'Add ' + copy.singular} label={'Add ' + copy.singular}>
+          <FinanceRecordForm view={view} initial={{}} choices={options} production/>
+        </FinanceDialog>)}
+    </header>
+    <div className={styles.report}>
+      {(expenses || view === 'channels' || view === 'sources') && <form className={styles.filters} action={adminPath(productionFinancePath(view))}>
+        {expenses ? <>
+          {filter('status', 'All statuses', label(expenseStatuses))}
+          {filter('payment_method', 'All methods', label(paymentMethods))}
+          {filter('is_approved', 'All approvals', [{ id: 'true', name: 'Approved' }, { id: 'false', name: 'Unapproved' }])}
+        </> : <label><input type="search" name="q" defaultValue={search} maxLength={80} placeholder="Search by name..." aria-label="Search by name"/></label>}
+        <button className="button secondary">Apply</button>
+      </form>}
+      <section className={styles.card + ' ' + styles.records}>
+        <table><thead><tr>{copy.columns.map(column => <th key={column}>{column}</th>)}</tr></thead><tbody>
+          {!records.length && <tr><td className={styles.empty} colSpan={copy.columns.length}>{copy.none}</td></tr>}
+          {records.map(row => {
+            const id = str(expenses ? row.expense_id : row._id);
+            const published = str(row.status) || '—';
+            const read = expenseViews[view].name;
+            const common = [<td key="name">{str(row[read])}</td>, <td key="slug">{str(row.slug) || '—'}</td>,
+              <td key="status"><Badge value={published}/></td>, <td key="created">{date(row.createdAt)}</td>];
+            const cells = expenses ? [
+              <td key="id"><Link href={canUpdate ? productionFinancePath(view, id) : financePath(view) + '/' + id}>{id}</Link></td>,
+              <td key="title">{str(row.title)}</td>, <td key="category">{name(row.category) || '—'}</td>,
+              <td key="amount">{number.format(Number(row.amount) || 0)}</td>, <td key="method">{str(row.payment_method) || '—'}</td>,
+              <td key="status"><Badge value={published}/></td>, <td key="approval">{row.is_approved === true ? 'Approved' : 'Unapproved'}</td>,
+              <td key="date">{date(row.expense_date)}</td>,
+            ] : view === 'expense-categories' || view === 'expense-subcategories' ? [
+              common[0], ...(view === 'expense-subcategories' ? [<td key="parent">{name(row.category) || '—'}</td>] : []),
+              <td key="sku">{str(row.sku) || '—'}</td>, <td key="type">{str(row.type) || '—'}</td>, common[2],
+              ...(view === 'expense-categories' ? [common[3]] : []),
+            ] : common;
+            return <tr key={id}>{cells}<td>
+              <details className={styles.actionMenu}><summary aria-label="Open menu"><Ellipsis size={18}/></summary>
+                {expenses ? <>
+                  <Link className="button subtle" href={financePath(view) + '/' + id}>Details</Link>
+                  {canUpdate && <Link className="button subtle" href={productionFinancePath(view, id)}>Edit</Link>}
+                </> : canUpdate && <FinanceDialog title={'Edit ' + copy.singular} label="Edit">
+                  <FinanceRecordForm view={view} id={id} initial={fieldsForRecord(row)} choices={options} production/>
+                </FinanceDialog>}
+                {expenses && (canApprove || canUpdate || canRemove) && <FinanceDialog title="Expense actions" label="Manage expense">
+                  <FinanceRecordActions view={view} id={id} status={published.toLowerCase()} approved={row.is_approved === true}
+                    canUpdate={canUpdate} canApprove={canApprove} canRemove={canRemove} production/>
+                </FinanceDialog>}
+                {!expenses && canRemove && <FinanceDialog title={'Delete ' + copy.singular} label="Delete">
+                  <FinanceRecordActions view={view} id={id} status={published.toLowerCase()} approved={false}
+                    canUpdate={false} canApprove={false} canRemove production/>
+                </FinanceDialog>}
+              </details>
+            </td></tr>;
+          })}
+        </tbody></table>
+      </section>
+      {total > perPage && <div className="page-actions">
+        {page > 1 && <Link className="button secondary" href={pageLink(page - 1)}>Previous</Link>}
+        {page * perPage < total && <Link className="button secondary" href={pageLink(page + 1)}>Next</Link>}
+      </div>}
+    </div>
+  </>;
+}
+
+export async function FinanceRecordsPage({ auth, region, q, view, id, production = false }: { auth: Session; region: Region; q: Query; view: FinanceView; id?: string; production?: boolean }) {
   if (!has(auth.staff, 'expense.view')) throw new ApiError(403);
   if (region !== 'BD') return <PageHeading eyebrow="PAYMENTS" title="Bangladesh expense ledger" description="Switch to Bangladesh to open the expense ledger.">
     <Link className="button secondary" href={url(financePath(view), { region: 'BD' })}>Open Bangladesh ledger</Link>
   </PageHeading>;
   if (view === 'expense-report') {
     if (id) throw new ApiError(404);
-    return ExpenseReport({ auth, q });
+    return ExpenseReport({ auth, q, production });
   }
   const expenses = view === 'expenses';
   const config = expenseViews[view];
@@ -137,11 +288,16 @@ export async function FinanceRecordsPage({ auth, region, q, view, id }: { auth: 
   const route = financePath(view);
   const href = (item?: string, params?: Record<string, string>) => url(route + (item ? '/' + item : ''), { region, ...params });
   const back = <Link className="button secondary" href={href()}>Back to {config.title.toLowerCase()}</Link>;
-  if (id === 'new' || (id && param(q, 'edit') === '1')) {
+  if (id === 'new' || (id && (param(q, 'edit') === '1' || production && expenses))) {
     const create = id === 'new';
     if (create ? !canAdd : !canUpdate) throw new ApiError(403);
     if (!create && !(expenses ? expenseId(id) : mongoId(id))) throw new ApiError(404);
     const [record, lookups] = await Promise.all([create ? {} : api(config.endpoint + '/' + id, auth.token), choicesFor(auth, choices)]);
+    if (production && expenses) return <>
+      <header className={styles.heading}><h1>{create ? 'Add New Expense' : 'Edit Expense ' + id}</h1>
+        <p>{create ? 'Record a business expense. It is created as paid & approved.' : 'Update the details of this expense.'}</p></header>
+      <FinanceRecordForm view={view} id={create ? undefined : id} initial={fieldsForRecord(obj(record))} choices={lookups} production/>
+    </>;
     return <><PageHeading eyebrow="PAYMENTS" title={(create ? 'Add ' : 'Edit ') + config.label} description="Fill in the details for this record.">{back}</PageHeading>
       <FinanceRecordForm view={view} id={create ? undefined : id} initial={fieldsForRecord(obj(record))} choices={lookups}/></>;
   }
@@ -155,7 +311,7 @@ export async function FinanceRecordsPage({ auth, region, q, view, id }: { auth: 
       ['Payment method', expenseLabel(str(record.payment_method))], ['Sales channel', name(record.sales_channel)],
       ['Voucher number', str(record.voucher_no)], ['Account details', str(record.account_details)], ['Approval', record.is_approved === true ? 'Approved' : 'Unapproved'],
     ] : [['Reference', str(record.sku) || str(record.slug)], ['Type', expenseLabel(str(record.type))], ['Category', name(record.category)]].filter(([, value]) => value);
-    const attachments = arr(record.attachments).map(str).filter(value => /^https:\/\/[^\s]+$/i.test(value));
+    const attachments = arr(record.attachments).map(str).filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value));
     return <><PageHeading eyebrow="PAYMENTS" title={str(record[config.name])} description={config.title}>
       {back}{canUpdate && <Link className="button primary" href={href(id, { edit: '1' })}>Edit {config.label}</Link>}
     </PageHeading>
@@ -164,7 +320,7 @@ export async function FinanceRecordsPage({ auth, region, q, view, id }: { auth: 
         <dl className="details-grid"><div><dt>Status</dt><dd><Badge value={str(record.status) || 'unknown'}/></dd></div>
           {detail.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>
         {!!str(record.description) && <p>{str(record.description)}</p>}
-        {attachments.length > 0 && <ul>{attachments.map((item, index) => <li key={item + index}><a href={item} target="_blank" rel="noreferrer">Open attachment {index + 1}</a></li>)}</ul>}
+        {attachments.length > 0 && <ul>{attachments.map((item, index) => <li key={item + index}><a href={expenseAttachmentPath(item) ? adminPath(item) : item} target="_blank" rel="noreferrer">Open attachment {index + 1}</a></li>)}</ul>}
       </section>
       {expenses && <section className="panel padded stack-form"><h2>Staff notes</h2>
         {arr(record.notes).length ? <ul>{arr(record.notes).map(obj).map((note, index) => <li key={index}>{str(note.note)} <small>{str(note.user)} {printable(note.date, 'date')}</small></li>)}</ul> : <p>No notes recorded.</p>}
@@ -190,7 +346,10 @@ export async function FinanceRecordsPage({ auth, region, q, view, id }: { auth: 
       values: expenses ? [str(row.title), id, coins(row.amount), name(row.category), expenseLabel(str(row.payment_method)), row.is_approved ? 'Approved' : 'Unapproved',
         str(row.status), printable(row.expense_date, 'date')] : [str(row[config.name]), ...(view === 'expense-subcategories' ? [name(row.category)] : []), str(row.sku) || str(row.slug), str(row.status)] };
   });
-  const pageLink = (next: number) => url(route, { ...filters, region, q: search, page: String(next) });
+  const pageLink = (next: number) => url(production ? productionFinancePath(view) : route, { ...filters, region, q: search, page: String(next) });
+  if (production) return <ProductionFinanceRecords view={view} records={arr(data.data).map(obj)} total={total} search={search} filters={filters}
+    options={options} canAdd={canAdd} canUpdate={canUpdate} canApprove={expenses && writable && has(auth.staff, 'expense.approval')}
+    canRemove={writable && has(auth.staff, 'expense.delete')} page={page} pageLink={pageLink}/>;
   return <><PageHeading eyebrow="PAYMENTS" title={config.title} description={expenses ? 'Review the Bangladesh expense ledger.' : 'Maintain the records used in the expense ledger.'}>
     {expenses && <Link className="button secondary" href={url(financePath('expense-report'), { region })}>Expense report</Link>}
     {canAdd && <Link className="button primary" href={href('new')}>Add {config.label}</Link>}

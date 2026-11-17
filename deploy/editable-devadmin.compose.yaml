@@ -14,6 +14,9 @@ services:
       GRIIP_ADMIN_STAFF_PHONE: ${GRIIP_ADMIN_STAFF_PHONE:?Use the protected fixture account}
       GRIIP_ADMIN_FRAUD_LOOKUP: "1"
       GRIIP_ADMIN_LEGACY_MEDIA_ORIGIN: http://127.0.0.1:4359
+      GRIIP_ADMIN_EXPENSE_MEDIA_DIR: /var/lib/griipbuddy/expense-media
+    volumes:
+      - expense-media:/var/lib/griipbuddy/expense-media
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
@@ -23,3 +26,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+volumes:
+  expense-media:

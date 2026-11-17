@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { api, ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, str, type RecordData, type Session } from '@/lib/api';
 import { expenseId, expenseStatuses, expenseTypes, expenseViews, ledgerStatuses, paymentMethods, type ExpenseView } from '@/lib/finance-records';
 import { has } from '@/lib/sections';
+import { expenseAttachmentPath } from '@/lib/finance-attachment';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 const reject = (status: number, message: string) => new Response(message, { status, headers });
@@ -42,6 +43,7 @@ async function expenseValues(auth: Session, body: RecordData) {
   if ((category.type === 'ADs' || subcategory.type === 'ADs') && !refs.sales_channel) throw new ApiError(400, 'Choose the sales channel for this advertising expense.');
   const attachments = field(body, 'attachments', 5000).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   if (attachments.length > 10 || attachments.some(line => {
+    if (expenseAttachmentPath(line)) return false;
     try { const target = new URL(line); return target.protocol !== 'https:' || !!(target.username || target.password); }
     catch { return true; }
   })) throw new ApiError(400, 'Enter up to ten HTTPS attachment links.');

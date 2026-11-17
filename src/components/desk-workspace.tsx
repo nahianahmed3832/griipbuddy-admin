@@ -143,7 +143,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         <p className="notice">This feature is not available yet.</p></>;
     }
     else if (sectionId === 'settings' && !view.length) content = <Settings auth={auth}/>;
-    else if (sectionId === 'payments' && active && isFinanceView(active)) content = await FinanceRecordsPage({auth,region,q,view:active,id:view[1]});
+    else if (sectionId === 'payments' && active && isFinanceView(active)) content = await FinanceRecordsPage({auth,region,q,view:active,id:view[1],production:Boolean(production)});
     else if (active && managed.has(active) && view.length < 2)
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (sectionId === 'payments' && active === 'transactions' && transactions) content = await TransactionPage({ auth, q, region, id: view[1] });

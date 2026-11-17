@@ -12,5 +12,6 @@ ENV HOSTNAME=127.0.0.1 PORT=4361 NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+RUN install -d -o node -g node -m 0700 /var/lib/griipbuddy/expense-media
 USER node
 CMD ["node", "server.js"]

@@ -5,12 +5,14 @@ import { canAccessStockChanges, isStockTransfer, stockChangeApi, stockChangeHist
   type StockChangeMode } from '@/lib/stock-changes';
 import { PageHeading } from './dashboard';
 import { StockChangesForm } from './stock-changes-form';
+import { WarehouseInventory } from './warehouse-inventory';
 
 export async function StockChangesPage({ auth, region, mode, productionOutlet = false, outletId }: {
   auth: Session; region: Region; mode: StockChangeMode; productionOutlet?: boolean; outletId?: string;
 }) {
   if (!canWrite(auth.staff) || !canAccessStockChanges(auth.staff, mode)) throw new ApiError(403);
   const locations = await api(url(stockChangeApi + '/locations', { region }), auth.token) as StockChangeLocation[];
+  if (mode === 'warehouse-update') return <WarehouseInventory locations={locations} region={region}/>;
   const transfer = isStockTransfer(mode);
   if (productionOutlet) return <>
     <h1>Update Inventory (Warehouse to Outlet)</h1>
