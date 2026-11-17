@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { applyBasePath } from './base-path.mjs';
 import { rewriteOriginalCatalogMedia, rewriteOriginalHeroVideo } from './catalog-media.mjs';
 import { patchManagedReceipt } from './managed-receipt.mjs';
+import { patchManagedShipment } from './managed-shipment.mjs';
 
 const app = process.argv[2];
 if (!app) throw new Error('An original admin artifact directory is required');
@@ -15,7 +16,7 @@ const next = join(app, '.next');
 const originalLoginChunk = 'page-4a794a36ace8264e.js';
 const loginChunk = 'page-4a794a36ace8264e-email.js';
 const originalOrderChunk = 'page-ed397c6f7e77af22.js';
-const orderChunk = 'page-ed397c6f7e77af22-receipt.js';
+const orderChunk = 'page-ed397c6f7e77af22-managed.js';
 const orderDirectory = 'chunks/app/(dashboard)/dashboard/(orders)/order-details/[id]/';
 const originalLoginValidation = '.min(11,"Phone number should be 11 digits").max(11,"Phone number should be 11 digits")';
 const loginValidation = '.trim().refine(value=>/^\\+?\\d{8,16}$/.test(value)||/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value),"Enter a phone number or email address")';
@@ -62,6 +63,7 @@ for (const root of ['static', 'server']) {
     if ((root === 'static' && relative === orderDirectory + originalOrderChunk) ||
         (root === 'server' && relative === 'app/(dashboard)/dashboard/(orders)/order-details/[id]/page.js')) {
       updated = patchManagedReceipt(updated, root === 'server');
+      updated = patchManagedShipment(updated, root === 'server');
     }
     if (source !== updated) writeFileSync(file, updated);
   }

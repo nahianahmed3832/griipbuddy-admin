@@ -58,10 +58,10 @@ export function allowedOriginalApiPath(path, method) {
   const [family, ...parts] = original.split('/');
   const route = parts.join('/');
   if (family === 'global') {
-    const payment = /^admin\/payments\/[a-f0-9]{24}(?:\/receipt)?$/;
-    const review = /^admin\/payments\/[a-f0-9]{24}\/review$/;
-    return ((method === 'GET' || method === 'HEAD') && payment.test(route)) ||
-      (method === 'POST' && review.test(route));
+    const read = /^admin\/(?:payments\/[a-f0-9]{24}(?:\/receipt)?|orders\/[a-f0-9]{24}|shipment-services\/bd)$/;
+    const write = /^admin\/(?:payments\/[a-f0-9]{24}\/review|shipments(?:\/[a-f0-9]{24}\/(?:pick|pack|return))?)$/;
+    return ((method === 'GET' || method === 'HEAD') && read.test(route)) ||
+      (method === 'POST' && write.test(route));
   }
   if (!originalFamilies.has(family) || outsideAdmin[family]?.test(route)) return false;
 
