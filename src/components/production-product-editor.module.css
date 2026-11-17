@@ -223,3 +223,4 @@
 .editor[data-update="true"] .countryField { padding-top: 2px; }
 .editor[data-update="true"] .mediaPicker > p { line-height: 20px; }
 .editor[data-update="true"] .panel h2 > small { line-height: 1; }
+.variantHeading h2, .matrix h2, .dialogHeading h3, .dangerHeading h3 { font-family: inherit; letter-spacing: normal; }
