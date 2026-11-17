@@ -47,8 +47,13 @@ export function SupplierEditor({ selected, region, inline = false, production = 
   }
 
   if (production) {
-    const terms = ['Cash on Delivery', 'Net 7 Days', 'Net 15 Days', 'Net 30 Days', 'Net 60 Days'];
+    const terms = [
+      ['CASH ON DELIVERY', 'Cash on Delivery'], ['NET_7', 'Net 7 Days'], ['NET_15', 'Net 15 Days'],
+      ['NET_30', 'Net 30 Days'], ['NET_60', 'Net 60 Days'],
+    ];
     const savedTerms = selected?.default_payment_terms;
+    const knownTerm = terms.find(([value]) => value === savedTerms);
+    if (savedTerms && !knownTerm) terms.push([savedTerms, savedTerms]);
     const recordType = selected?.type ?? 'INDIVIDUAL';
     const editableFields = [
       ['name', 'Supplier Name', 'Enter supplier name', 'text', true],
@@ -76,8 +81,8 @@ export function SupplierEditor({ selected, region, inline = false, production = 
           </select>
         </label>
         <label className={styles.field}>Payment Terms <em aria-hidden="true">*</em>
-          <select className={styles.select} aria-label="Payment Terms" name="default_payment_terms" defaultValue={savedTerms || terms[0]} required>
-            {[...new Set([...terms, ...(savedTerms ? [savedTerms] : [])])].map(term => <option key={term}>{term}</option>)}
+          <select className={styles.select} aria-label="Payment Terms" name="default_payment_terms" defaultValue={savedTerms || terms[0][0]} required>
+            {terms.map(([value, description]) => <option key={value} value={value}>{description}</option>)}
           </select>
         </label>
         {editableFields.slice(2).map(field)}
