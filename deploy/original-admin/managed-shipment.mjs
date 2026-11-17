@@ -197,6 +197,45 @@ export function ManagedShipment({ order, hooks, element }) {
     if (row.receivedAt || !row.lines?.length || !row.tracking ||
         !['PENDING_RETURN', 'RETURN_REQUESTED', 'IN_TRANSIT', 'DELIVERED', 'PARTIAL'].includes(data.current.status) ||
         !['dispatched', 'in-transit', 'out-for-delivery', 'delivered', 'returned'].includes(row.state)) return null;
+    const reviews = new Map(row.lotReview?.map(line => [line.id, line]));
+
+    function dispositionFields(name, sellable, damaged) {
+      return [
+        label('Sellable quantity', quantity('sellable-' + name, sellable)),
+        label('Damaged quantity', quantity('damaged-' + name, damaged)),
+      ];
+    }
+
+    function readDisposition(form, line) {
+      const counts = name => ({
+        sellable: Number(form.get('sellable-' + name)),
+        damaged: Number(form.get('damaged-' + name)),
+      });
+      const review = reviews.get(line.id);
+      if (review) {
+        const lots = review.lots.map(lot => ({ id: lot.id, ...counts(line.id + '-' + lot.id) }));
+        if (lots.some(({ sellable, damaged }, index) => {
+          const lot = review.lots[index];
+          return !Number.isInteger(sellable) || sellable < 0 || sellable > lot.sellableAvailable ||
+            !Number.isInteger(damaged) || damaged < 0 || sellable + damaged > lot.available;
+        })) return null;
+        return {
+          id: line.id,
+          sellable: lots.reduce((total, lot) => total + lot.sellable, 0),
+          damaged: lots.reduce((total, lot) => total + lot.damaged, 0),
+          lots: lots.filter(lot => lot.sellable || lot.damaged),
+        };
+      }
+      const scans = name => String(form.get(name) || '').split(/\s+/).filter(Boolean);
+      return {
+        id: line.id, ...counts(line.id),
+        ...(line.tracked && {
+          sellableBarcodes: scans('sellable-barcodes-' + line.id),
+          damagedBarcodes: scans('damaged-barcodes-' + line.id),
+        }),
+      };
+    }
+
     return element('form', {
       className: 'flex flex-col gap-2',
       'aria-label': 'Receive return',
@@ -204,16 +243,13 @@ export function ManagedShipment({ order, hooks, element }) {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         const evidence = String(form.get('evidence') || '').trim();
-        const scans = name => String(form.get(name) || '').split(/\s+/).filter(Boolean);
-        const lines = row.lines.map(line => ({
-          id: line.id,
-          sellable: Number(form.get('sellable-' + line.id)),
-          damaged: Number(form.get('damaged-' + line.id)),
-          ...(line.tracked && {
-            sellableBarcodes: scans('sellable-barcodes-' + line.id),
-            damagedBarcodes: scans('damaged-barcodes-' + line.id),
-          }),
-        }));
+        const lotEvidence = String(form.get('lotEvidence') || '').trim();
+        const lines = row.lines.map(line => readDisposition(form, line));
+        if (reviews.size && (!lotEvidence || lines.some((line, index) =>
+          reviews.has(row.lines[index].id) && (!line || line.sellable + line.damaged !== row.lines[index].quantity)))) {
+          setMessage('Enter the warehouse review reason and assign all reviewed units within the available original lot quantities.');
+          return;
+        }
         if (!evidence || lines.some((line, index) => !Number.isInteger(line.sellable) ||
             !Number.isInteger(line.damaged) || line.sellable < 0 || line.damaged < 0 ||
             line.sellable + line.damaged !== row.lines[index].quantity)) {
@@ -229,16 +265,31 @@ export function ManagedShipment({ order, hooks, element }) {
           return;
         }
         const path = global + '/shipments/' + encodeURIComponent(row._id) + '/receive';
-        void save(path, { evidence, lines }, 'Return received.');
+        void save(path, { evidence, ...(reviews.size && { lotEvidence }), lines }, 'Return received.');
       },
       children: [
         label('Verified warehouse receipt reference', input('evidence', { required: true, maxLength: 128 })),
+        reviews.size > 0 && label('Warehouse review reason', element('textarea', {
+          'data-slot': 'textarea',
+          className: 'border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 ' +
+            'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive ' +
+            'dark:bg-input/30 flex field-sizing-content min-h-16 w-full rounded-md border bg-transparent px-3 py-2 ' +
+            'text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] ' +
+            'disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+          name: 'lotEvidence', required: true, maxLength: 500, placeholder: 'Reason for this adjustment',
+        }, 'lotEvidence')),
         ...row.lines.map(line => element('fieldset', {
           className: 'flex flex-col gap-2',
           children: [
             element('legend', { children: line.sku + ' (' + line.quantity + ' returned)' }, 'sku'),
-            label('Sellable quantity', quantity('sellable-' + line.id, line.quantity)),
-            label('Damaged quantity', quantity('damaged-' + line.id, line.quantity)),
+            ...(reviews.has(line.id) ? reviews.get(line.id).lots.map(lot => element('fieldset', {
+              className: 'flex flex-col gap-2',
+              children: [
+                element('legend', { children: 'Lot ' + lot.lotNumber + ' (' + lot.available + ' available)' }, 'lot'),
+                ...dispositionFields(line.id + '-' + lot.id,
+                  Math.min(line.quantity, lot.sellableAvailable), Math.min(line.quantity, lot.available)),
+              ],
+            }, lot.id)) : dispositionFields(line.id, line.quantity, line.quantity)),
             ...(line.tracked ? ['sellable', 'damaged'].map(disposition => {
               const name = disposition + '-barcodes-' + line.id;
               return label((disposition === 'sellable' ? 'Sellable' : 'Damaged') + ' unit barcodes', element('textarea', {

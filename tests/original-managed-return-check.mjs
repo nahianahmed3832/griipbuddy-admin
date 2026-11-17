@@ -44,7 +44,7 @@ function fixtureScript() {
   ].join('\n');
 }
 
-test('records a partial shipment and receives damaged and sellable stock from a split order', async () => {
+async function withFixture(run) {
   const script = fixtureScript();
   const server = createServer((request, response) => {
     if (request.url === '/fixture.js') {
@@ -61,6 +61,15 @@ test('records a partial shipment and receives damaged and sellable stock from a 
   try {
     browser = await chromium.launch({ executablePath: process.env.GRIIP_ADMIN_TEST_CHROMIUM_EXECUTABLE });
     const page = await browser.newPage();
+    await run(page, 'http://127.0.0.1:' + server.address().port);
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+test('records a partial shipment and receives damaged and sellable stock from a split order', () =>
+  withFixture(async (page, url) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const outbounds = [
@@ -98,7 +107,7 @@ test('records a partial shipment and receives damaged and sellable stock from a 
       }
       return reply({});
     });
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await page.goto(url);
     await page.getByText('Shipment', { exact: true }).click();
     const createForms = page.getByRole('form', { name: 'Record return shipment' });
     const trackedForm = createForms.filter({ has: page.getByLabel('Return quantity for TRACKED (3 available)') });
@@ -147,6 +156,7 @@ test('records a partial shipment and receives damaged and sellable stock from a 
     await fifoForm.getByRole('button').click();
     await expect(receipt.getByRole('group', { name: 'FIFO (1 returned)' })).toBeVisible();
     await expect(receipt.getByLabel(/unit barcodes/)).toHaveCount(0);
+    await expect(receipt.getByLabel('Warehouse review reason')).toHaveCount(0);
     await receipt.getByLabel('Verified warehouse receipt reference').fill('WAREHOUSE-FIFO');
     await receipt.getByLabel('Damaged quantity').fill('1');
     await receipt.getByRole('button').click();
@@ -156,8 +166,68 @@ test('records a partial shipment and receives damaged and sellable stock from a 
       body: { evidence: 'WAREHOUSE-FIFO', lines: [{ id: fifoId, sellable: 0, damaged: 1 }] },
     });
     assert.deepEqual(errors, []);
-  } finally {
-    await browser?.close();
-    await new Promise(resolve => server.close(resolve));
-  }
-});
+  }));
+
+test('requires warehouse review of the original lots for an older ambiguous return', () =>
+  withFixture(async (page, url) => {
+    const row = {
+      _id: 'return-fifo-old', direction: 'return', state: 'dispatched', tracking: 'RETURN-OLD',
+      lines: [{ id: fifoId, sku: 'FIFO', quantity: 2, tracked: false }],
+      lotReview: [{ id: fifoId, sku: 'FIFO', quantity: 2, lots: [
+        { id: 'lot-a', lotNumber: 'FIFO-A', available: 1, sellable: true, sellableAvailable: 1 },
+        { id: 'lot-b', lotNumber: 'FIFO-B', available: 2, sellable: false, sellableAvailable: 0 },
+        { id: 'lot-c', lotNumber: 'FIFO-C', available: 1, sellable: true, sellableAvailable: 1 },
+      ] }],
+    };
+    const posts = [];
+    await page.route('**/admin/api/v1/**', async route => {
+      if (route.request().method() === 'POST') {
+        assert.equal(new URL(route.request().url()).pathname, global + '/shipments/return-fifo-old/receive');
+        const body = route.request().postDataJSON();
+        posts.push(body);
+        Object.assign(row, { state: 'returned', receivedAt: new Date().toISOString(), receiptLines: body.lines });
+        delete row.lotReview;
+        return route.fulfill({ json: { success: true, data: {} } });
+      }
+      const data = route.request().url().includes('/global/admin/')
+        ? { shipments: [row], payments: [] } : { status: 'RETURN_REQUESTED' };
+      return route.fulfill({ json: { success: true, data } });
+    });
+    await page.goto(url);
+    await page.getByText('Shipment', { exact: true }).click();
+    const receipt = page.getByRole('form', { name: 'Receive return' });
+    const reason = receipt.getByLabel('Warehouse review reason');
+    const lotA = receipt.getByRole('group', { name: 'Lot FIFO-A (1 available)' });
+    const lotB = receipt.getByRole('group', { name: 'Lot FIFO-B (2 available)' });
+    await receipt.getByLabel('Verified warehouse receipt reference').fill('RECEIPT-FIFO');
+    await reason.fill(' ');
+    await lotA.getByLabel('Sellable quantity').fill('1');
+    await lotB.getByLabel('Damaged quantity').fill('1');
+    await expect(lotB.getByLabel('Sellable quantity')).toHaveAttribute('max', '0');
+    const button = receipt.getByRole('button', { name: 'Receive return' });
+    const reviewError = 'Enter the warehouse review reason and assign all reviewed units within the available original lot quantities.';
+    await button.click();
+    await expect(page.getByRole('status')).toHaveText(reviewError);
+    assert.equal(posts.length, 0);
+
+    await reason.fill('Checked original packing records');
+    await lotA.getByLabel('Damaged quantity').fill('1');
+    await lotB.getByLabel('Damaged quantity').fill('0');
+    await button.click();
+    await expect(page.getByRole('status')).toHaveText(reviewError);
+    assert.equal(posts.length, 0);
+
+    await lotA.getByLabel('Damaged quantity').fill('0');
+    await lotB.getByLabel('Damaged quantity').fill('1');
+    await button.click();
+    await expect(page.getByText('FIFO: 1 sellable, 1 damaged')).toBeVisible();
+    await expect(receipt).toHaveCount(0);
+    assert.deepEqual(posts, [{
+      evidence: 'RECEIPT-FIFO',
+      lotEvidence: 'Checked original packing records',
+      lines: [{ id: fifoId, sellable: 1, damaged: 1, lots: [
+        { id: 'lot-a', sellable: 1, damaged: 0 },
+        { id: 'lot-b', sellable: 0, damaged: 1 },
+      ] }],
+    }]);
+  }));
