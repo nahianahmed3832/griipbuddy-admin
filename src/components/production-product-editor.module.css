@@ -224,3 +224,14 @@
 .editor[data-update="true"] .mediaPicker > p { line-height: 20px; }
 .editor[data-update="true"] .panel h2 > small { line-height: 1; }
 .variantHeading h2, .matrix h2, .dialogHeading h3, .dangerHeading h3 { font-family: inherit; letter-spacing: normal; }
+.editor[data-update="true"] .form:has(> .variantEditor) { gap: 16px; }
+.attributeName .field, .matrixDefaults .field { gap: 4px; line-height: 20px; }
+.attributeValues > p { line-height: 20px; }
+.attributeValue input { font-size: 14px; line-height: 20px; }
+.attributeValues .secondary { min-height: 32px; }
+.matrixTable th { height: 40px; line-height: 20px; }
+.mediaPicker strong { line-height: 20px; }
+@media (max-width: 767px) {
+  .editor[data-update="true"] .body[data-general="true"] > .fields { margin-bottom: 2px; }
+  .variantHeading { gap: 4px; }
+}
