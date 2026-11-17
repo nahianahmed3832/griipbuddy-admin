@@ -297,3 +297,7 @@
 @media (max-width: 550px) { .overview-metric-help [role=tooltip] { inset-inline-start:auto; inset-inline-end:-8px; } }
 .production-overview-locations fieldset label[hidden] { display:none; }
 .production-overview-locations fieldset input[type=search] { padding:7px 10px; border:1px solid var(--over-border); border-radius:6px; }
+
+.production-overview-field { display:grid; gap:4px; font-weight:500; line-height:16px; }
+.production-overview-field > button { width:100%; }
+.production-overview .overview-attention .overview-card { gap:8px; }

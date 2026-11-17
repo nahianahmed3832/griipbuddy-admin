@@ -1,4 +1,4 @@
-import { ArrowDownLeft, Boxes, CircleAlert, DollarSign, Filter, ShoppingCart, TrendingUp, Truck, Users } from 'lucide-react';
+import { Boxes, CircleAlert, DollarSign, Filter, Package, RotateCcw, ShoppingCart, TrendingUp, Users } from 'lucide-react';
 import { api, ApiError, arr, obj, str, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, type Query } from '@/lib/data';
@@ -42,14 +42,14 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
       ['Quantity Ordered', units(sales.total_quantity), Boxes],
       ['Order Count', whole(sales.count), Users],
     ] },
-    { title: 'Purchases', kind: 'purchases', Icon: Truck, cards: [
+    { title: 'Purchases', kind: 'purchases', Icon: Package, cards: [
       ...(has(auth.staff, 'purchase.price.view') ? [['Total Purchase Cost', money(purchases.totalPurchasesCost), DollarSign] as const] : []),
       ['Total Supplier Paid', money(purchases.totalSupplierPaid), DollarSign],
       ['Total Supplier Due', money(purchases.totalSupplierDue), CircleAlert],
       ['Quantity Purchased', units(purchases.total_quantity), Boxes],
       ['Purchase Count', whole(purchases.count), Users],
     ] },
-    { title: 'Returns', kind: 'returns', Icon: ArrowDownLeft, cards: [
+    { title: 'Returns', kind: 'returns', Icon: RotateCcw, cards: [
       ['Total Refund', money(returns.totalRefund), DollarSign],
       ['Total Returned Cost', money(returns.totalReturnedCost), Boxes],
       ['Quantity Returned', units(returns.total_quantity), Boxes],
@@ -65,7 +65,7 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
     </section>
     {sections.map(({ title, kind, Icon, cards }) => (
       <section className={styles.panel} key={kind} data-classic-tone={kind}>
-        <header><span><Icon size={26}/></span><h2>{title}</h2></header>
+        <header><span><Icon size={28}/></span><h2>{title}</h2></header>
         <div className={styles.cards}>{cards.map(([label, value, Icon]) => (
           <article key={label}><div><span><Icon size={23}/></span><div><p>{label}</p><strong>{value}</strong></div></div></article>
         ))}</div>

@@ -30,3 +30,12 @@
 @media (max-width:1023px) { .cards { grid-template-columns:repeat(3,minmax(0,1fr)); } .cards article > div { padding:16px 12px; } }
 @media (max-width:767px) { .filters { grid-template-columns:1fr; gap:12px; } .panel header h2 { font-size:24px; } .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } .cards article > div { padding:12px 8px; } }
 @media (max-width:639px) { .cards { grid-template-columns:1fr; } }
+
+.panel:nth-child(n+3) { margin-top:8px; }
+.panel header span { width:54px; height:54px; }
+.panel:first-child header span { width:50px; height:50px; }
+.filters label, .field { line-height:24px; }
+.field { display:grid; gap:8px; font-size:16px; font-weight:500; }
+.field > button { width:100%; }
+.dateRange .dateSelect { width:160px; }
+.cards article strong { line-height:28px; }

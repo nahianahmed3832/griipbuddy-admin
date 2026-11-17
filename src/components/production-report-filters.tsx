@@ -9,12 +9,12 @@ import { productionReportPeriods } from '@/lib/production-report-period';
 type Option = { value: string; label: string };
 export type ReportFilter = { key: string; label: string; type: string; options: Option[]; fallback: string };
 
-function FilterSelect({ label, value, options, change }: { label: string; value: string; options: readonly Option[]; change: (value: string) => void }) {
+export function ProductionReportSelect({ label, value, options, change, name, fieldClassName, selectClassName }: { label: string; value: string; options: readonly Option[]; change: (value: string) => void; name?: string; fieldClassName?: string; selectClassName?: string }) {
   const labelId = useId();
-  return <div className="production-report-field">
+  return <div className={fieldClassName || "production-report-field"}>
     <span id={labelId}>{label}</span>
-    <Select.Root value={value || '__all__'} onValueChange={value => change(value === '__all__' ? '' : value)}>
-      <Select.Trigger className="production-report-select" aria-labelledby={labelId}>
+    <Select.Root name={name} value={value || '__all__'} onValueChange={value => change(value === '__all__' ? '' : value)}>
+      <Select.Trigger className={["production-report-select", selectClassName].filter(Boolean).join(" ")} aria-labelledby={labelId}>
         <Select.Value/>
         <Select.Icon asChild><ChevronDown size={16} aria-hidden="true"/></Select.Icon>
       </Select.Trigger>
@@ -139,7 +139,7 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
   }
 
   return <div className="production-report-filters panel" aria-label="Report filters" role="group">
-    {usesPeriod && <FilterSelect label="Period" value={period}
+    {usesPeriod && <ProductionReportSelect label="Period" value={period}
       options={period === 'last90' ? [...productionReportPeriods, { value: 'last90', label: 'Last 90 days' }] : productionReportPeriods}
       change={value => update({ period: value, ...(value === 'custom' && { from, to }) })}/>}
     {usesPeriod && period === 'custom' && <div className="production-report-custom-dates">
@@ -150,13 +150,13 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
     </div>}
     {usesLocations && <LocationFilter key={region} locations={locations} value={selectedLocations}
       change={ids => update({ locations: ids.join(',') })}/>}
-    {region === 'INTERNATIONAL' && <FilterSelect label="Currency" value={currency}
+    {region === 'INTERNATIONAL' && <ProductionReportSelect label="Currency" value={currency}
       options={['BDT', 'USD', 'EUR', 'AUD'].map(code => ({ value: code, label: code }))}
       change={value => update({ currency: value })}/>}
     {filters.map(filter => filter.type === 'search'
       ? <SearchFilter key={filter.key} label={filter.label} value={values[filter.key] ?? ''}
         change={value => update({ [filter.key]: value })}/>
-      : <FilterSelect key={filter.key} label={filter.label} value={values[filter.key] ?? filter.fallback}
+      : <ProductionReportSelect key={filter.key} label={filter.label} value={values[filter.key] ?? filter.fallback}
         options={filter.options} change={value => update({ [filter.key]: value === filter.fallback ? '' : value })}/>)}
     {compares && <label className="production-report-compare">
       <input type="checkbox" role="switch" checked={compare} onChange={event => update({ compare: event.currentTarget.checked ? '' : 'none' })}/>
