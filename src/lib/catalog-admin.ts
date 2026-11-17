@@ -110,19 +110,24 @@ export async function writeRegistry(kind: Registry, action: string, id: string, 
     if (!canEditRegistry(kind, 'create', auth) || !superAdmin(auth.staff)) throw new ApiError(403);
     return saved('/country/seed/defaults', auth, 'POST');
   }
-  if (!['save', 'delete', 'status', 'reply'].includes(action) || (action === 'status' || action === 'reply') && kind !== 'reviews') throw invalid('Unknown catalog action.');
+  if (!['save', 'delete', 'status', 'reply'].includes(action) || (action === 'status' || action === 'reply') && kind !== 'reviews' && kind !== 'faqs') throw invalid('Unknown catalog action.');
   const grant = action === 'delete' ? 'delete' : id ? 'edit' : 'create';
   if (!canEditRegistry(kind, grant, auth) || (kind === 'reviews' || action !== 'save') && !id) throw new ApiError(403);
   if (id) await readRegistry(kind, id, auth, region);
   const path = routes[kind].base + (id ? '/' + id : '');
   if (action === 'delete') return saved(path, auth, 'DELETE');
   if (action === 'status') {
+    if (kind === 'faqs') {
+      if (!['active', 'inactive', 'pending'].includes(str(values.status))) throw invalid('Choose an FAQ status.');
+      return saved('/faq/admin/public-faq-action/' + id, auth, 'PATCH', { status: values.status });
+    }
     if (!['pending', 'approved', 'rejected'].includes(str(values.status))) throw invalid('Choose a review status.');
     return saved(path + '/status', auth, 'PATCH', { status: values.status });
   }
   if (action === 'reply') {
     const content = str(values.content).trim();
     if (!content || content.length > 2000) throw invalid('Enter a reply up to 2,000 characters.');
+    if (kind === 'faqs') return saved('/faq/admin/public-faq-action/' + id, auth, 'PATCH', { status: 'active', answer: content });
     return saved(path + '/reply', auth, 'PATCH', { content });
   }
   const rules = registries[kind].fields.filter(field => kind !== 'faqs' || field.name !== 'product' || !id);

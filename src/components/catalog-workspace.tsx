@@ -7,6 +7,10 @@ import { currencies, productFields, registries, statusOptions, type Registry } f
 import { catalogFilters, catalogParams, catalogPath, loadCategoryTree } from '@/lib/catalog-list';
 import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
 import { columnText, loadResource, param, type Query } from '@/lib/data';
+import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
+import { ProductionCategories, ProductionCategoryEditor } from './production-categories';
+import { ProductionBrandEditor, ProductionFaqEditor, ProductionRegistryDetail, ProductionRegistryList,
+  type RegistryProduct, type RegistryRow } from './production-catalog-registry';
 import { adminPath } from '@/lib/paths';
 import { has, resources, type Region, type Resource } from '@/lib/sections';
 import { CatalogConfirm, CatalogEditForm } from './catalog-edit-form';
@@ -31,11 +35,24 @@ const asInput = (value: unknown): string => typeof value === 'string' || typeof 
 const asLines = (value: unknown) => arr(value).map(str).join('\n');
 const columns = (data: Record<string,string>) => Object.entries(data).map(([label, fields]) => ({ label, fields }));
 
-export async function CategoryWorkspace({ auth, q }: Props) {
+export async function CategoryWorkspace({ auth, q, production, subcategory = false }: Props & { subcategory?: boolean }) {
   const data = await loadCategories(auth);
   const ref = param(q, 'record');
   const initial = ref && data.nodes.find(row => row.id === ref || row.slug === ref)?.id;
   const mode = param(q, 'mode');
+  if (production) {
+    const canCreate = data.managed && canChangeCategories(auth, 'product.create');
+    const canEdit = data.managed && canChangeCategories(auth, 'product.update');
+    if (mode === 'create' || mode === 'create-child' || mode === 'edit') {
+      if (mode === 'edit' ? !canEdit : !canCreate) throw new ApiError(403);
+      const node = mode === 'edit' ? data.nodes.find(row => (subcategory ? row.depth > 0 : row.depth === 0)
+        && (row.id === ref || row.slug === ref)) : undefined;
+      if (mode === 'edit' && !node) throw new ApiError(404);
+      return <ProductionCategoryEditor node={node} nodes={data.nodes} subcategory={subcategory} gateway={pinnedAdminGatewayConfigured()}/>;
+    }
+    return <ProductionCategories nodes={data.nodes} subcategory={subcategory} canCreate={canCreate}
+      canEdit={canEdit} canDelete={data.managed && canChangeCategories(auth, 'product.delete')}/>;
+  }
   return <>
     {!data.managed && <p className="notice" role="status">Category editing is unavailable on this API. The current tree remains available for browsing.</p>}
     <CategoryManager key={(initial ?? 'tree') + '-' + (mode ?? '')} nodes={data.nodes} initial={initial} mode={mode}
@@ -201,6 +218,22 @@ async function countriesWorkspace(auth: Session, region: Region, id?: string) {
     canDelete={canEditRegistry('countries', 'delete', auth)}/>;
 }
 
+function registryProduct(row: RecordData): RegistryProduct {
+  return { name: str(row.name), slug: str(row.slug), sku: str(row.sku), image: str(row.thumbnail) };
+}
+
+function registryRow(row: RecordData): RegistryRow {
+  return {
+    id: reference(row), name: str(row.name), tags: [...new Set(arr(row.tags).map(str).filter(Boolean))], product: registryProduct(obj(row.product)),
+    status: str(row.status) || (row.is_active === false ? 'inactive' : 'active'), question: str(row.question), answer: str(row.answer),
+    creator: str(obj(row.createdBy).full_name) || str(obj(row.user).full_name) || str(obj(row.customer).full_name), created: str(row.createdAt),
+    updated: str(row.updatedAt), rating: Number(row.rating) || 0, title: str(row.title), content: str(row.content),
+    media: arr(row.media).map(value => ({url:str(obj(value).url),type:str(obj(value).type)})), attachments: arr(row.storefrontMediaTypes).map(str),
+    upvotes: Number(row.upvotes ?? row.upvote ?? obj(row.helpfulVotes).upvote) || 0,
+    downvotes: Number(row.downvotes ?? row.downvote ?? obj(row.helpfulVotes).downvote) || 0, reply: str(obj(row.sellerReply).content),
+  };
+}
+
 export async function CatalogRegistry({ auth, q, region, id, kind, production }: Props & { kind: Registry }): Promise<ReactElement> {
   if (production && kind === 'countries') return countriesWorkspace(auth, region, id);
   const resource = registryResources[kind]();
@@ -211,11 +244,35 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
   if (id) {
     const creating = id === 'new';
     if (creating && !create) throw new ApiError(403);
-    if (kind === 'faqs' && !creating && !mongoId(id)) return FaqProduct({auth, q, region, id});
+    if (kind === 'faqs' && !creating && !mongoId(id)) {
+      if (production) {
+        const product = await productIdForSlug(id, auth, region);
+        if (!product) throw new ApiError(404);
+        const options = await loadResource({ ...resource, params: { product } }, auth, {}, region);
+        const row = options.rows.find(row => sameRegion(row, region) && mongoId(reference(row)));
+        if (!row) throw new ApiError(404);
+        return <ProductionRegistryDetail row={registryRow(row)} kind="faqs" region={region}
+          canEdit={canEditRegistry('faqs', 'edit', auth)} showAttachments={false}/>;
+      }
+      return FaqProduct({auth, q, region, id});
+    }
     const entry = creating ? {} : await readRegistry(kind, id, auth, region);
     const label = registries[kind].title;
     const canEdit = creating || canEditRegistry(kind, 'edit', auth);
     const canDelete = !creating && canEditRegistry(kind, 'delete', auth);
+    if (production && kind === 'brands') {
+      if (!canEdit) throw new ApiError(403);
+      return <ProductionBrandEditor brand={creating ? undefined : registryRow(entry)} region={region}/>;
+    }
+    if (production && kind === 'faqs' && creating) {
+      const ref = param(q, 'product');
+      const product = ref && mongoId(ref) ? await readProduct(ref, auth, region) : undefined;
+      return <ProductionFaqEditor region={region} chosenProduct={product ? { id: reference(product), product: registryProduct(product) } : undefined}/>;
+    }
+    if (production && (kind === 'faqs' || kind === 'reviews')) {
+      return <ProductionRegistryDetail row={registryRow(entry)} region={region} kind={kind} canEdit={canEdit}
+        showAttachments={process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff)}/>;
+    }
     const fields = registries[kind].fields.filter(field => kind !== 'faqs' || creating || field.name !== 'product').map(field =>
       kind === 'faqs' && !creating && field.name === 'answer' ? { ...field, required: false } : field);
     const initial = Object.fromEntries(fields.map(({name}) => [name, Array.isArray(entry[name]) ? asLines(entry[name]) : asInput(entry[name])]).filter(([,value]) => value !== ''));
@@ -274,6 +331,10 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
   const filter = param(q, 'filter');
   const page = (value: number) => url(base, { region, filter, q: search, product: productId, rating, page: String(value) });
   const filtered = scoped ? list.rows.filter(row => sameRegion(row, region)) : list.rows;
+  if (production && (kind === 'brands' || kind === 'faqs' || kind === 'reviews')) return <ProductionRegistryList
+    rows={filtered.filter(row => mongoId(reference(row))).map(registryRow)} kind={kind} region={region}
+    page={list.page} hasNext={list.hasNext} total={scoped ? undefined : list.total} search={search} filter={filter} product={productId}
+    rating={rating} canCreate={create} canEdit={canEditRegistry(kind, 'edit', auth)} canDelete={canEditRegistry(kind, 'delete', auth)}/>;
   const rows = filtered.filter(row => mongoId(reference(row))).map(row => ({ id: reference(row), values: resource.columns.map(column => columnText(row, column)), href: url(base + '/' + reference(row), { region }) }));
   return <><PageHeading eyebrow={kind === 'countries' ? 'OPERATIONS / MARKETS' : 'COMMERCE / CATALOG'} title={resource.title} description=""/>
     <div className="page-actions">{create && <Link className="button primary" href={url(base + '/new', { region, product: productId })}>Create {registries[kind].title.toLowerCase()}</Link>}

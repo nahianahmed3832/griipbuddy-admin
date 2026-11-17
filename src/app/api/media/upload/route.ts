@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
+import { canChangeCategories } from '@/lib/category-workspace';
 import { requireWrite } from '@/lib/advanced';
 import { requestPinnedAdmin } from '@/lib/pinned-admin-gateway';
 import { localCmsUpload } from '@/lib/production-cms-media';
@@ -14,7 +15,9 @@ export async function POST(request: NextRequest) {
   const auth = await session();
   if (!auth) return fail('Sign in to upload media.', 401);
   try {
-    requireWrite(auth, 'cms.view', 'cms.update');
+    if (request.nextUrl.searchParams.get('scope') === 'category') {
+      if (!canChangeCategories(auth, 'product.create') && !canChangeCategories(auth, 'product.update')) return fail('Upload access denied.', 403);
+    } else requireWrite(auth, 'cms.view', 'cms.update');
     const kind = request.nextUrl.searchParams.get('kind');
     if (kind !== 'video' && kind !== 'image') return fail('Choose an image or video.', 400);
     if (!request.headers.get('content-type')?.startsWith('multipart/form-data;') || !request.body) {

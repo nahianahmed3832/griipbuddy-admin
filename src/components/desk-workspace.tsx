@@ -175,7 +175,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       if (!production && categoryView && (view[0] !== 'categories' || view[1])) {
         redirect(url('/desk/catalog/categories', { region, record, mode: param(q, 'mode') }));
       }
-      content = await CategoryWorkspace({ auth, q: { ...q, record }, region });
+      content = await CategoryWorkspace({ auth, q: { ...q, record }, region, production: Boolean(production), subcategory: view[0] === 'subcategories' });
     }
     else if (sectionId === 'catalog' && (active === 'brands' || active === 'faqs' || active === 'reviews' || active === 'policies')) {
       content = await CatalogRegistry({ auth, q, region, id: view[1], kind: active, production: Boolean(production) });
@@ -211,7 +211,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       ? await PurchaseRecordPage({auth, region, q, id: view[1]}) : await AllPurchases({ auth, region, q, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'rates' && view.length < 2) content = await DefaultRatePage({ auth, region, q, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'rates' && view[1] === 'new') content = await DefaultRateCreatePage({ auth, region, production: Boolean(production) });
-    else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1]});
+    else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1], production: Boolean(production)});
     else if (sectionId === 'inventory' && active === 'warehouses') content = await LocationsPage({ auth, region, q, id: view[1] });
     else if (sectionId === 'customers' && active === 'customers') content = view[1]
       ? await CustomerProfilePage({ auth, id: view[1], q, region })
