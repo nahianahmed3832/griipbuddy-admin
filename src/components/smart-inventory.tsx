@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Barcode, Search } from 'lucide-react';
-import { ApiError, str, url, type Session } from '@/lib/api';
+import { ApiError, canWrite, str, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { barcodeConditions, barcodeStatuses } from '@/lib/barcode-data';
 import { param, perPage, type Query } from '@/lib/data';
@@ -8,7 +8,7 @@ import { canOperate } from '@/lib/operations';
 import { adminPath } from '@/lib/paths';
 import { has, type Region } from '@/lib/sections';
 import { barcodeHistory, inventoryPath, listBarcodes } from '@/lib/smart-inventory';
-import { GenerateBarcodes, ReceiveBarcodes } from './barcode-forms';
+import { BarcodeMaintenance, GenerateBarcodes, ReceiveBarcodes } from './barcode-forms';
 import { BarcodeRegister } from './barcode-register';
 import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
@@ -29,11 +29,12 @@ export async function AllBarcodes({ auth, region, q, production = false }: { aut
   if (production) {
     const { region: market, ...applied } = filters;
     const code = param(q, 'barcode') ?? '';
+    const closeUrl = url('/dashboard/barcodes', { ...applied, region, page: String(page), limit: String(limit) });
     return <>
       <ProductionBarcodeRegister key={JSON.stringify(applied) + page + limit + market} rows={rows} applied={applied} region={region}
         canSearch={has(auth.staff, 'product.view')} total={total} limit={limit} page={page}/>
-      {code && <ProductionStockDialog compact label={code} closeUrl={url('/dashboard/barcodes', { ...applied, region, page: String(page), limit: String(limit) })}>
-        <BarcodeLogs auth={auth} region={region} q={q} production hideSearch/>
+      {code && <ProductionStockDialog compact label={code} closeUrl={closeUrl}>
+        <BarcodeLogs auth={auth} region={region} q={q} production hideSearch closeUrl={closeUrl}/>
       </ProductionStockDialog>}
     </>;
   }
@@ -94,7 +95,9 @@ export async function ScanToReceive({ auth, region, production = false }: { auth
   </>;
 }
 
-export async function BarcodeLogs({ auth, region, q, production = false, hideSearch = false }: { auth: Session; region: Region; q: Query; production?: boolean; hideSearch?: boolean }) {
+export async function BarcodeLogs({ auth, region, q, production = false, hideSearch = false, closeUrl }: {
+  auth: Session; region: Region; q: Query; production?: boolean; hideSearch?: boolean; closeUrl?: string;
+}) {
   if (!has(auth.staff, 'barcode.view')) throw new ApiError(403);
   const code = (param(q, 'barcode') ?? '').trim().slice(0, 61);
   let history: Awaited<ReturnType<typeof barcodeHistory>> | undefined;
@@ -107,6 +110,8 @@ export async function BarcodeLogs({ auth, region, q, production = false, hideSea
     }
   }
   const formPath = production ? '/dashboard/barcodes/logs' : logsPath;
+  const edit = production && !hideSearch && canWrite(auth.staff) && has(auth.staff, 'barcode.update');
+  const reset = production && hideSearch && canWrite(auth.staff) && has(auth.staff, 'barcode.reset');
   return <div className={production ? productionStyles.logs : undefined}>
     {!production && <PageHeading eyebrow={eyebrow} title="Barcode Logs" description="Scan or enter a unit barcode to see its inventory history."/>}
     {!hideSearch && <form action={adminPath(formPath)} className={production ? productionStyles.logsForm : 'panel filters barcode-filters'} key={code + region}>
@@ -120,6 +125,7 @@ export async function BarcodeLogs({ auth, region, q, production = false, hideSea
     {history && <section className="panel">
       <div className="panel-header"><div><h2><code>{history.unit.barcode}</code></h2><p>{[history.unit.sku, history.unit.product].filter(Boolean).join(' · ')}</p></div>
         {history.unit.status && <Badge value={history.unit.status}/>}
+        {edit && <BarcodeMaintenance unit={history.unit} region={region}/>}
       </div>
       {history.logs.length ? <ol className="barcode-history" aria-label="Barcode history">{history.logs.map((log, index) => {
         const date = str(log.date);
@@ -130,6 +136,8 @@ export async function BarcodeLogs({ auth, region, q, production = false, hideSea
           {date && <time dateTime={date}>{date.slice(0, 16).replace('T', ' ')} UTC</time>}
         </li>;
       })}</ol> : <Empty title="No history recorded" detail="This unit has no inventory events on file."/>}
+      {reset && !['SOLD', 'ASSIGNED', 'PENDING_RETURN'].includes(history.unit.status) &&
+        <BarcodeMaintenance unit={history.unit} region={region} reset closeUrl={closeUrl}/>}
     </section>}
   </div>;
 }

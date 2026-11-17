@@ -6,10 +6,17 @@ import { canAccessStockChanges, isStockTransfer, stockChangeApi, stockChangeHist
 import { PageHeading } from './dashboard';
 import { StockChangesForm } from './stock-changes-form';
 
-export async function StockChangesPage({ auth, region, mode }: { auth: Session; region: Region; mode: StockChangeMode }) {
+export async function StockChangesPage({ auth, region, mode, productionOutlet = false, outletId }: {
+  auth: Session; region: Region; mode: StockChangeMode; productionOutlet?: boolean; outletId?: string;
+}) {
   if (!canWrite(auth.staff) || !canAccessStockChanges(auth.staff, mode)) throw new ApiError(403);
   const locations = await api(url(stockChangeApi + '/locations', { region }), auth.token) as StockChangeLocation[];
   const transfer = isStockTransfer(mode);
+  if (productionOutlet) return <>
+    <h1>Update Inventory (Warehouse to Outlet)</h1>
+    <StockChangesForm locations={locations} region={region} mode={mode} productionOutlet
+      initialOutlet={locations.find(location => location.type === 'OUTLET' && location.id === outletId)?.id}/>
+  </>;
   return <>
     <PageHeading eyebrow="COMMERCE / INVENTORY" title={stockChangeTitle[mode]}
       description={transfer ? 'Choose where to move the stock and record any costs for the transfer.' : 'Record a stock addition or deduction across product variants.'}>

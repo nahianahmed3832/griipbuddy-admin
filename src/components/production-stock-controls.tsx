@@ -84,9 +84,9 @@ export function ProductionStockFiltersForm({ filters, locations, selected }: {
       </div>}
     </div>
     <label className={styles.field}>SKU<input name="skuQuery" placeholder="Search by sku" maxLength={100} value={draft.skuQuery ?? ''}
-      onChange={event => update({ skuQuery: event.currentTarget.value || undefined }, true)} /></label>
+      onChange={event => update({ skuQuery: event.currentTarget.value || undefined, product: undefined }, true)} /></label>
     <label className={styles.field}>Search<input name="searchQuery" placeholder="Search by name, barcode, etc." maxLength={100}
-      value={draft.searchQuery ?? ''} onChange={event => update({ searchQuery: event.currentTarget.value || undefined }, true)} /></label>
+      value={draft.searchQuery ?? ''} onChange={event => update({ searchQuery: event.currentTarget.value || undefined, product: undefined }, true)} /></label>
     <label className={styles.field}>Sort By
       <span className={styles.select}><select name="sortBy" value={draft.sortBy} onChange={event => update({ sortBy: event.currentTarget.value })}>
         {stockSorts.map(([value, label]) => <option key={value} value={value}>{label}</option>)}

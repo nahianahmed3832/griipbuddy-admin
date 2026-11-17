@@ -7,6 +7,7 @@ import { adminPath } from '@/lib/paths';
 import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { LocationForm } from './location-form';
+import { ProductThumbnail } from './product-thumbnail';
 
 function record(raw: unknown): LocationRecord {
   const row = obj(raw);
@@ -115,6 +116,10 @@ async function Directory({ auth, region, q, allowCreate }: { auth: Session; regi
 
 export async function LocationsPage({ auth, region, q, id }: { auth: Session; region: Region; q: Query; id?: string }) {
   if (!has(auth.staff, 'business_locations.view')) throw new ApiError(403);
+  const inventory = param(q, 'inventoryView');
+  if (!id && (inventory === 'warehouse' || inventory === 'outlet')) {
+    return <LocationInventory auth={auth} region={region} q={q} type={inventory}/>;
+  }
   const allowCreate = canWrite(auth.staff) && has(auth.staff, 'business_locations.create');
   const allowEdit = canWrite(auth.staff) && has(auth.staff, 'business_locations.update');
   if (!id) return Directory({ auth, region, q, allowCreate });
@@ -163,4 +168,67 @@ export async function LocationsPage({ auth, region, q, id }: { auth: Session; re
       </section>
     </div>
   </>;
+}
+
+async function LocationInventory({ auth, region, q, type }: { auth: Session; region: Region; q: Query; type: 'warehouse' | 'outlet' }) {
+  if (!has(auth.staff, 'stock.view')) throw new ApiError(403);
+  const path = '/dashboard/inventory/view/' + type;
+  const label = type === 'warehouse' ? 'Warehouse' : 'Outlet';
+  const key = type + '_id';
+  const selected = param(q, key);
+  const directory = obj(await api(url(locationsEndpoint, { region, type: type.toUpperCase() }), auth.token));
+  const locations = arr(directory.rows).map(record).filter(location => mongoId(location.id));
+  let location = locations.find(row => row.id === selected);
+  if (selected && !location) {
+    if (!mongoId(selected)) throw new ApiError(404, 'Choose a location in the selected region.');
+    const bookmarked = record(await api(url(locationsEndpoint + '/' + selected, { region }), auth.token));
+    if (bookmarked.type !== type.toUpperCase()) throw new ApiError(404, 'Choose a location in the selected region.');
+    locations.push(bookmarked);
+    location = bookmarked;
+  }
+  const limitOptions = ['20', '40', '60', '80', '100'];
+  const requested = param(q, 'limit') ?? '20';
+  const size = limitOptions.includes(requested) ? requested : '20';
+  const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
+  const payload = location ? obj(await api(url('/business-location/stock/all', {
+    region, businessLocationIds: location.id, page: String(page), limit: size,
+  }), auth.token)) : {};
+  const rows = arr(payload.data).map(obj);
+  const total = Number(obj(payload.meta).total) || 0;
+  const link = (number: number) => url(path, { region, [key]: selected, limit: size, page: String(number) });
+  const amount = (value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('en').format(value) : '—';
+  return <section className="panel padded">
+    <h1>{label} Inventory</h1>
+    <form className="location-filters" action={adminPath(path)}>
+      <input type="hidden" name="region" value={region}/>
+      <label>Select {label}<select name={key} defaultValue={selected ?? ''}>
+        <option value="">Select {label}</option>
+        {locations.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+      </select></label>
+      <label>Items per page<select name="limit" defaultValue={size}>{limitOptions.map(value => <option key={value}>{value}</option>)}</select></label>
+      <button className="button secondary" type="submit">View inventory</button>
+    </form>
+    {!location ? <p>Please select a {label}.</p> : !rows.length ? <p>No inventory found for this {type}.</p> :
+      <div className="table-scroll" role="region" aria-label={label + ' stock'} tabIndex={0}>
+        <table><thead><tr>{(type === 'outlet'
+          ? ['Image', 'Product Name', 'Variants', 'Total Qty', 'Regular Price', 'Sale Price']
+          : ['Items', 'SKU', 'Regular Price', 'Sale Price', 'Quantity', 'Barcode']).map(column =>
+          <th scope="col" key={column}>{column}</th>)}</tr></thead>
+          <tbody>{rows.map(row => {
+            const product = obj(row.product);
+            const attributes = Object.values(obj(row.attribute_values)).map(str).filter(Boolean).join(' · ');
+            return type === 'outlet' ? <tr key={str(row._id)}><td><ProductThumbnail source={product.thumbnail} size={42}/></td>
+              <td>{str(product.name)}</td><td>{attributes || str(row.sku)}</td><td>{amount(row.available_quantity)}</td>
+              <td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td></tr> :
+              <tr key={str(row._id)}><td>{str(product.name)}{attributes && <small> · {attributes}</small>}</td>
+                <td>{str(row.sku)}</td><td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td>
+                <td>{amount(row.available_quantity)}</td><td>{str(row.barcode) || '—'}</td></tr>;
+          })}</tbody>
+        </table>
+      </div>}
+    {total > Number(size) && <nav className="pagination" aria-label={label + ' inventory pages'}>
+      {page > 1 && <Link href={link(page - 1)}>Previous</Link>}
+      {page * Number(size) < total && <Link href={link(page + 1)}>Next</Link>}
+    </nav>}
+  </section>;
 }

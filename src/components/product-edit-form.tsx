@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { adminPath } from '@/lib/paths';
 import { currencies, productFields, type Choice } from '@/lib/catalog-edit-fields';
 import type { CategoryOption } from '@/lib/catalog-list';
@@ -19,6 +19,7 @@ type Prices = Record<string, string>;
 export type VariantDraft = {
   key: string; _id?: string; sku: string; attribute_values: Record<string, string>; base: Prices;
   prices: Record<string, Prices>; image: string; images: string; videos: string; color_code: string;
+  color_image?: string; image_based_on?: string;
 };
 function blankVariant(key: string): VariantDraft {
   return { key, sku: '', attribute_values: {}, base: { regular_price: '', sale_price: '0' }, prices: {}, image: '', images: '', videos: '', color_code: '' };
@@ -81,23 +82,49 @@ function ImageUpload({ initial, gallery }: { initial: string; gallery: string })
 function list(value: string) { return value.split(/[\r\n]+/).map(value => value.trim()).filter(Boolean); }
 function inputPrices(values: Prices) { return Object.fromEntries(Object.entries(values).filter(([,value]) => value !== '').map(([field, value]) => [field, Number(value)])); }
 function variantPayload(variants: VariantDraft[]) {
-  return variants.map(({ _id, sku, attribute_values, image, color_code, base, prices, images, videos }) => ({ _id, sku, attribute_values, image, color_code,
+  return variants.map(({ _id, sku, attribute_values, image, color_code, color_image, image_based_on, base, prices, images, videos }) => ({
+    _id, sku, attribute_values, image, color_code, color_image, image_based_on,
     ...inputPrices(base), prices: Object.fromEntries(Object.entries(prices).map(([currency, price]) => [currency, inputPrices(price)])),
     images: list(images), videos: list(videos),
   }));
 }
-function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id }: {
-  attributesText: string; setAttributes: (value: string) => void; variants: VariantDraft[]; setVariants: (value: VariantDraft[]) => void;
-  allowCost: boolean; canDelete: boolean; id?: string;
+function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id, production, uploading, setUploading }: {
+  attributesText: string; setAttributes: (value: string) => void; variants: VariantDraft[]; setVariants: Dispatch<SetStateAction<VariantDraft[]>>;
+  allowCost: boolean; canDelete: boolean; id?: string; production: boolean; uploading: boolean; setUploading: (value: boolean) => void;
 }) {
   const attributes = [...new Set(list(attributesText))];
   const [matrix, setMatrix] = useState<Record<string, string>>({});
   const [matrixError, setMatrixError] = useState('');
+  const [mediaError, setMediaError] = useState('');
+  const [imageAttribute, setImageAttribute] = useState<string>();
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const counter = useRef(0);
   const newKey = () => 'new-' + ++counter.current;
+  const savedImageAttribute = imageAttribute ?? variants.find(row => row.image_based_on)?.image_based_on;
+  const imageSource = attributes.find(attribute => attribute === savedImageAttribute) ?? '';
+  const imageValues = imageSource ? [...new Set(variants.map(row => row.attribute_values[imageSource]?.trim()).filter(Boolean))] : [];
+  function updateGroupImages(attribute: string, value: string, update: (images: string[]) => string[]) {
+    setVariants(current => current.map(row => row.attribute_values[attribute]?.trim() === value
+      ? { ...row, images: update(list(row.images)).join('\n'), image_based_on: attribute } : row));
+  }
+  async function uploadGroupImage(file: File, attribute: string, value: string) {
+    setMediaError('');
+    if (file.size > 3 * 1024 * 1024) {
+      setMediaError('Image size must be less than 3 MB.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const address = await uploadImage(file);
+      updateGroupImages(attribute, value, images => [...new Set([...images, address])]);
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'Could not upload the image.');
+    } finally {
+      setUploading(false);
+    }
+  }
   function change(key: string, patch: Partial<VariantDraft>) {
-    setVariants(variants.map(row => row.key === key ? { ...row, ...patch } : row));
+    setVariants(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
   }
   function showKeys(keys: string[]) { setOpened(current => new Set([...current, ...keys])); }
   function generate() {
@@ -125,6 +152,34 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
     </div></details>}
     <div className="page-actions"><button className="button secondary" type="button" disabled={!attributes.length || variants.length >= 120}
       onClick={() => { const row = blankVariant(newKey()); setVariants([...variants, row]); showKeys([row.key]); }}>Add variant</button></div>
+    {production && !!attributes.length && <fieldset className="catalog-editor-group" disabled={uploading}>
+      <legend>Variant images</legend>
+      <label className="operation-field">Assign images by attribute<select value={imageSource} onChange={event => {
+        const attribute = event.target.value;
+        setImageAttribute(attribute);
+        setVariants(current => current.map(row => ({ ...row, image_based_on: attribute })));
+      }}><option value="">Select an attribute</option>
+        {attributes.map(name => <option key={name}>{name}</option>)}
+      </select></label>
+      {imageValues.map(value => {
+        const images = [...new Set(variants.filter(row => row.attribute_values[imageSource]?.trim() === value).flatMap(row => list(row.images)))];
+        return <fieldset key={value} className="catalog-editor-group">
+          <legend>{value}</legend>
+          <label className="operation-field">Upload New Image<input type="file" accept="image/jpeg,image/png,image/webp"
+            aria-label={'Upload New Image for ' + value} onChange={event => {
+              const file = event.currentTarget.files?.[0];
+              if (file) void uploadGroupImage(file, imageSource, value);
+              event.currentTarget.value = '';
+            }}/></label>
+          {!!images.length && <ul aria-label={'Images for ' + value}>{images.map((image, index) => <li key={image}>
+            Image {index + 1} <button type="button" className="button secondary"
+              onClick={() => updateGroupImages(imageSource, value, current => current.filter(url => url !== image))}>Remove image {index + 1}</button>
+          </li>)}</ul>}
+        </fieldset>;
+      })}
+      {mediaError && <p role="alert">{mediaError}</p>}
+      {uploading && <p role="status">Uploading image…</p>}
+    </fieldset>}
     {variants.map((row, index) => <details className="catalog-variant" key={row.key} open={opened.has(row.key)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpened(current => { if (current.has(row.key) === open) return current;
@@ -165,12 +220,13 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
   useEffect(() => { if (variantOnly) { setAttributes(initialAttributes.join('\n')); setVariants(initialVariants); } }, [initialAttributes, initialVariants, variantOnly]);
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const router = useRouter();
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current) return;
+    if (busy.current || uploading) return;
     busy.current = true;
     setSaving(true); setError(''); setNotice('');
     const form = new FormData(event.currentTarget);
@@ -285,13 +341,13 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
         </div></fieldset>
       </>}
       {(variantOnly || !id) && <VariantMatrix attributesText={attributesText} setAttributes={setAttributes} variants={variants} setVariants={setVariants}
-        allowCost={allowCost} canDelete={canDelete} id={id}/>}
+        allowCost={allowCost} canDelete={canDelete} id={id} production={production} uploading={uploading} setUploading={setUploading}/>}
       {error && <p className="notice warn" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {production ? <div className={productionStyles.saveActions}>
-        {!id && !variantOnly && <><button className={productionStyles.secondary} type="submit" value="stock" disabled={saving}>Save &amp; Open Stock</button>
-          <button className={productionStyles.secondary} type="submit" value="new" disabled={saving}>Save &amp; Add Another</button></>}
-        <button className={productionStyles.primary} type="submit" disabled={saving || variantOnly && !variants.length}>
+        {!id && !variantOnly && <><button className={productionStyles.secondary} type="submit" value="stock" disabled={saving || uploading}>Save &amp; Open Stock</button>
+          <button className={productionStyles.secondary} type="submit" value="new" disabled={saving || uploading}>Save &amp; Add Another</button></>}
+        <button className={productionStyles.primary} type="submit" disabled={saving || uploading || variantOnly && !variants.length}>
           {saving ? 'Processing...' : variantOnly ? 'Update Variants' : id ? 'Update Product' : 'Save'}
         </button>
       </div> : <div className="page-actions"><button className="button primary" disabled={saving || variantOnly && !variants.length}>

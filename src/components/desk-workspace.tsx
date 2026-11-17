@@ -202,7 +202,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer' });
     }
     else if (sectionId === 'inventory' && (active === 'outlet-update' || active === 'warehouse-update') && view.length === 1) {
-      content = await StockChangesPage({auth, region, mode: active});
+      content = await StockChangesPage({auth, region, mode: active,
+        productionOutlet: Boolean(production) && active === 'outlet-update', outletId: param(q, 'outlet_id')});
     }
     else if (sectionId === 'inventory' && active === 'purchases') content = view[1]
       ? await PurchaseRecordPage({auth, region, q, id: view[1]}) : await AllPurchases({ auth, region, q, production: Boolean(production) });

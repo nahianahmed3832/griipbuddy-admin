@@ -24,8 +24,9 @@ export function productionStockFilters(q: Query, region: Region): ProductionStoc
   const businessLocation = rawLocations === 'all' ? rawLocations
     : rawLocations?.split(',').filter(mongoId).slice(0, 250).join(',') || undefined;
   const sortBy = param(q, 'sortBy');
+  const product = param(q, 'product') ?? '';
   return {
-    region, businessLocation, skuQuery: param(q, 'skuQuery')?.trim().slice(0, 100) || undefined,
+    region, businessLocation, product: mongoId(product) ? product : undefined, skuQuery: param(q, 'skuQuery')?.trim().slice(0, 100) || undefined,
     searchQuery: (param(q, 'searchQuery') ?? param(q, 'q'))?.trim().slice(0, 100) || undefined,
     sortBy: sortBy && stockSorts.some(([id]) => id === sortBy) ? sortBy : 'available_quantity',
     sortOrder: param(q, 'sortOrder') === 'asc' ? 'asc' : 'desc',
@@ -80,7 +81,7 @@ export async function loadProductionStock(auth: Session, region: Region, q: Quer
   const filters = productionStockFilters(q, region);
   const permissions = stockPermissions(auth);
   const locations = await loadLocations(auth, region);
-  const active = Boolean(filters.businessLocation || filters.skuQuery || filters.searchQuery);
+  const active = Boolean(filters.businessLocation || filters.product || filters.skuQuery || filters.searchQuery);
   const selected = filters.businessLocation && filters.businessLocation !== 'all' ? filters.businessLocation.split(',') : [];
   const allowed = selectLocations(locations, selected);
   const requestedLimit = param(q, 'limit') ?? '20';
@@ -93,7 +94,7 @@ export async function loadProductionStock(auth: Session, region: Region, q: Quer
     const limit = size === 'all' || exporting ? maxExportRows : Number(size);
     const query = {
       region, page: String(page), limit: String(limit), businessLocationIds: allowed.join(','),
-      q: filters.searchQuery, sku: filters.skuQuery, sortBy: filters.sortBy, sortOrder: filters.sortOrder,
+      productId: filters.product, q: filters.searchQuery, sku: filters.skuQuery, sortBy: filters.sortBy, sortOrder: filters.sortOrder,
     };
     const [raw, totals] = await Promise.all([
       api(url(stockListEndpoint, query), auth.token).then(obj),

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { ApiError, arr, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, type RecordData } from '@/lib/api';
 import { findVariantBySku, locationInRegion } from '@/lib/operations';
 import { canEditPurchase, purchaseRecord, purchaseStatuses, suppliers } from '@/lib/purchases';
+import { barcodeVariants } from '@/lib/smart-inventory';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 const deny = (status: number, message: string) => new Response(message, { status, headers });
@@ -18,6 +19,24 @@ function money(input: RecordData, key: string) {
   const value = text(input, key, 11);
   if (!/^\d{1,8}(\.\d{1,2})?$/.test(value)) fail('Enter valid amounts with up to two decimal places.');
   return Number(value);
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await session();
+  if (!auth) return deny(401, 'Sign in required.');
+  if (!canEditPurchase(auth.staff)) return deny(403, 'Access restricted.');
+  const query = req.nextUrl.searchParams;
+  const term = (query.get('q') ?? '').trim();
+  if (term.length < 2 || term.length > 100) return Response.json([], { headers });
+  try {
+    const region = getRegion(query.get('region') ?? undefined, auth.staff);
+    const current = await purchaseRecord(auth, region, query.get('id') ?? '');
+    if (current.inventory_ordered === true) return deny(409, 'Use the purchase order workspace to edit a managed purchase.');
+    return Response.json(await barcodeVariants(term, auth, region), { headers });
+  } catch (error) {
+    if (error instanceof ApiError) return deny(error.status, error.status < 500 ? error.message : 'Product search is unavailable.');
+    throw error;
+  }
 }
 
 export async function POST(req: NextRequest) {

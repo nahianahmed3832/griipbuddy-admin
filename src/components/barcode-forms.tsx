@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Barcode, Printer, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
-import { barcodePattern, receiptLimit, type BarcodeLabel, type BarcodeVariant } from '@/lib/barcode-data';
+import { barcodeConditions, barcodePattern, barcodeStatuses, receiptLimit, type BarcodeLabel, type BarcodeRow, type BarcodeVariant } from '@/lib/barcode-data';
 import type { Choice } from '@/lib/operations';
 import type { Region } from '@/lib/sections';
 import { BarcodePrint } from './barcode-labels';
@@ -32,6 +33,72 @@ async function saveInventory<T>(action: 'barcode-generate' | 'barcode-receive', 
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : 'The request could not be completed.';
+}
+
+export function BarcodeMaintenance({ unit, region, reset = false, closeUrl }: {
+  unit: BarcodeRow; region: Region; reset?: boolean; closeUrl?: string;
+}) {
+  const router = useRouter();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const saving = useRef(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  async function save(form?: HTMLFormElement) {
+    if (saving.current) return;
+    saving.current = true;
+    setPending(true);
+    setError('');
+    const query = new URLSearchParams({ action: reset ? 'reset' : 'edit', code: unit.barcode, region });
+    try {
+      const response = await fetch(adminPath('/api/smart-inventory?' + query), {
+        method: 'PATCH',
+        ...(form && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(form))) }),
+      });
+      if (!response.ok) throw new Error((await response.text()).slice(0, 320));
+      dialog.current?.close();
+      if (closeUrl) router.replace(closeUrl, { scroll: false });
+      else router.refresh();
+    } catch (issue) {
+      setError(errorText(issue));
+    } finally {
+      saving.current = false;
+      setPending(false);
+    }
+  }
+  if (reset) return <div className="page-actions">
+    <button className="button secondary" type="button" disabled={pending} onClick={() => void save()}>
+      {pending ? 'Resetting…' : 'Reset barcode'}
+    </button>
+    {error && <p role="alert">{error}</p>}
+  </div>;
+  return <>
+    <button type="button" className="button secondary" onClick={() => {
+      setError('');
+      dialog.current?.showModal();
+    }}>Edit barcode</button>
+    <dialog ref={dialog} aria-label={'Edit ' + unit.barcode}
+      onCancel={event => { if (pending) event.preventDefault(); }}>
+      <form className="panel padded stack-form" key={[unit.status, unit.condition].join(':')} onSubmit={event => {
+        event.preventDefault();
+        void save(event.currentTarget);
+      }}>
+        <h2>Edit {unit.barcode}</h2><p>Update the status, condition, or add a note.</p>
+        <label>Status<select name="status" required defaultValue={unit.status}>
+          {barcodeStatuses.map(status => <option key={status}>{status}</option>)}
+        </select></label>
+        <label>Condition<select name="condition" defaultValue={unit.condition}>
+          <option value="">Leave unchanged</option>
+          {barcodeConditions.map(condition => <option key={condition}>{condition}</option>)}
+        </select></label>
+        <label>Admin note (optional)<textarea name="note" maxLength={400}/></label>
+        <div className="page-actions">
+          <button type="button" className="button secondary" disabled={pending} onClick={() => dialog.current?.close()}>Cancel</button>
+          <button className="button primary" disabled={pending}>{pending ? 'Saving…' : 'Save changes'}</button>
+        </div>
+        {error && <p role="alert">{error}</p>}
+      </form>
+    </dialog>
+  </>;
 }
 
 export function GenerateBarcodes({ region, production = false }: { region: Region; production?: boolean }) {

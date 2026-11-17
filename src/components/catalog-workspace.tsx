@@ -51,6 +51,7 @@ function variantDrafts(value: unknown, canSeeCost: boolean): VariantDraft[] {
     sku: str(variant.sku), attribute_values: Object.fromEntries(Object.entries(obj(variant.attribute_values)).map(([key,val]) => [key, asInput(val)])),
     base: visiblePrices(variant), prices: Object.fromEntries(currencies.map(currency => [currency, visiblePrices(obj(obj(variant.prices)[currency]))])),
     image: str(variant.image), images: asLines(variant.images), videos: asLines(variant.videos), color_code: str(variant.color_code),
+    color_image: str(variant.color_image), image_based_on: str(variant.image_based_on),
   }));
 }
 function inputValue(record: RecordData, field: string) {

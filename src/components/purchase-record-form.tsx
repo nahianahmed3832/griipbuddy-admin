@@ -6,9 +6,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { PurchaseEditLine, PurchaseEditRecord, PurchaseExtra } from '@/lib/purchase-edit';
 import type { Region } from '@/lib/sections';
+import type { BarcodeVariant } from '@/lib/barcode-data';
 
 type Choice = { value: string; label: string };
-const newLine: PurchaseEditLine = { variant: '', title: '', sku: '', quantity: '1', cost: '', discount: '0', tax: '0' };
 const newExpense: PurchaseExtra = { type: '', amount: '', note: '' };
 const purchaseFields = [{ key: 'quantity', label: 'Quantity' }, { key: 'cost', label: 'Unit cost' }, { key: 'discount', label: 'Discount' }, { key: 'tax', label: 'Tax' }] as const;
 
@@ -23,9 +23,43 @@ export function PurchaseRecordForm({ record, suppliers, locations, region }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
+  const [term, setTerm] = useState('');
+  const [matches, setMatches] = useState<BarcodeVariant[] | null>(null);
+  const [searchError, setSearchError] = useState('');
   const disabled = busy || !ready;
   const received = record.status === 'received';
+  const endpoint = adminPath('/api/purchases/record?' + new URLSearchParams({ id: record.id, region }));
   useEffect(() => { setReady(true); }, []);
+  useEffect(() => {
+    const search = term.trim();
+    if (search.length < 2) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(endpoint + '&q=' + encodeURIComponent(search), { signal: controller.signal });
+        if (!response.ok) throw new Error('Product search is unavailable.');
+        const result = await response.json() as BarcodeVariant[];
+        if (!controller.signal.aborted) setMatches(result);
+      } catch {
+        if (!controller.signal.aborted) setSearchError('Product search is unavailable.');
+      }
+    }, 200);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [endpoint, term]);
+
+  function changeSearch(value: string) {
+    setTerm(value);
+    setMatches(null);
+    setSearchError('');
+  }
+  function selectProduct(option: BarcodeVariant) {
+    const key = nextKey.current++;
+    const line: PurchaseEditLine = {
+      variant: '', title: option.name, sku: option.sku, quantity: '1', cost: '', discount: '0', tax: '0',
+    };
+    setLines(rows => rows.length < 50 && !rows.some(row => row.sku === option.sku) ? [...rows, { ...line, key }] : rows);
+    changeSearch('');
+  }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending.current) return;
@@ -33,9 +67,8 @@ export function PurchaseRecordForm({ record, suppliers, locations, region }: {
     setBusy(true);
     setError('');
     const form = new FormData(event.currentTarget);
-    const query = new URLSearchParams({ id: record.id, region });
     try {
-      const response = await fetch(adminPath('/api/purchases/record?' + query), {
+      const response = await fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...Object.fromEntries(form),
           revision: record.revision, lines, expenses, location: received ? record.location : form.get('location'),
           status: received ? record.status : form.get('status') }),
@@ -61,23 +94,29 @@ export function PurchaseRecordForm({ record, suppliers, locations, region }: {
     <label className="filter-label">Purchase notes<textarea name="note" maxLength={1000} rows={3} defaultValue={record.note}/></label>
     <label className="filter-label">Attachment links<textarea name="attachments" maxLength={5000} rows={3} defaultValue={record.attachments}/></label>
   </fieldset>
-    <section className="purchase-rate-lines" aria-label="Purchase items"><h2>Purchase items</h2>
+    <section className="purchase-rate-lines" aria-label="Purchase items">
+      <label className="filter-label">Search for Products<input type="search" value={term} maxLength={100}
+        placeholder="Search by a product name or sku" disabled={disabled || lines.length >= 50}
+        onChange={event => changeSearch(event.target.value)}
+        onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}/></label>
+      {searchError && <p role="alert">{searchError}</p>}
+      {term.trim().length >= 2 && !matches && !searchError && <p role="status">Searching…</p>}
+      {matches?.length === 0 && <p role="status">No product found! Try different keywords.</p>}
+      {!!matches?.length && <ul aria-label="Matching products">{matches.map(option => <li key={option.sku}>
+        <button type="button" className="button secondary" disabled={disabled || lines.some(line => line.sku === option.sku)}
+          onClick={() => selectProduct(option)}>{option.name} · {option.sku}{option.options && ' · ' + option.options}</button>
+      </li>)}</ul>}
+      <h2>Selected Items</h2>
       {received && <p className="muted">Changing quantities changes recorded stock. Units already reserved or sold cannot be removed.</p>}
       <div className="table-scroll" tabIndex={0} role="region" aria-label="Purchase item table"><table>
         <thead><tr><th scope="col">SKU</th>{purchaseFields.map(field => <th key={field.key} scope="col">{field.label}</th>)}<th scope="col">Remove</th></tr></thead>
-        <tbody>{lines.map((line, index) => <tr key={line.key}><td>{line.variant ? <><code>{line.sku}</code><br/><small>{line.title}</small></> :
-          <input aria-label={'SKU for item ' + (index + 1)} required maxLength={100} value={line.sku} disabled={disabled}
-            onChange={event => setLines(rows => rows.map(row => row.key === line.key ? { ...row, sku: event.target.value } : row))}/>}</td>
+        <tbody>{lines.map((line, index) => <tr key={line.key}><td><code>{line.sku}</code><br/><small>{line.title}</small></td>
           {purchaseFields.map(({ key, label }) => <td key={key}><input aria-label={label + ' for item ' + (index + 1)} required disabled={disabled}
             inputMode={key === 'quantity' ? 'numeric' : 'decimal'} pattern={key === 'quantity' ? '[0-9]{1,6}' : '[0-9]{1,8}(\.[0-9]{1,2})?'} value={line[key]}
             onChange={event => setLines(rows => rows.map(row => row.key === line.key ? { ...row, [key]: event.target.value } : row))}/></td>)}
           <td><button type="button" className="icon-button" disabled={lines.length < 2 || disabled} aria-label={'Remove item ' + (index + 1)}
             onClick={() => setLines(rows => rows.filter(row => row.key !== line.key))}><Trash2 size={16}/></button></td>
         </tr>)}</tbody></table></div>
-      <div><button type="button" className="button secondary" disabled={lines.length >= 50 || disabled} onClick={() => {
-        const key = nextKey.current++;
-        setLines(rows => [...rows, { ...newLine, key }]);
-      }}><Plus size={16}/> Add item</button></div>
     </section>
     <section className="stack-form" aria-label="Applied expenses"><h2>Applied expenses</h2>
       {expenses.map((expense, index) => <fieldset className="supplier-fields" disabled={disabled} key={expense.key}>

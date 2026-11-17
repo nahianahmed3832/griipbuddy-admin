@@ -175,10 +175,12 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
     }));
     const images = arr(row.images).map(str), videos = arr(row.videos).map(str);
     const image = str(row.image).trim(), colorImage = str(row.color_image).trim();
+    const imageSource = str(row.image_based_on).trim();
     if ([...images, ...videos, image, colorImage].filter(Boolean).some(value => !safeUrl(value))) throw invalid('Use HTTP or HTTPS URLs for variant media.');
     return { ...(mongoId(str(row._id)) ? { _id: row._id } : {}), sku,
       attribute_values: Object.fromEntries(attributes.map((name, index) => [name, values[index]])),
-      ...base, image, images, videos, color_image: colorImage, color_code: str(row.color_code).slice(0, 32), prices };
+      ...base, image, images, videos, color_image: colorImage, color_code: str(row.color_code).slice(0, 32), prices,
+      ...(row.image_based_on !== undefined && { image_based_on: attributes.includes(imageSource) ? imageSource : '' }) };
   });
   return { attributes, variants };
 }

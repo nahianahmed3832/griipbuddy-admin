@@ -20,11 +20,13 @@ function endpoint(mode: StockChangeMode, region: Region, query: Record<string, s
   return adminPath('/api/stock-changes?' + new URLSearchParams({ mode, region, ...query }));
 }
 
-export function StockChangesForm({ locations, region, mode }: { locations: StockChangeLocation[]; region: Region; mode: StockChangeMode }) {
+export function StockChangesForm({ locations, region, mode, productionOutlet = false, initialOutlet = '' }: {
+  locations: StockChangeLocation[]; region: Region; mode: StockChangeMode; productionOutlet?: boolean; initialOutlet?: string;
+}) {
   const router = useRouter();
   const ready = useSyncExternalStore(subscribe, activeClient, inactiveServer);
   const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState(initialOutlet);
   const [action, setAction] = useState('ADDITION');
   const [reason, setReason] = useState('');
   const [query, setQuery] = useState('');
@@ -40,6 +42,7 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
   const sourceType = stockChangeSource(mode);
   const sourceLocations = locations.filter(location => !sourceType || location.type === sourceType);
   const destinations = locations.filter(location => location.id !== from && (mode !== 'outlet-update' || location.type === 'OUTLET'));
+  const canSearch = Boolean(from && (!productionOutlet || to));
 
   function selectSource(location: string) {
     setFrom(location);
@@ -49,7 +52,7 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
     setFeedback(undefined);
   }
   async function search() {
-    if (!from || !query.trim() || searching) return;
+    if (!canSearch || !query.trim() || searching) return;
     setSearching(true);
     setResults(null);
     setFeedback(undefined);
@@ -98,7 +101,8 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
       setReason('');
       setFeedback({ message: transfer ? 'Stock transfer recorded.' : 'Stock adjustment recorded.', error: false });
       attempt.current = undefined;
-      router.refresh();
+      if (productionOutlet) router.push('/dashboard/inventory/view/outlet?' + new URLSearchParams({ outlet_id: to, region }));
+      else router.refresh();
     } catch (err) {
       setFeedback({ message: err instanceof Error && err.message ? err.message : 'Could not record the stock change.', error: true });
     } finally {
@@ -110,13 +114,13 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
     <fieldset className="panel padded" disabled={saving || !ready}>
       <legend>{transfer ? 'Locations' : 'Location and adjustment'}</legend>
       <div className={styles.fields}>
-        <label>{transfer ? 'From location' : 'Business location'}
+        <label>{productionOutlet ? 'Select Warehouse' : transfer ? 'From location' : 'Business location'}
           <select required value={from} onChange={event => selectSource(event.target.value)} disabled={searching}>
             <option value="">{sourceLocations.length ? 'Choose a location' : 'No active locations'}</option>
             {sourceLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
         </label>
-        {transfer ? <label>To location
+        {transfer ? <label>{productionOutlet ? 'Select Outlet' : 'To location'}
           <select required value={to} onChange={event => setTo(event.target.value)}>
             <option value="">{destinations.length ? 'Choose a destination' : 'No active destinations'}</option>
             {destinations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
@@ -130,13 +134,13 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
       </div>
     </fieldset>
     <fieldset className="panel padded" disabled={saving || !ready}>
-      <legend>Products</legend>
+      <legend>{productionOutlet ? 'Transfer Inventory to Outlet' : 'Products'}</legend>
       <div className={styles.fields}>
-        <label>Search product or SKU<input value={query} maxLength={100} disabled={!from || searching}
+        <label>Search product or SKU<input value={query} maxLength={100} disabled={!canSearch || searching}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => {
             if (event.key === 'Enter') { event.preventDefault(); void search(); }
           }} placeholder="Product name, SKU, or barcode" /></label>
-        <button type="button" className="button secondary" disabled={!from || !query.trim() || searching} onClick={() => void search()}>
+        <button type="button" className="button secondary" disabled={!canSearch || !query.trim() || searching} onClick={() => void search()}>
           {searching ? 'Searching…' : 'Find products'}</button>
       </div>
       {results?.length === 0 && <p>No products match at this location.</p>}
@@ -147,7 +151,8 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
       </li>)}</ul>}
       {!!items.length && <div className="table-scroll" role="region" aria-label="Products to update" tabIndex={0}>
         <table>
-          <thead><tr><th scope="col">Product</th><th scope="col">On hand</th><th scope="col">Quantity</th>
+          <thead><tr><th scope="col">Product</th><th scope="col">{productionOutlet ? 'In Warehouse' : 'On hand'}</th>
+            <th scope="col">{productionOutlet ? 'Quantity to Transfer' : 'Quantity'}</th>
             {!transfer && <th scope="col">Line note</th>}<th scope="col">Remove</th></tr></thead>
           <tbody>{items.map(row => <tr key={row.variant}>
             <td>{row.name}<br />{row.sku}</td><td>{row.available}</td>
@@ -160,7 +165,7 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
         </table>
       </div>}
     </fieldset>
-    {transfer && <fieldset className="panel padded" disabled={saving || !ready}>
+    {transfer && !productionOutlet && <fieldset className="panel padded" disabled={saving || !ready}>
       <legend>Additional Expenses</legend>
       {expenses.map((row, index) => <div key={row.id} className={styles.fields}>
         <label>Expense type {index + 1}<input value={row.type} onChange={event => editExpense(row.id, { type: event.target.value })} required maxLength={120} /></label>
@@ -177,7 +182,8 @@ export function StockChangesForm({ locations, region, mode }: { locations: Stock
     </fieldset>}
     <div className={styles.fields}>
       <button className="button primary" disabled={!ready || saving || searching || !from || (transfer && !to) || !items.length}>
-        {saving ? 'Recording…' : transfer ? 'Record stock transfer' : 'Record stock adjustment'}
+        {productionOutlet ? saving ? 'Updating' : 'Confirm Update' : saving ? 'Recording…' :
+          transfer ? 'Record stock transfer' : 'Record stock adjustment'}
       </button>
       <Link className="button subtle" href={stockChangeHistory(mode, region)}>Cancel</Link>
     </div>
