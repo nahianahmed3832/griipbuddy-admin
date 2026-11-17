@@ -74,7 +74,8 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
       setBusy(false);
     }
   }
-  return <dialog ref={modal} className={styles.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!busy) close(); }}>
+  return <dialog ref={modal} className={kind === 'receipt' ? styles.dialog + ' ' + styles.receiptDialog : styles.dialog}
+    aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!busy) close(); }}>
     <div className={styles.splitHeading}><h2 id={titleId}>{title}</h2><button type="button" className={styles.iconButton} aria-label="Close dialog" disabled={busy} onClick={close}><X size={16}/></button></div>
     {kind === 'history' ? <div className={styles.dialogFields}>
       {[...(row?.call_logs ?? [])].reverse().map((call, index) => <article className={styles.callEntry} key={call._id ?? index}>
@@ -134,7 +135,7 @@ export function ProductionPreOrderActionDialog({ kind, row, ids = [], batches, c
           </label>
         </div>
         <div className={styles.receiptGrid}>
-          <Amount label="Amount (optional)" name="amount"/>
+          <Amount label="Amount (optional)" name="amount" autoFocus/>
           <label>Method (optional)<input name="method" placeholder="bKash / Nagad / Cash" maxLength={64}/></label>
         </div>
         <label>Note (optional)<textarea name="note" maxLength={500} rows={2}/></label>

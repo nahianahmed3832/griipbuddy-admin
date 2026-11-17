@@ -234,12 +234,18 @@
 .dialog .iconButton { width: 28px; height: 28px; border: 0; box-shadow: none; }
 .dialogFields { display: grid; gap: 12px; margin-top: 12px; font-size: 14px; }
 .dialogFields .checkLabel { display: flex; align-items: center; }
+.receiptDialog { width: min(calc(100vw - 32px), 448px); padding: 20px 24px 24px; }
+.receiptDialog > .splitHeading { min-height: 24px; }
+.receiptDialog > .splitHeading .iconButton { position: absolute; top: 10px; right: 10px; }
+.receiptDialog .dialogFields { gap: 16px; margin-top: 14px; }
+.receiptDialog textarea { min-height: 64px; }
+.receiptDialog .primary { font-weight: 500; }
 .receiptFiles { display: flex; flex-wrap: wrap; gap: 8px; }
 .receiptFile, .dialogFields .receiptPicker { position: relative; display: grid; place-items: center; width: 80px; height: 80px; margin: 0; border: 1px solid var(--preorder-border); border-radius: 6px; overflow: hidden; }
 .receiptFile img { width: 100%; height: 100%; object-fit: cover; }
 .receiptFile span { display: grid; justify-items: center; gap: 4px; font-size: 12px; }
 .receiptFile button { position: absolute; top: 2px; right: 2px; display: grid; place-items: center; padding: 2px; border: 0; border-radius: 50%; background: #1b1b1bcc; color: white; cursor: pointer; }
-.dialogFields .receiptPicker { border: 2px dashed var(--preorder-border); cursor: pointer; }
+.dialogFields .receiptPicker { border: 2px dashed var(--preorder-border); color: var(--preorder-muted); cursor: pointer; }
 .receiptPicker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .receiptPicker:focus-within { outline: 2px solid var(--production-accent, #087f50); outline-offset: 2px; }
 .receiptGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

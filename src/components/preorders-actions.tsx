@@ -43,8 +43,8 @@ export async function encodePreOrderImage(file: unknown) {
   return (await readDataUrl(file)).split(',')[1];
 }
 
-export function Amount({ label, name, initial, required }: { label: string; name: string; initial?: number; required?: boolean }) {
-  return <label>{label}<input type="number" name={name} defaultValue={initial} required={required} min="0" max="10000000" step="0.01" /></label>;
+export function Amount({ label, name, initial, required, autoFocus }: { label: string; name: string; initial?: number; required?: boolean; autoFocus?: boolean }) {
+  return <label>{label}<input type="number" name={name} defaultValue={initial} required={required} min="0" max="10000000" step="0.01" autoFocus={autoFocus} /></label>;
 }
 
 export function StatusSelect({ label = 'Status', initial, required = true }: { label?: string; initial?: string; required?: boolean }) {
