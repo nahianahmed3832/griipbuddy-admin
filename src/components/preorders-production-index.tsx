@@ -135,7 +135,7 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
     <section className={`${styles.surface} ${styles.tablePanel}`} aria-label="Pre-orders">
       <div className={styles.tableScroll} role="region" tabIndex={0} aria-label="Pre-order table">
         <table className={styles.productionTable}>
-          <colgroup>{access.update && <col style={{ width: 24 }}/>} {columns.map(([name, width]) => <col key={name} style={{ width }}/>)}</colgroup>
+          <colgroup>{access.update && <col style={{ width: 24 }}/>}{columns.map(([name, width]) => <col key={name} style={{ width }}/>)}</colgroup>
           <thead><tr>
             {access.update && <th scope="col"><input type="checkbox" ref={selectAll} checked={all} aria-label="Select all" disabled={!rows.length}
               onChange={() => setSelected(all ? [] : rows.map(row => row._id))}/></th>}
