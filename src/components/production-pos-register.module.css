@@ -68,3 +68,24 @@
 .dialogFooter { display: flex; gap: 16px; justify-content: flex-end; }
 @media (max-width: 900px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
 @media (max-width: 520px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .returnFields { grid-template-columns: 1fr; } }
+.root .table th { color: #111113; background: #ddefe8; font-size: 14px; line-height: 20px; }
+.root .returnTable th { color: #111113; background: #ddefe8; font-size: 14px; line-height: 20px; }
+.root { grid-template-columns: minmax(0, 1fr); }
+.root h1 { letter-spacing: 0; }
+.sheet, .table { min-width: 0; }
+.dateButton { width: max-content; display: flex; align-items: center; gap: 16px; padding-inline: 12px 18px; }
+.columns summary { display: flex; align-items: center; gap: 12px; }
+.columns summary::-webkit-details-marker { display: none; }
+.metrics article { border: 0; border-radius: 8px; min-height: 92px; box-shadow: 0 3px 5px #17171726; padding: 16px; }
+.metrics article > span { width: 28px; height: 28px; border-radius: 10px; display: grid; place-items: center; float: right;
+  color: #0ca950; background: #ecfbf1; margin-left: 4px; }
+.metrics article[data-metric="profit"] > span { background: #eef5ff; color: #2563eb; }
+.metrics article[data-metric="cost"] > span { background: #fff5eb; color: #ea580c; }
+.metrics article[data-metric="discount"] > span { background: #f8efff; color: #9333ea; }
+.metrics article[data-metric="due"] > span { background: #fff0f0; color: #e00014; }
+.metrics article[data-metric="count"] > span { background: #ebfbf8; color: #0d9488; }
+.metrics strong { margin-top: 2px; }
+.root .table th, .root .table td { min-width: 0; max-width: unset; color: #111113; overflow-wrap: normal; }
+.root .table [data-column="customer"] > span:last-child { white-space: nowrap; }
+.root .table [data-column="date"] { min-width: 80px; }
+.root .table [data-column="quantity"] { max-width: 62px; }

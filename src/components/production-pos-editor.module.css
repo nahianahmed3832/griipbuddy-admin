@@ -71,3 +71,25 @@
 .customerSearch button { flex: none; }
 .customerButton { width: 100%; text-align: left; cursor: pointer; font: inherit; min-height: 36px;
   border: 1px solid #dfdfe4; background: #fff; color: #222; padding: 7px 12px; border-radius: 8px; }
+.dayField { position: relative; min-height: 36px; border: 1px solid #dfdfe4; border-radius: 8px; box-shadow: 0 1px 2px #1717170d;
+  background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; gap: 8px; }
+.dayField input[type="date"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dayField input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; padding: 0; cursor: pointer; }
+.dayField:focus-within { outline: 2px solid #009b67; outline-offset: 2px; }
+.root .items { gap: 16px; }
+.root .edit .items { gap: 24px; }
+.root .table th { color: #111113; background: white; font-size: 14px; line-height: 20px; padding-block: 10px; }
+.root .table .empty { font-size: 14px; }
+.root .totals { gap: 8px; }
+.root .edit .totals { gap: 12px; }
+.root .paymentFields { gap: 15px; }
+.root .edit .paymentFields { gap: 20px; }
+.root h1, .root .items h2 { letter-spacing: 0; }
+.root .table input, .root .table select { font-size: 14px; }
+.root .table td { color: #111113; }
+.root .edit .table th:first-child { min-width: 160px; }
+.root .edit .table th:nth-child(2) { min-width: 96px; }
+.root .edit .table th:nth-child(3) { min-width: 103px; }
+.root .edit .table th:nth-child(4) { min-width: 144px; }
+.root .edit .table th:nth-child(5) { min-width: 115px; }
+.root .edit .table th:nth-child(6) { min-width: 176px; }

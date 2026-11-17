@@ -97,7 +97,11 @@ export async function loadPosRegisterTotals(auth: Session, filters: Filters): Pr
 }
 
 export async function posStaff(auth: Session) {
-  const data = obj(await api('/user/admin/all/roles?limit=250', auth.token));
+  const available = has(auth.staff, 'role.view') ? obj(await api('/roles?limit=250', auth.token)) : {};
+  const roles = new Set(['SUPER_ADMIN', 'ADMIN', auth.staff.role, ...arr(available.roles).map(row => str(obj(row).role_name))]);
+  roles.delete('USER');
+  roles.delete('');
+  const data = obj(await api(url('/user/admin/all/roles', { limit: '250', role: [...roles].join(',') }), auth.token));
   return arr(data.data).map(obj).filter(row => row.role !== 'USER' && mongoId(str(row._id)))
     .map(row => ({ id: str(row._id), name: str(row.full_name) }));
 }

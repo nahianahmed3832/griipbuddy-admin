@@ -1,4 +1,4 @@
-import { Filter } from 'lucide-react';
+import { Activity, BadgePercent, BarChart3, CircleMinus, Clock3, Filter, TrendingUp } from 'lucide-react';
 import { ApiError, canWrite, url, type Session } from '@/lib/api';
 import type { Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
@@ -6,12 +6,12 @@ import { posMoney, posRegisterPath } from '@/lib/pos';
 import { advancedEnabled } from '@/lib/advanced';
 import { loadPosRegisterPage, loadPosRegisterTotals, posRegisterFilters, posRegisterTitle, posStaff } from '@/lib/production-pos';
 import { has, type Region } from '@/lib/sections';
-import { PosRegisterTable, PosRangeFilter } from './production-pos-register-controls';
+import { PosRegisterFilterForm, PosRegisterTable, PosRangeFilter } from './production-pos-register-controls';
 import styles from './production-pos-register.module.css';
 
 const metrics = [
-  ['sales', 'TOTAL SALES VALUE'], ['profit', 'TOTAL PROFIT VALUE'], ['cost', 'TOTAL PURCHASE VALUE'],
-  ['discount', 'TOTAL DISCOUNT GIVEN'], ['due', 'AMOUNT DUE'], ['count', 'NUMBER OF SALES'],
+  ['sales', 'TOTAL SALES VALUE', Activity], ['profit', 'TOTAL PROFIT VALUE', TrendingUp], ['cost', 'TOTAL PURCHASE VALUE', CircleMinus],
+  ['discount', 'TOTAL DISCOUNT GIVEN', BadgePercent], ['due', 'AMOUNT DUE', Clock3], ['count', 'NUMBER OF SALES', BarChart3],
 ] as const;
 
 export async function ProductionPosRegister({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
@@ -30,7 +30,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
     <h1>Sales Reports{from && <> for <strong>{posRegisterTitle(filters)}</strong></>}</h1>
     <details className={styles.filter} open>
       <summary><Filter size={19}/> Filter</summary>
-      <form action={adminPath(posRegisterPath)} className={styles.controls}>
+      <PosRegisterFilterForm>
         <input type="hidden" name="size" value={size}/>
         <label>Business Location<select name="location" defaultValue={location} disabled={Boolean(filters.assigned)} aria-label="Business Location">
           <option value="">All</option>
@@ -43,15 +43,14 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
         </select></label>}
         <PosRangeFilter from={from || today} to={to || today} range={range}/>
         <div className={styles.filterButtons}>
-          <button className={styles.primary}>Apply</button>
           <a className={styles.primary} href={adminPath(url(posRegisterPath, { size: String(size) }))}>Clear Filter</a>
         </div>
-      </form>
+      </PosRegisterFilterForm>
     </details>
     {!filters.valid && <p role="alert">Enter a numeric sale ID and a valid date range.</p>}
     <div className={styles.metrics}>
-      {metrics.filter(([key]) => Object.hasOwn(totals, key)).map(([key, label]) => <article key={key}><div>{label}</div>
-        <strong>{key !== 'count' && '৳ '}{posMoney(totals[key] ?? 0)}</strong></article>)}
+      {metrics.filter(([key]) => Object.hasOwn(totals, key)).map(([key, label, Icon]) => <article key={key} data-metric={key}>
+        <span><Icon size={15}/></span><div>{label}</div><strong>{key !== 'count' && '৳ '}{posMoney(totals[key] ?? 0)}</strong></article>)}
     </div>
     <PosRegisterTable rows={rows} total={total} active={active} page={page} size={size} canSeeCost={filters.canSeeCost}
       canSeeProfit={filters.canSeeProfit} canEdit={writable && has(auth.staff, 'pos.update')}

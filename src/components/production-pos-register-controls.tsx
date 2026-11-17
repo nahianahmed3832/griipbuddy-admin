@@ -1,12 +1,30 @@
 'use client';
 
-import { File, FileSpreadsheet, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronDown, File, FileSpreadsheet, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
 import { dateLabel, posColumns, posMoney, posRegisterPath, type PosColumn, type PosRegisterRow } from '@/lib/pos';
 import type { PosReturnDetails } from '@/lib/production-pos';
 import styles from './production-pos-register.module.css';
+
+export function PosRegisterFilterForm({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  function filter(form: HTMLFormElement) {
+    clearTimeout(timer.current);
+    if (!form.checkValidity()) return;
+    const values = new URLSearchParams();
+    for (const [key, value] of new FormData(form)) if (typeof value === 'string' && value) values.set(key, value);
+    router.replace(posRegisterPath + '?' + values, { scroll: false });
+  }
+  return <form action={adminPath(posRegisterPath)} className={styles.controls} onChange={event => {
+    const form = event.currentTarget;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => filter(form), 270);
+  }} onSubmit={event => { event.preventDefault(); filter(event.currentTarget); }}>{children}</form>;
+}
 
 export function PosRangeFilter({ from, to, range }: { from: string; to: string; range: string }) {
   const [selected, setSelected] = useState(range);
@@ -17,8 +35,8 @@ export function PosRangeFilter({ from, to, range }: { from: string; to: string; 
     <select name="range" value={selected} aria-label="Date Range" onChange={event => { setSelected(event.target.value); setCustom(event.target.value === 'Custom'); }}>
       {options.map(option => <option key={option}>{option}</option>)}
     </select>
-    {selected !== 'All Time' && <button className={styles.dateButton} type="button" onClick={() => { setCustom(!custom); setSelected('Custom'); }}>
-      {dateLabel(from, true)} – {dateLabel(to, true)}
+    {selected !== 'All Time' && <button className={styles.dateButton} type="button" onClick={() => { setCustom(!custom); if (!custom) setSelected('Custom'); }}>
+      <CalendarDays size={15}/> {dateLabel(from, true)} – {dateLabel(to, true)}
     </button>}
     {custom && <div className={styles.dates}><input type="date" name="from" aria-label="Start date" required defaultValue={from}/>
       <input type="date" name="to" aria-label="End date" required defaultValue={to}/></div>}
@@ -82,12 +100,12 @@ export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, 
     </div>
     {error && !dialog && <p role="alert">{error}</p>}
     <div className={styles.sheet}>
-      <div className={styles.columns}><details><summary>Select Fields</summary><div>
+      <div className={styles.columns}><details><summary>Select Fields <ChevronDown size={15}/></summary><div>
         {columns.map(([key, label]) => <label key={key}><input type="checkbox" checked={selected.includes(key)} onChange={() =>
           setSelected(value => value.includes(key) ? value.filter(item => item !== key) : [...value, key])}/>{label}</label>)}
       </div></details></div>
       <div className={styles.table}><table>
-        <thead><tr>{actions && <th>Actions</th>}{shown.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead>
+        <thead><tr>{actions && <th>Actions</th>}{shown.map(([key, label]) => <th key={key} data-column={key}>{label}</th>)}</tr></thead>
         <tbody>{rows.length ? rows.map(row => <tr key={row.id}>
           {actions && <td><details className={styles.rowMenu}><summary aria-label={'Actions for sale ' + row.serial}><MoreHorizontal size={18}/></summary>
             <div>
@@ -95,7 +113,7 @@ export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, 
               {canEdit && <button onClick={() => void show(row, 'return')}><RotateCcw size={14}/> Sale Return</button>}
               {canDelete && <button className={styles.dangerText} onClick={() => void show(row, 'delete')}><Trash2 size={14}/> Delete</button>}
             </div></details></td>}
-          {shown.map(([key]) => <td key={key}>{key === 'status' ? <span className={styles.badge}>{row.cells.status}</span> :
+          {shown.map(([key]) => <td key={key} data-column={key}>{key === 'status' ? <span className={styles.badge}>{row.cells.status}</span> :
             (row.cells[key] || '-').split('\n').map((line, index) => <span key={index} className={key === 'invoice' && index > 0 ? styles.invoice : undefined}>{line}</span>)}</td>)}
         </tr>) : <tr><td className={styles.empty} colSpan={Math.max(1, shown.length + Number(actions))}>No sales found.</td></tr>}</tbody>
       </table></div>

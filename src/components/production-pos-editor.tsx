@@ -1,10 +1,10 @@
 'use client';
 
-import { ArrowLeft, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
-import { posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, type PosDiscount, type PosItem, type PosLine } from '@/lib/pos';
+import { dateLabel, posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, type PosDiscount, type PosItem, type PosLine } from '@/lib/pos';
 import type { SaleDraft } from './pos-editor';
 import styles from './production-pos-editor.module.css';
 
@@ -32,7 +32,8 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const router = useRouter();
   const [location, setLocation] = useState(draft.location);
   const [lines, setLines] = useState(draft.lines);
-  const [overall, setOverall] = useState(draft.discount);
+  const [overall, setOverall] = useState(draft.id ? draft.discount : { ...draft.discount, value: '' });
+  const [saleDate, setSaleDate] = useState(draft.day);
   const [method, setMethod] = useState(draft.paymentMethod);
   const [paid, setPaid] = useState(draft.id ? draft.paid : '');
   const [search, setSearch] = useState('');
@@ -94,10 +95,11 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const subtotal = lines.reduce((sum, line) => sum + posLineTotal(line), 0);
   const overallMinor = posDiscountMinor(subtotal, overall);
   const total = subtotal - overallMinor;
-  const due = Math.max(0, total / 100 - Number(paid || 0));
+  const balance = total / 100 - Number(paid || 0);
+  const due = draft.id ? balance : Math.max(0, balance);
   const currency = (value: number) => (draft.id ? '৳ ' : '') + posMoney(value / 100);
   const totals = draft.id ? [
-    ['Sub Total:', currency(gross)], ['Total Discount:', currency(gross - total)], ['Grand Total:', currency(total)], ['Due:', currency(Math.round(due * 100))],
+    ['Sub Total:', currency(subtotal)], ['Total Discount:', currency(gross - total)], ['Grand Total:', currency(total)], ['Due:', currency(Math.round(due * 100))],
   ] : [
     ['Subtotal', currency(gross)], ['Item Discounts', '–' + currency(gross - subtotal)],
     ['Global Discount', '–' + currency(overallMinor)], ['Grand Total', currency(total)], ['Due', posMoney(due)],
@@ -194,7 +196,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
         </>}
         <div className={styles.headerFields}>
           {!draft.id && <div className={styles.searchField}><label>Customer<button type="button" aria-expanded={customerOpen} disabled={!location || !canSearchCustomers}
-            className={styles.customerButton} onClick={() => setCustomerOpen(open => !open)}>{phone ? customerName + ' (' + phone + ')' : 'Walk-in Customer'}</button></label>
+            aria-label={phone ? customerName + ' (' + phone + ')' : 'Walk-in Customer'} className={styles.customerButton} onClick={() => setCustomerOpen(open => !open)}>{phone ? customerName + ' (' + phone + ')' : 'Walk-in Customer'}</button></label>
             {customerOpen && <div className={styles.customerPanel}>
               <div className={styles.customerSearch}><input type="tel" placeholder="Search by phone..." aria-label="Search by phone"
                 value={query} maxLength={16} onChange={event => { setQuery(event.target.value); setCustomers([]); }}/>
@@ -214,7 +216,9 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
               }}>{customer.name} ({customer.phone})</button>)}
             </div>}
           </div>}
-          <label>Sale Date<input type="date" aria-label="Sale Date" name="saleDate" defaultValue={draft.day} required/></label>
+          <label>Sale Date<span className={styles.dayField}><span>{saleDate ? dateLabel(saleDate) : 'Select date'}</span><CalendarDays size={16}/>
+            <input type="date" aria-label="Sale Date" name="saleDate" value={saleDate}
+              onChange={event => setSaleDate(event.target.value)} required/></span></label>
         </div>
         <div className={styles.searchField}>
           {!draft.id && <label htmlFor="pos-product-query">Add Product</label>}
@@ -238,7 +242,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
               <td><DiscountSelect label={'Discount type for ' + line.sku} discount={line.discount} onChange={discount => changeLine(line.sku, { discount })}/></td>
               <td><input aria-label={'Discount value for ' + line.sku} type="number" min="0" max={line.discount.type === 'PERCENTAGE' ? 100 : undefined}
                 step="0.01" value={line.discount.value} onChange={event => changeLine(line.sku, { discount: { ...line.discount, value: event.target.value } })}/></td>
-              <td>{draft.id ? <input value={posMoney(posLineTotal(line) / 100)} readOnly aria-label={'Total for ' + line.sku}/> : '৳ ' + posMoney(posLineTotal(line) / 100)}</td>
+              <td>{draft.id ? <input value={posLineTotal(line) / 100} readOnly aria-label={'Total for ' + line.sku}/> : '৳ ' + posMoney(posLineTotal(line) / 100)}</td>
               <td><button type="button" className={styles.outline} aria-label={'Remove ' + line.sku} onClick={() => setLines(current => current.filter(item => item.sku !== line.sku))}><Trash2 size={15}/></button></td>
             </tr>)}</tbody>
         </table></div>
