@@ -127,15 +127,14 @@ export async function saveSale(input: RecordData, auth: Session, review = false)
   }));
   const saved = { id: reference(result), invoice: str(result.invoice_number), serial: String(result.sale_serial_id ?? '') };
   if (input.production !== true || input.print !== true) return saved;
-  const address = obj(location.address);
-  const contacts = Array.isArray(location.contact_numbers) ? location.contact_numbers : str(location.contact_numbers).split(',');
+  const savedCustomer = customer && mongoId(saved.id)
+    ? obj(obj(await api('/pos/sale/' + saved.id, auth.token).catch(() => undefined)).user)
+    : {};
   const receipt: PosReceipt = {
     serial: saved.serial, date: str(result.sale_date) || saleDay,
-    location: str(location.name) || str(location.business_location_name),
-    address: [str(address.local_address), str(address.district)].filter(Boolean).join(', '),
-    contact: contacts.map(str).map(phone => phone.trim()).filter(Boolean).join(', '),
-    customer: customer ? str(input.customerName).trim().slice(0, 100) : 'Walk-in Customer',
-    phone: str(result.customer_phone) || customer, method: str(result.payment_method) || method,
+    address: str(obj(location.address).local_address),
+    customer: str(savedCustomer.full_name) || 'Walk-in Customer',
+    phone: str(result.customer_phone) || customer,
     subtotal: Number(result.sub_total ?? subtotal / 100), discount: Number(result.total_discount ?? overall.minor / 100),
     total: Number(result.total_amount ?? total / 100), paid: Number(result.paid_amount ?? paid / 100),
     lines: arr(result.products).map(obj).map(line => {

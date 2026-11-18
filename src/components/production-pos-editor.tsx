@@ -1,7 +1,6 @@
 'use client';
 
 import { ArrowLeft, CalendarDays, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
@@ -14,27 +13,43 @@ type Choice = { value: string; label: string };
 type Customer = { phone: string; name: string };
 type ProductionSaleDraft = Omit<SaleDraft, 'lines'> & { serial: string; day: string; customerName: string; lines: PosLine[] };
 type SaleTotals = { subtotal: number; itemDiscount: number; discount: number; total: number };
-const receiptDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: posTimeZone, hour12: true });
+const receiptDate = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h12', timeZone: posTimeZone,
+});
+
+function formatReceiptDate(date: string) {
+  if (!Number.isFinite(Date.parse(date))) return '';
+  return receiptDate.formatToParts(new Date(date)).map(({ type, value }) =>
+    type === 'dayPeriod' ? value.toUpperCase() : value).join('');
+}
 
 function SaleReceipt({ receipt }: { receipt: PosReceipt }) {
   return <section id="invoice-print-area" className={styles.receipt}>
     <header>
-      <Image src={adminPath('/production-admin/griipbuddy-wordmark.png')} alt="GriipBuddy" width={110} height={22} unoptimized loading="eager"/>
-      {receipt.location && <strong>{receipt.location}</strong>}
+      <strong>Rs Leather</strong>
       {receipt.address && <p>{receipt.address}</p>}
-      {receipt.contact && <p>Contact: {receipt.contact}</p>}
+      <p>Contact: +8801709306560</p>
     </header>
-    <h2>INVOICE</h2>
-    <dl>{[['Sale Id', '#' + receipt.serial], ['Date', receipt.date && receiptDate.format(new Date(receipt.date))],
-      ['Customer', [receipt.customer, receipt.phone].filter(Boolean).join(' ')]].map(([label, value]) =>
-      <div key={label}><dt>{label}:</dt><dd>{value}</dd></div>)}</dl>
-    <table><thead><tr><th scope="col">Items</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead>
-      <tbody>{receipt.lines.map(line => <tr key={line.sku}>
-        <td>{line.sku}{line.attributes && ' (Size: ' + line.attributes + ')'}</td><td>{line.quantity}</td><td>{posMoney(line.price)} Tk</td>
-      </tr>)}</tbody></table>
-    <dl>{[['Sub Total', receipt.subtotal], ['Discount', receipt.discount], ['Total', receipt.total],
-      [receipt.method || 'Paid', receipt.paid], ['Total Paid', receipt.paid]].map(([label, value]) =>
-      <div key={label}><dt>{label}:</dt><dd>{posMoney(Number(value))} Tk</dd></div>)}</dl>
+    <section>
+      <h2>INVOICE</h2>
+      <dl className={styles.receiptDetails}>
+        <div><dt>Sale Id:</dt><dd>#{receipt.serial}</dd></div>
+        <div><dt>Date:</dt><dd>{formatReceiptDate(receipt.date)}</dd></div>
+        <div><dt>Customer:</dt><dd><span>{receipt.customer}</span>{receipt.phone && <span>{receipt.phone}</span>}</dd></div>
+      </dl>
+    </section>
+    <section>
+      <table><thead><tr><th scope="col">Items</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead>
+        <tbody>{receipt.lines.map(line => <tr key={line.sku}>
+          <td>{line.sku}{line.attributes && ' (Size: ' + line.attributes + ')'}</td><td>{line.quantity}</td><td>{posMoney(line.price)} Tk</td>
+        </tr>)}</tbody></table>
+      <dl className={styles.receiptAmounts}>
+        {([['Sub Total', receipt.subtotal], ['Discount', receipt.discount], ['Total', receipt.total],
+          ['Cash', receipt.paid], ['Total Paid', receipt.paid]] as const).map(([label, value]) =>
+          <div key={label}><dt>{label}:</dt><dd>{value} Tk</dd></div>)}
+      </dl>
+      <p className={styles.receiptWarranty} lang="bn">নোটঃ ৪ মাস ওয়ারেন্টির সাথে থাকছে ৬ মাস সোল রিপ্লেসমেন্ট গ্যারান্টি। শর্তঃ আগুনে পোড়ানো কিংবা বাহ্যিক আঘাতে ক্ষতিগ্রস্ত হলে ওয়ারেন্টি&nbsp;প্রযোজ্য&nbsp;নয়।</p>
+    </section>
   </section>;
 }
 
@@ -123,10 +138,16 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     if (!receipt) return;
     const cleanup = () => setReceipt(undefined);
     window.addEventListener('afterprint', cleanup, { once: true });
-    let printing = true;
-    const image = document.querySelector<HTMLImageElement>('#invoice-print-area img');
-    void (image?.decode() ?? Promise.resolve()).catch(() => {}).then(() => { if (printing) window.print(); });
-    return () => { printing = false; window.removeEventListener('afterprint', cleanup); };
+    let pending = true;
+    let frame = 0;
+    void document.fonts.ready.then(() => {
+      if (pending) frame = window.requestAnimationFrame(() => window.print());
+    });
+    return () => {
+      pending = false;
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('afterprint', cleanup);
+    };
   }, [receipt]);
 
   useEffect(() => { readScanner.current = scan; });
