@@ -76,7 +76,9 @@ function ProductionProductPicker({ multiple, value, update, products }: {
         <ul>{options.map(item => <li key={item.id}><button type="button" disabled={ids.includes(item.id)} onClick={() => {
           setSelected(current => [...current.filter(product => product.id !== item.id), item]);
           update(multiple ? [...ids, item.id].join(', ') : item.id);
-          if (!multiple) { setOpen(false); clear(); setQuery(''); }
+          setOpen(false);
+          clear();
+          setQuery('');
         }}><ProductReference item={item}/></button></li>)}</ul>
       </Popover.Content>
     </Popover.Root>
