@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { adminPath } from '@/lib/paths';
@@ -20,8 +20,8 @@ function endpoint(mode: StockChangeMode, region: Region, query: Record<string, s
   return adminPath('/api/stock-changes?' + new URLSearchParams({ mode, region, ...query }));
 }
 
-export function StockChangesForm({ locations, region, mode, productionOutlet = false, initialOutlet = '' }: {
-  locations: StockChangeLocation[]; region: Region; mode: StockChangeMode; productionOutlet?: boolean; initialOutlet?: string;
+export function StockChangesForm({ locations, region, mode, production = false, productionOutlet = false, initialOutlet = '' }: {
+  locations: StockChangeLocation[]; region: Region; mode: StockChangeMode; production?: boolean; productionOutlet?: boolean; initialOutlet?: string;
 }) {
   const router = useRouter();
   const ready = useSyncExternalStore(subscribe, activeClient, inactiveServer);
@@ -45,12 +45,32 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
   const destinations = locations.filter(location => location.id !== from && (mode !== 'outlet-update' || location.type === 'OUTLET'));
   const canSearch = Boolean(from && (!productionOutlet || to));
 
+  useEffect(() => {
+    if (!production || !canSearch || !query.trim()) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await fetch(endpoint(mode, region, { location: from, q: query.trim() }), { signal: controller.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error((await response.text()).slice(0, 400));
+        const matches = await response.json() as StockChangeProduct[];
+        if (!controller.signal.aborted) setResults(matches);
+      } catch (failure) {
+        if (!controller.signal.aborted) setFeedback({ message: failure instanceof Error ? failure.message : 'Could not find products.', error: true });
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [production, canSearch, from, query, mode, region]);
+
   function selectSource(location: string) {
     setFrom(location);
     if (location === to) setTo('');
     setItems([]);
     setOutletVariants([]);
     setResults(null);
+    setSearching(false);
     setFeedback(undefined);
   }
   async function search() {
@@ -70,6 +90,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
   }
   function pick(product: StockChangeProduct) {
     setItems(current => current.some(row => row.variant === product.variant) ? current : [...current, { ...product, quantity: '1', note: '' }]);
+    if (production) { setQuery(''); setSearching(false); setResults(null); }
     if (!transfer && product.regularPrice === undefined) {
       void fetch(endpoint(mode, region, { location: from, product: product.product }), { cache: 'no-store' }).then(async response => {
         if (!response.ok) return;
@@ -124,6 +145,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
       setExpenses([]);
       setResults(null);
       setReason('');
+      if (production) setQuery('');
       setFeedback({ message: transfer ? 'Stock transfer recorded.' : 'Stock adjustment recorded.', error: false });
       attempt.current = undefined;
       if (productionOutlet) router.push('/dashboard/inventory/view/outlet?' + new URLSearchParams({ outlet_id: to, region }));
@@ -138,37 +160,39 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
   const searchResults = productionOutlet && results ? [...new Map(results.map(row => [row.product, row])).values()] : results;
   return <form className={styles.form} onSubmit={submit}>
     <fieldset className="panel padded" disabled={saving || !ready}>
-      <legend>{transfer ? 'Locations' : 'Location and adjustment'}</legend>
+      {!production && <legend>{transfer ? 'Locations' : 'Location and adjustment'}</legend>}
       <div className={styles.fields}>
-        <label>{productionOutlet ? 'Select Warehouse' : transfer ? 'From location' : 'Business location'}
-          <select required value={from} onChange={event => selectSource(event.target.value)} disabled={searching}>
-            <option value="">{sourceLocations.length ? 'Choose a location' : 'No active locations'}</option>
+        <label>{productionOutlet ? 'Select Warehouse' : production ? transfer ? 'From' : 'Business Location' : transfer ? 'From location' : 'Business location'}
+          <select required value={from} onChange={event => selectSource(event.target.value)} disabled={!production && searching}>
+            <option value="">{sourceLocations.length ? production ? transfer ? 'Select from location' : 'Select business location' : 'Choose a location' : 'No active locations'}</option>
             {sourceLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
         </label>
-        {transfer ? <label>{productionOutlet ? 'Select Outlet' : 'To location'}
+        {transfer ? <label>{productionOutlet ? 'Select Outlet' : production ? 'To' : 'To location'}
           <select required value={to} onChange={event => setTo(event.target.value)}>
-            <option value="">{destinations.length ? 'Choose a destination' : 'No active destinations'}</option>
+            <option value="">{destinations.length ? production ? 'Select to location' : 'Choose a destination' : 'No active destinations'}</option>
             {destinations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
         </label> : <>
-          <label>Adjustment type<select value={action} onChange={event => setAction(event.target.value)}>
-            <option value="ADDITION">Addition</option><option value="DEDUCTION">Deduction</option>
+          <label>{production ? 'Action' : 'Adjustment type'}<select value={action} onChange={event => setAction(event.target.value)}>
+            <option value="ADDITION">{production ? 'Add Stock' : 'Addition'}</option><option value="DEDUCTION">{production ? 'Deduct Stock' : 'Deduction'}</option>
           </select></label>
-          <label>Reason<textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={800} required /></label>
+          {!production && <label>Reason<textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={800} required /></label>}
         </>}
       </div>
     </fieldset>
     <fieldset className="panel padded" disabled={saving || !ready}>
-      <legend>{productionOutlet ? 'Transfer Inventory to Outlet' : 'Products'}</legend>
+      {!production && <legend>{productionOutlet ? 'Transfer Inventory to Outlet' : 'Products'}</legend>}
       <div className={styles.fields}>
-        <label>Search product or SKU<input value={query} maxLength={100} disabled={!canSearch || searching}
-          onChange={event => setQuery(event.target.value)} onKeyDown={event => {
-            if (event.key === 'Enter') { event.preventDefault(); void search(); }
-          }} placeholder="Product name, SKU, or barcode" /></label>
-        <button type="button" className="button secondary" disabled={!canSearch || !query.trim() || searching} onClick={() => void search()}>
+        <label>{production ? transfer ? 'Search for Products' : 'Search for Products/Stocks' : 'Search product or SKU'}<input value={query} maxLength={100} disabled={!canSearch || !production && searching}
+          onChange={event => { setQuery(event.target.value); if (production) { setResults(null); setSearching(false); setFeedback(undefined); } }} onKeyDown={event => {
+            if (event.key === 'Enter') { event.preventDefault(); if (!production) void search(); }
+          }} placeholder={production ? 'Search by product name or SKU' : 'Product name, SKU, or barcode'} /></label>
+        {!production && <button type="button" className="button secondary" disabled={!canSearch || !query.trim() || searching} onClick={() => void search()}>
           {searching ? 'Searching…' : 'Find products'}</button>
+        }
       </div>
+      {production && searching && <p role="status">Searching…</p>}
       {results?.length === 0 && <p>No products match at this location.</p>}
       {!!searchResults?.length && <ul className={styles.results} aria-label="Matching products">{searchResults.map((product, index) => <li key={product.variant + index}>
         <span>{product.name}{!productionOutlet && <> · <strong>{product.sku}</strong> · {product.available} on hand</>}</span>
@@ -193,9 +217,10 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
         </table>
       </div>}
       {!productionOutlet && !!items.length && <div className="table-scroll" role="region" aria-label="Products to update" tabIndex={0}>
+        {production && <h2>{transfer ? 'Selected Items' : 'Selected Products'}</h2>}
         <table>
           <thead><tr><th scope="col">Product</th><th scope="col">{productionOutlet ? 'In Warehouse' : 'On hand'}</th>
-            <th scope="col">{productionOutlet ? 'Quantity to Transfer' : 'Quantity'}</th>
+            <th scope="col">{production ? transfer ? 'Qty' : (action === 'DEDUCTION' ? 'Deduct Qty' : 'Add Qty') : 'Quantity'}</th>
             {!transfer && <><th scope="col">Regular Price</th><th scope="col">Line note</th></>}<th scope="col">Remove</th></tr></thead>
           <tbody>{items.map(row => <tr key={row.variant}>
             <td>{row.name}<br />{row.sku}</td><td>{row.available}</td>
@@ -207,14 +232,15 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
           </tr>)}</tbody>
         </table>
       </div>}
+      {production && !transfer && <label>Reason<textarea placeholder="Reason for this adjustment" value={reason} onChange={event => setReason(event.target.value)} maxLength={800} required /></label>}
     </fieldset>
     {transfer && !productionOutlet && <fieldset className="panel padded" disabled={saving || !ready}>
       <legend>Additional Expenses</legend>
       {expenses.map((row, index) => <div key={row.id} className={styles.fields}>
-        <label>Expense type {index + 1}<input value={row.type} onChange={event => editExpense(row.id, { type: event.target.value })} required maxLength={120} /></label>
-        <label>Expense amount {index + 1}<input type="number" value={row.amount} onChange={event => editExpense(row.id, { amount: event.target.value })}
+        <label>{production ? 'Expense Type' : 'Expense type ' + (index + 1)}<input value={row.type} placeholder={production ? 'e.g., Shipping, Tax, Handling' : undefined} onChange={event => editExpense(row.id, { type: event.target.value })} required maxLength={120} /></label>
+        <label>{production ? 'Amount' : 'Expense amount ' + (index + 1)}<input type="number" value={row.amount} onChange={event => editExpense(row.id, { amount: event.target.value })}
           required min="0" max="10000000" step="0.01" /></label>
-        <label>Expense note {index + 1}<input value={row.note} onChange={event => editExpense(row.id, { note: event.target.value })} maxLength={500} /></label>
+        <label>{production ? 'Note' : 'Expense note ' + (index + 1)}<input placeholder={production ? 'Optional note' : undefined} value={row.note} onChange={event => editExpense(row.id, { note: event.target.value })} maxLength={500} /></label>
         <button type="button" className="button subtle" onClick={() => setExpenses(current => current.filter(expense => expense.id !== row.id))}>
           Remove expense {index + 1}</button>
       </div>)}
@@ -228,7 +254,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
         {productionOutlet ? saving ? 'Updating' : 'Confirm Update' : saving ? 'Recording…' :
           transfer ? 'Record stock transfer' : 'Record stock adjustment'}
       </button>
-      <Link className="button subtle" href={stockChangeHistory(mode, region)}>Cancel</Link>
+      {!production && <Link className="button subtle" href={stockChangeHistory(mode, region)}>Cancel</Link>}
     </div>
     {feedback && <p role={feedback.error ? 'alert' : 'status'}>{feedback.message}</p>}
   </form>;

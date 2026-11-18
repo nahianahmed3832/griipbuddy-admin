@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { api, ApiError, canWrite, url, type Session } from '@/lib/api';
 import type { Region } from '@/lib/sections';
 import { canAccessStockChanges, isStockTransfer, stockChangeApi, stockChangeHistory, stockChangeTitle, type StockChangeLocation,
@@ -6,9 +7,10 @@ import { canAccessStockChanges, isStockTransfer, stockChangeApi, stockChangeHist
 import { PageHeading } from './dashboard';
 import { StockChangesForm } from './stock-changes-form';
 import { WarehouseInventory } from './warehouse-inventory';
+import styles from './production-product-editor.module.css';
 
-export async function StockChangesPage({ auth, region, mode, productionOutlet = false, outletId }: {
-  auth: Session; region: Region; mode: StockChangeMode; productionOutlet?: boolean; outletId?: string;
+export async function StockChangesPage({ auth, region, mode, production = false, productionOutlet = false, outletId }: {
+  auth: Session; region: Region; mode: StockChangeMode; production?: boolean; productionOutlet?: boolean; outletId?: string;
 }) {
   if (!canWrite(auth.staff) || !canAccessStockChanges(auth.staff, mode)) throw new ApiError(403);
   const locations = await api(url(stockChangeApi + '/locations', { region }), auth.token) as StockChangeLocation[];
@@ -19,6 +21,16 @@ export async function StockChangesPage({ auth, region, mode, productionOutlet = 
     <StockChangesForm locations={locations} region={region} mode={mode} productionOutlet
       initialOutlet={locations.find(location => location.type === 'OUTLET' && location.id === outletId)?.id}/>
   </>;
+  if (production) {
+    const history = url('/dashboard/' + (transfer ? 'stock-transfer/all' : 'stock-adjustment/all'), { region: region === 'INTERNATIONAL' ? region : undefined });
+    return <section className={styles.editor}>
+      <header className={styles.pageHeading}>
+        {transfer && <Link className={styles.back} href={history} aria-label="Back to stock transfers"><ChevronLeft size={16}/></Link>}
+        <h1 className={styles.heading}>{stockChangeTitle[mode]}</h1>
+      </header>
+      <StockChangesForm locations={locations} region={region} mode={mode} production/>
+    </section>;
+  }
   return <>
     <PageHeading eyebrow="COMMERCE / INVENTORY" title={stockChangeTitle[mode]}
       description={transfer ? 'Choose where to move the stock and record any costs for the transfer.' : 'Record a stock addition or deduction across product variants.'}>

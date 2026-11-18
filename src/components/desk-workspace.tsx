@@ -210,7 +210,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         : production.path === '/dashboard/inventory/transfer-history' ? 'inventory' : 'transfer' });
     }
     else if (sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && view[1] === 'create') {
-      content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer' });
+      content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer', production: Boolean(production) });
     }
     else if (sectionId === 'inventory' && (active === 'outlet-update' || active === 'warehouse-update') && view.length === 1) {
       content = await StockChangesPage({auth, region, mode: active,
