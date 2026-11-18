@@ -9,20 +9,26 @@ export type HybridShipment = {
   events?: { status: string; recordedAt: string; evidence?: string | null }[];
 };
 
+export type HybridReturnCost = { amountMinor: number; evidenceReference?: string };
+export type HybridReturnCostReceipt = { caseId?: string; receivedAt: string; quantity: number; cost?: HybridReturnCost | null };
+
 export type HybridFulfillment = {
   status: string;
   step: string;
   payment: { method: string; status: string; amountMinor: number } | null;
   shipment: HybridShipment | null;
-  receipt: { receivedAt: string; disposition: 'RESTOCK' | 'HOLD'; restockedUnits: number; note?: string } | null;
+  receipt: { receivedAt: string; disposition: 'RESTOCK' | 'HOLD'; restockedUnits: number; note?: string; returnCost?: HybridReturnCost | null } | null;
   manualPayment: { transaction: string | null } | null;
   editable: boolean;
   canReturn: boolean;
   shippingWarehouse?: string;
   warehouseChoices?: { value: string; label: string }[];
+  canRecordReturnCost?: boolean;
+  returnCostReceipts?: HybridReturnCostReceipt[];
 };
 
 export type HybridCommand =
+  | { action: 'record-return-cost'; caseId?: string; amountMinor: number; evidence: string }
   | { action: 'advance'; next: HybridFulfillmentStep; carrier?: string; trackingReference?: string; simulate?: boolean; warehouseId?: string }
   | { action: 'track'; status: HybridTrackingStep; evidence?: string }
   | { action: 'receive'; disposition: 'RESTOCK' | 'HOLD'; note: string }

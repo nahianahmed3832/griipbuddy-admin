@@ -67,6 +67,22 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
       {receipt && <p>Parcel received {orderDate(receipt.receivedAt, 'BD')}. {receipt.disposition === 'RESTOCK'
         ? `${receipt.restockedUnits} ${receipt.restockedUnits === 1 ? 'unit' : 'units'} returned to stock.` : 'Stock held for inspection.'}</p>}
       {receipt?.note && <p className={styles.hybridEvidence}>Warehouse note: {receipt.note}</p>}
+      {state.returnCostReceipts?.map(receipt => {
+        const label = receipt.caseId ? 'Customer return' : 'Refused parcel';
+        return <div key={receipt.caseId || 'refused-parcel'}>
+          {receipt.caseId && <p>{label} received {orderDate(receipt.receivedAt, 'BD')}. {receipt.quantity} {receipt.quantity === 1 ? 'unit' : 'units'} returned to stock.</p>}
+          {receipt.cost ? <p>Returned cost: {money(receipt.cost.amountMinor / 100, 'BDT')}
+            {receipt.cost.evidenceReference && <> · Purchase reference: {receipt.cost.evidenceReference}</>}</p>
+            : state.canRecordReturnCost && <form method="post" className={styles.operationForm} aria-label={label + ' cost'} onSubmit={event => void submit(event, fields => ({
+              action: 'record-return-cost', caseId: receipt.caseId, amountMinor: Math.round(Number(field(fields, 'returnCost')) * 100),
+              evidence: field(fields, 'purchaseReference'),
+            }))}>
+              <label>Returned purchase cost (BDT)<input name="returnCost" type="number" min="0" max="21474836.47" step="0.01" required disabled={!ready || busy}/></label>
+              <label>Purchase or lot reference<input name="purchaseReference" minLength={3} maxLength={120} required disabled={!ready || busy}/></label>
+              <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Record return cost</button>
+            </form>}
+        </div>;
+      })}
       {notice && <p role={notice.error ? 'alert' : 'status'} className="notice">{notice.message}</p>}
       {next && <form method="post" className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
         ...(next === 'SHIPPED' && { warehouseId: field(fields, 'warehouseId'), ...(simulatedHandoff ? { simulate: true }

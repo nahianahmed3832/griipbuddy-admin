@@ -262,6 +262,9 @@ export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData 
   const receipts = periodActivity(hybrid.orders, period).returns;
   const paidRefund = hybrid.orders.filter(order => order.wasDelivered).reduce((sum, order) => sum + order.returns.reduce((subtotal, receipt) =>
     subtotal + (within(receipt.confirmedAt, period) ? receipt.confirmedMinor ?? 0 : 0), 0), 0) / 100;
+  const costReceipts = hybrid.orders.flatMap(order => order.inventoryReceipts ?? []).filter(receipt => within(receipt.receivedAt, period));
+  const returnedCost = costReceipts.reduce((sum, receipt) => sum + (receipt.costMinor ?? 0), 0) / 100;
+  const missingCosts = costReceipts.filter(receipt => receipt.costMinor == null).length;
   const returnedUnits = receipts.reduce((sum, receipt) => sum + receipt.lines.reduce((qty, line) => qty + line.quantity, 0), 0);
   const byDay = new Map<string, number>();
   for (const order of placed) {
@@ -273,10 +276,14 @@ export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData 
     totalOrdersAmount: round(numeric(native.totalOrdersAmount) + hybridTotals.value / 100),
     totalOrdersDiscount: round(numeric(native.totalOrdersDiscount) + hybridTotals.discount / 100),
   }, returns: { ...returns, totalRefund: round(numeric(returns.totalRefund) + paidRefund),
+    ...(costReceipts.length && { totalReturnedCost: round(numeric(returns.totalReturnedCost) + returnedCost) }),
     total_quantity: numeric(returns.total_quantity) + returnedUnits, count: numeric(returns.count) + receipts.length,
   } }, daily: arr(report.daily).map(obj).map(row => ({ ...row, orders: round(numeric(row.orders) + (byDay.get(str(row.date).slice(0, 10)) ?? 0) / 100) })) },
   note: placed.length ? 'Online order amount, discounts, quantity and count include Hybrid checkout. Due and profit figures use legacy records.' : undefined,
-  returnNote: receipts.length || paidRefund ? 'Includes Hybrid returns by receipt date and refunds by confirmation date. Returned cost uses legacy records.' : undefined };
+  returnNote: [
+    receipts.length || paidRefund ? 'Includes Hybrid returns by receipt date and refunds by confirmation date.' : '',
+    missingCosts ? 'Purchase-cost evidence is missing for ' + missingCosts + ' Hybrid ' + (missingCosts === 1 ? 'return receipt.' : 'return receipts.') : '',
+  ].filter(Boolean).join(' ') || undefined };
 }
 
 export function mergeHybridSalesReport(data: RecordData, orders: HybridReportOrder[]) {

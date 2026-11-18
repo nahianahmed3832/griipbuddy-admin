@@ -31,7 +31,7 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   const period = { from: from || '1970-01-01', to: to || today };
   const [legacy, hybrid] = await Promise.all([
     api(url('/report/business-report', { region, businessLocationId: location, startDate: period.from, endDate: period.to }), auth.token),
-    loadHybridReportOrders(auth, region, { locations: location, ...period, milestones: true }),
+    loadHybridReportOrders(auth, region, { locations: location, ...period, milestones: true, returnCosts: true }),
   ]);
   const { report, note, returnNote } = mergeHybridClassic(obj(legacy), hybrid, period);
   const orderMoney = (value: unknown) => region === 'BD' ? money(value) : whole(value) + '\u00a0USD';
@@ -62,7 +62,9 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
     ] },
     { title: 'Returns', kind: 'returns', Icon: RotateCcw, cards: [
       ['Total Refund', money(returns.totalRefund), DollarSign],
-      ['Total Returned Cost', money(returns.totalReturnedCost), Boxes],
+      ...(has(auth.staff, 'purchase.price.view') ? [['Total Returned Cost',
+        (typeof returns.totalReturnedCost === 'number' ? returns.totalReturnedCost : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + '\u00a0TK',
+        Boxes] as const] : []),
       ['Quantity Returned', units(returns.total_quantity), Boxes],
       ['Return Count', whole(returns.count), Users],
     ] },
