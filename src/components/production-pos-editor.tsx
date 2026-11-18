@@ -3,7 +3,7 @@
 import { ArrowLeft, CalendarDays, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import { dateLabel, posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, posTimeZone,
   type PosDiscount, type PosItem, type PosLine, type PosReceipt } from '@/lib/pos';
@@ -50,6 +50,14 @@ function DiscountSelect({ discount, onChange, label }: { discount: PosDiscount; 
   </select>;
 }
 
+function DiscountToggle({ discount, onChange, label }: { discount: PosDiscount; onChange: (value: PosDiscount) => void; label: string }) {
+  return <span className={styles.discountToggle}>
+    <input type="checkbox" role="switch" aria-label={label} checked={discount.type === 'PERCENTAGE'}
+      onChange={event => onChange({ ...discount, type: event.currentTarget.checked ? 'PERCENTAGE' : 'FLAT' })}/>
+    {discount.type === 'PERCENTAGE' ? 'Percentage' : 'TK'}
+  </span>;
+}
+
 export function ProductionPosEditor({ draft, locations, canSearchCustomers, canCreateCustomer }: {
   draft: ProductionSaleDraft; locations: Choice[]; canSearchCustomers: boolean; canCreateCustomer: boolean;
 }) {
@@ -69,6 +77,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const [newName, setNewName] = useState('');
   const [searchedPhone, setSearchedPhone] = useState('');
   const [matches, setMatches] = useState<PosItem[]>([]);
+  const [searching, setSearching] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
@@ -76,7 +85,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const [receipt, setReceipt] = useState<PosReceipt>();
   const writeId = useRef('');
   const barcodeInput = useRef<HTMLInputElement>(null);
-  const saved = useRef(false);
+  const submitting = useRef(false);
 
   useEffect(() => {
     if (!location || search.trim().length < 2) return;
@@ -87,6 +96,8 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
         setMatches(result);
       } catch {
         if (!abort.signal.aborted) setMatches([]);
+      } finally {
+        if (!abort.signal.aborted) setSearching(false);
       }
     }, 200);
     return () => { clearTimeout(timer); abort.abort(); };
@@ -109,18 +120,55 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
 
   useEffect(() => {
     if (!receipt) return;
-    const cleanup = () => router.push(posRegisterPath);
+    const cleanup = () => setReceipt(undefined);
     window.addEventListener('afterprint', cleanup, { once: true });
     let printing = true;
     const image = document.querySelector<HTMLImageElement>('#invoice-print-area img');
     void (image?.decode() ?? Promise.resolve()).catch(() => {}).then(() => { if (printing) window.print(); });
     return () => { printing = false; window.removeEventListener('afterprint', cleanup); };
-  }, [receipt, router]);
+  }, [receipt]);
+
+  const readScanner = useEffectEvent((value: string) => { void scan(value); });
+  useEffect(() => {
+    if (draft.id || !location || customerOpen || busy || receipt) return;
+    let barcode = '';
+    let lastKey = 0;
+    let timer: number | undefined;
+    function flush() {
+      const captured = barcode;
+      barcode = '';
+      window.clearTimeout(timer);
+      if (captured.length >= 10 && captured.length <= 100) readScanner(captured);
+    }
+    function collect(event: globalThis.KeyboardEvent) {
+      const active = document.activeElement;
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
+          active?.matches('input, textarea, select') || (active instanceof HTMLElement && active.isContentEditable)) return;
+      if (event.key === 'Enter' && barcode.length >= 10) {
+        event.preventDefault();
+        flush();
+      } else if (event.key.length === 1) {
+        const now = performance.now();
+        if (now - lastKey > 35) barcode = '';
+        barcode += event.key;
+        lastKey = now;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(flush, 200);
+      }
+    }
+    window.addEventListener('keydown', collect);
+    return () => { window.removeEventListener('keydown', collect); window.clearTimeout(timer); };
+    // The Effect Event reads current sale state without resetting the scanner buffer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id, location, customerOpen, busy, receipt]);
 
   const gross = lines.reduce((sum, line) => sum + Math.round(line.regularPrice * 100) * Number(line.quantity || 0), 0);
   const subtotal = lines.reduce((sum, line) => sum + posLineTotal(line), 0);
   const overallMinor = posDiscountMinor(subtotal, overall);
   const total = subtotal - overallMinor;
+  useEffect(() => {
+    if (!draft.id) setPaid(lines.length ? String(total / 100) : '');
+  }, [draft.id, lines.length, total]);
   const balance = total / 100 - Number(paid || 0);
   const due = draft.id ? balance : Math.max(0, balance);
   const currency = (value: number) => (draft.id ? '৳ ' : '') + posMoney(value / 100);
@@ -132,7 +180,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     ...(Number(paid || 0) > total / 100 ? [['Change', posMoney(Number(paid) - total / 100)]] : []),
   ];
 
-  function clearProductSearch() { setSearch(''); setMatches([]); }
+  function clearProductSearch() { setSearch(''); setMatches([]); setSearching(false); }
 
   function add(item: PosItem) {
     setLines(current => {
@@ -146,15 +194,16 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     clearProductSearch();
   }
 
-  async function scan() {
-    if (!location || search.trim().length < 2 || scanBusy) {
+  async function scan(raw = search) {
+    const barcode = raw.trim();
+    if (!location || barcode.length < 2 || lines.length >= 20 || scanBusy) {
       barcodeInput.current?.focus();
       return;
     }
     setScanBusy(true);
     setError('');
     try {
-      const result = await posGet<PosItem[]>({ action: 'scan', location, q: search.trim() });
+      const result = await posGet<PosItem[]>({ action: 'scan', location, q: barcode });
       if (!result.length) throw Error('No item found for this barcode at the selected location.');
       add(result[0]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The barcode was not recognized.'); }
@@ -175,12 +224,14 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || saved.current) return;
+    if (submitting.current || receipt || !lines.length || !location) return;
+    submitting.current = true;
     setBusy(true);
     setError('');
     if (!writeId.current) writeId.current = crypto.randomUUID().replaceAll('-', '').slice(0, 24);
     const shouldPrint = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value === 'print';
-    const form = new FormData(event.currentTarget);
+    const editor = event.currentTarget;
+    const form = new FormData(editor);
     const values = {
       ...Object.fromEntries(form), saleDate: String(form.get('saleDate') ?? ''),
       location, customer: phone, customerName, newCustomer, production: true, print: shouldPrint, id: draft.id, revision: draft.revision,
@@ -197,16 +248,29 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     try {
       const quote = await save<SaleTotals>('pos-quote');
       if (Math.round(quote.total * 100) !== total) throw Error('The catalog price changed. Remove the item and search for it again.');
-      const result = await save<{ receipt?: PosReceipt }>('pos', quote.total);
-      saved.current = true;
-      if (shouldPrint && result.receipt) {
-        setReceipt(result.receipt);
-      } else {
+      const result = await save<{ id: string; receipt?: PosReceipt }>('pos', quote.total);
+      if (!result.id) throw Error('The sale was not confirmed.');
+      if (draft.id) {
         router.push(posRegisterPath);
         router.refresh();
+      } else {
+        writeId.current = '';
+        editor.reset();
+        clearProductSearch();
+        setPhone('');
+        setCustomerName('');
+        setNewCustomer(false);
+        setLines([]);
+        setOverall({ type: 'FLAT', value: '' });
+        setMethod('Cash');
+        setPaid('');
+        if (shouldPrint && result.receipt) setReceipt(result.receipt);
+        window.dispatchEvent(new CustomEvent('griip-admin-saved', {
+          detail: shouldPrint && result.receipt ? 'Sale created successfully! Print window opening…' : 'Sale created successfully!',
+        }));
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The sale was not confirmed.'); }
-    finally { setBusy(false); }
+    finally { submitting.current = false; setBusy(false); }
   }
   const disabled = !location || !lines.length || busy || Boolean(receipt);
   return <section className={styles.root}>
@@ -249,22 +313,33 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
           {!draft.id && <label htmlFor="pos-product-query">Add Product</label>}
           <div className={styles.scanField}><input type="text" ref={barcodeInput} id="pos-product-query"
             placeholder={draft.id ? 'Search by SKU' : 'Scan barcode or search by product name or sku or slug'} aria-label="Add Product"
-            value={search} onChange={event => { setSearch(event.target.value); setMatches([]); }} onKeyDown={searchKey} disabled={!location || lines.length >= 20}/>
+            value={search} onChange={event => {
+              const value = event.target.value;
+              setSearch(value);
+              setMatches([]);
+              setSearching(value.trim().length >= 2);
+            }} onKeyDown={searchKey} disabled={!location || lines.length >= 20}/>
             {!draft.id && <button type="button" className={styles.outline} aria-label="Scan barcode" onClick={() => void scan()} disabled={!location || scanBusy || lines.length >= 20}><Scan size={18}/></button>}
           </div>
-          {!!matches.length && <ul className={styles.suggestions}>{matches.map(item => <li key={item.sku}><button type="button" onClick={() => add(item)}>
-            <strong>{item.name}</strong> <small>{item.sku}</small> <span>৳ {posMoney(item.regularPrice)}</span>
-          </button></li>)}</ul>}
+          {search.trim().length >= 2 && <ul className={styles.suggestions}>
+            {searching ? <li className={styles.searchStatus} role="status">Searching…</li>
+              : !matches.length && <li className={styles.searchStatus} role="status">No variants found.</li>}
+            {matches.map(item => <li key={item.sku}><button type="button" onClick={() => add(item)}>
+              <strong>{item.name || item.sku}{item.attributes && ' (' + item.attributes + ')'}</strong>
+              <small>SKU: {item.sku} | Sale Price: {posMoney(item.salePrice)} | Regular Price: {posMoney(item.regularPrice)}{item.available !== undefined && ' | Stock: ' + item.available}</small>
+            </button></li>)}
+          </ul>}
         </div>
         <div className={styles.table}><table><thead><tr><th>{draft.id ? 'Product' : 'Product SKU'}</th>
           {['Qty', 'Regular Price', 'Discount Type', 'Discount Value', 'Total', 'Action'].map(label => <th key={label}>{label}</th>)}</tr></thead>
           <tbody>{!lines.length && <tr><td colSpan={7} className={styles.empty}>Your cart is empty. Add products to get started.</td></tr>}
             {lines.map(line => <tr key={line.sku}>
-              <td>{draft.id ? <>{line.name || line.sku}<small>SKU: {line.sku}</small></> : line.sku}</td>
+              <td>{line.name || line.sku}{line.attributes && ' (' + line.attributes + ')'}<small>SKU: {line.sku}</small></td>
               <td><input aria-label={'Quantity for ' + line.sku} type="number" min="1" max="1000" required value={line.quantity}
                 onChange={event => changeLine(line.sku, { quantity: event.target.value })}/></td>
               <td>৳ {posMoney(line.regularPrice)}</td>
-              <td><DiscountSelect label={'Discount type for ' + line.sku} discount={line.discount} onChange={discount => changeLine(line.sku, { discount })}/></td>
+              <td>{draft.id ? <DiscountSelect label={'Discount type for ' + line.sku} discount={line.discount} onChange={discount => changeLine(line.sku, { discount })}/>
+                : <DiscountToggle label={'Percentage discount for ' + line.sku} discount={line.discount} onChange={discount => changeLine(line.sku, { discount })}/>}</td>
               <td><input aria-label={'Discount value for ' + line.sku} type="number" min="0" max={line.discount.type === 'PERCENTAGE' ? 100 : undefined}
                 step="0.01" value={line.discount.value} onChange={event => changeLine(line.sku, { discount: { ...line.discount, value: event.target.value } })}/></td>
               <td>{draft.id ? <input value={posLineTotal(line) / 100} readOnly aria-label={'Total for ' + line.sku}/> : '৳ ' + posMoney(posLineTotal(line) / 100)}</td>
@@ -283,9 +358,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
         <div className={styles.paymentFields}>
           <div className={styles.overall}>
             {draft.id ? <label>Overall Discount Type<DiscountSelect label="Overall Discount Type" discount={overall} onChange={setOverall}/></label>
-              : <label>Overall Discount<span><input type="checkbox" checked={overall.type === 'PERCENTAGE'} onChange={event => setOverall({ ...overall,
-                type: event.target.checked ? 'PERCENTAGE' : 'FLAT',
-              })}/>{overall.type === 'PERCENTAGE' ? '%' : 'TK'}</span></label>}
+              : <label>Overall Discount<DiscountToggle label="Overall percentage discount" discount={overall} onChange={setOverall}/></label>}
             <label>{draft.id && 'Overall Discount Value'}<input aria-label="Overall Discount Value" type="number" min="0" max={overall.type === 'PERCENTAGE' ? 100 : undefined}
               step="0.01" value={overall.value} onChange={event => setOverall({ ...overall, value: event.target.value })}/></label>
           </div>

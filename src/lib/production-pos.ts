@@ -112,6 +112,7 @@ function stockItem(stock: RecordData): PosItem {
   const variant = obj(stock.variant);
   return {
     sku: str(variant.sku), name: str(obj(stock.product).name), regularPrice: number(variant.regular_price),
+    attributes: Object.values(obj(variant.attribute_values)).map(str).filter(Boolean).join(' - '),
     salePrice: number(variant.sale_price), barcode: str(variant.barcode), available: number(stock.available_quantity),
   };
 }

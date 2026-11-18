@@ -55,7 +55,7 @@ export type PosReceipt = {
 };
 
 export type PosDiscount = { type: string; value: string };
-export type PosItem = { sku: string; name: string; regularPrice: number; salePrice: number; barcode?: string; available?: number };
+export type PosItem = { sku: string; name: string; attributes?: string; regularPrice: number; salePrice: number; barcode?: string; available?: number };
 export type PosLine = PosItem & { quantity: string; discount: PosDiscount };
 
 export function posLineTotal(line: PosLine) {

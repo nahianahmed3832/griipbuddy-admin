@@ -37,6 +37,7 @@ export async function SaleWorkspace({ auth, id, region, production = false }: { 
     const paymentMethod = [...posMethods, 'Bank transfer'].find(method => method.toLowerCase() === draft.paymentMethod.toLowerCase()) || 'Other';
     const lines = arr(sale.products).map(obj).map((row, index) => ({
       ...draft.lines[index], name: str(obj(row.product).name),
+      attributes: Object.values(obj(obj(row.selected_variant).attribute_values)).map(str).filter(Boolean).join(' - '),
       regularPrice: Number(obj(row.selected_variant).regular_price) || 0,
       salePrice: Number(obj(row.selected_variant).sale_price) || 0,
     }));
