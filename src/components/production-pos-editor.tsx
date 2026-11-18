@@ -1,10 +1,12 @@
 'use client';
 
 import { ArrowLeft, CalendarDays, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
-import { dateLabel, posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, type PosDiscount, type PosItem, type PosLine } from '@/lib/pos';
+import { dateLabel, posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, posTimeZone,
+  type PosDiscount, type PosItem, type PosLine, type PosReceipt } from '@/lib/pos';
 import type { SaleDraft } from './pos-editor';
 import styles from './production-pos-editor.module.css';
 
@@ -12,7 +14,29 @@ type Choice = { value: string; label: string };
 type Customer = { phone: string; name: string };
 type ProductionSaleDraft = Omit<SaleDraft, 'lines'> & { serial: string; day: string; customerName: string; lines: PosLine[] };
 type SaleTotals = { subtotal: number; itemDiscount: number; discount: number; total: number };
-type Receipt = { invoice: string; serial: string; date: string; lines: PosLine[]; totals: SaleTotals; paid: number };
+const receiptDate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: posTimeZone, hour12: true });
+
+function SaleReceipt({ receipt }: { receipt: PosReceipt }) {
+  return <section id="invoice-print-area" className={styles.receipt}>
+    <header>
+      <Image src={adminPath('/production-admin/griipbuddy-wordmark.png')} alt="GriipBuddy" width={110} height={22} unoptimized loading="eager"/>
+      {receipt.location && <strong>{receipt.location}</strong>}
+      {receipt.address && <p>{receipt.address}</p>}
+      {receipt.contact && <p>Contact: {receipt.contact}</p>}
+    </header>
+    <h2>INVOICE</h2>
+    <dl>{[['Sale Id', '#' + receipt.serial], ['Date', receipt.date && receiptDate.format(new Date(receipt.date))],
+      ['Customer', [receipt.customer, receipt.phone].filter(Boolean).join(' ')]].map(([label, value]) =>
+      <div key={label}><dt>{label}:</dt><dd>{value}</dd></div>)}</dl>
+    <table><thead><tr><th scope="col">Items</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead>
+      <tbody>{receipt.lines.map(line => <tr key={line.sku}>
+        <td>{line.sku}{line.attributes && ' (Size: ' + line.attributes + ')'}</td><td>{line.quantity}</td><td>{posMoney(line.price)} Tk</td>
+      </tr>)}</tbody></table>
+    <dl>{[['Sub Total', receipt.subtotal], ['Discount', receipt.discount], ['Total', receipt.total],
+      [receipt.method || 'Paid', receipt.paid], ['Total Paid', receipt.paid]].map(([label, value]) =>
+      <div key={label}><dt>{label}:</dt><dd>{posMoney(Number(value))} Tk</dd></div>)}</dl>
+  </section>;
+}
 
 async function posGet<T>(values: Record<string, string>, signal?: AbortSignal): Promise<T> {
   const response = await fetch(adminPath('/api/pos') + '?' + new URLSearchParams(values), { signal });
@@ -49,7 +73,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [error, setError] = useState('');
-  const [receipt, setReceipt] = useState<Receipt>();
+  const [receipt, setReceipt] = useState<PosReceipt>();
   const writeId = useRef('');
   const barcodeInput = useRef<HTMLInputElement>(null);
   const saved = useRef(false);
@@ -87,8 +111,10 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     if (!receipt) return;
     const cleanup = () => router.push(posRegisterPath);
     window.addEventListener('afterprint', cleanup, { once: true });
-    const frame = requestAnimationFrame(() => window.print());
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('afterprint', cleanup); };
+    let printing = true;
+    const image = document.querySelector<HTMLImageElement>('#invoice-print-area img');
+    void (image?.decode() ?? Promise.resolve()).catch(() => {}).then(() => { if (printing) window.print(); });
+    return () => { printing = false; window.removeEventListener('afterprint', cleanup); };
   }, [receipt, router]);
 
   const gross = lines.reduce((sum, line) => sum + Math.round(line.regularPrice * 100) * Number(line.quantity || 0), 0);
@@ -157,7 +183,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     const form = new FormData(event.currentTarget);
     const values = {
       ...Object.fromEntries(form), saleDate: String(form.get('saleDate') ?? ''),
-      location, customer: phone, customerName, newCustomer, production: true, id: draft.id, revision: draft.revision,
+      location, customer: phone, customerName, newCustomer, production: true, print: shouldPrint, id: draft.id, revision: draft.revision,
       requestId: writeId.current, discount: { ...overall, value: overall.value || '0' },
       lines: lines.map(({ sku, quantity, discount }) => ({ sku, quantity, discount: { ...discount, value: discount.value || '0' } })),
     };
@@ -171,11 +197,10 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     try {
       const quote = await save<SaleTotals>('pos-quote');
       if (Math.round(quote.total * 100) !== total) throw Error('The catalog price changed. Remove the item and search for it again.');
-      const result = await save<{ id: string; invoice: string; serial: string }>('pos', quote.total);
+      const result = await save<{ receipt?: PosReceipt }>('pos', quote.total);
       saved.current = true;
-      if (shouldPrint) {
-        setReceipt({ invoice: result.invoice, serial: result.serial, date: String(values.saleDate),
-          lines, totals: quote, paid: Number(paid || 0) });
+      if (shouldPrint && result.receipt) {
+        setReceipt(result.receipt);
       } else {
         router.push(posRegisterPath);
         router.refresh();
@@ -278,11 +303,6 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
       </aside>
       {draft.id && <div className={styles.editButtons}><button type="submit" className={styles.primary} disabled={disabled}>Update Sale</button></div>}
     </form>
-    {receipt && <section className={styles.receipt}><h2>Sales Invoice #{receipt.serial}</h2>
-      <p>{receipt.invoice} · {receipt.date}</p>
-      <table><thead><tr><th>Product</th><th>Qty</th><th>Total</th></tr></thead><tbody>{receipt.lines.map(line =>
-        <tr key={line.sku}><td>{line.name || line.sku}</td><td>{line.quantity}</td><td>৳ {posMoney(posLineTotal(line) / 100)}</td></tr>)}</tbody></table>
-      <p>Grand Total ৳ {posMoney(receipt.totals.total)}</p><p>Paid ৳ {posMoney(receipt.paid)}</p>
-    </section>}
+    {receipt && <SaleReceipt receipt={receipt}/>}
   </section>;
 }

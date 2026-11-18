@@ -48,6 +48,12 @@ export function dateLabel(day: string, short = false) {
 
 export const posMoney = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 
+export type PosReceipt = {
+  serial: string; date: string; location: string; address: string; contact: string;
+  customer: string; phone: string; method: string; subtotal: number; discount: number; total: number; paid: number;
+  lines: { sku: string; attributes: string; quantity: number; price: number }[];
+};
+
 export type PosDiscount = { type: string; value: string };
 export type PosItem = { sku: string; name: string; regularPrice: number; salePrice: number; barcode?: string; available?: number };
 export type PosLine = PosItem & { quantity: string; discount: PosDiscount };

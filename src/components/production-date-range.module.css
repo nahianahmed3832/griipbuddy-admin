@@ -1,0 +1,18 @@
+.field { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.preset { display: grid; gap: 8px; }
+.preset > span { font-weight: 500; }
+.control, .button {
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+  color: #111113;
+  border: 1px solid #dfdfe4;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px #1717170a;
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.control { min-width: 160px; justify-content: space-between; gap: 12px; }
+.button { min-width: min(240px, 100%); gap: 8px; text-align: left; }

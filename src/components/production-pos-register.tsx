@@ -42,7 +42,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
         {filters.canViewStaff && <label>Sale Created By<select name="createdBy" defaultValue={creator} aria-label="Sale Created By">
           <option value="">All</option>{staff.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select></label>}
-        <PosRangeFilter from={from || today} to={to || today} range={range}/>
+        <PosRangeFilter key={JSON.stringify([range, from, to])} from={from} to={to} range={range} today={today}/>
         <div className={styles.filterButtons}>
           <a className={styles.primary} href={adminPath(url(posRegisterPath, { size: String(size) }))}>Clear Filter</a>
         </div>

@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, EllipsisVertical, ExternalLink, FileSpreadsheet, Filter, History, X } from 'lucide-react';
+import { EllipsisVertical, ExternalLink, FileSpreadsheet, Filter, History, X } from 'lucide-react';
 import {
   inboundPreOrderStatuses, outboundPreOrderStatuses, preOrderItems, preOrderMedia, preOrderNumber, preOrderProduct,
   preOrderRequest, preOrderRequestUrl, preOrderStatuses, preOrderUrl, productionPreOrderSizes, productionPreOrdersPath, statusText,
   type PreOrderFilters, type PreOrderRow,
 } from '@/lib/preorders';
-import { OrderDateRangeCalendar } from './order-date-range-calendar';
+import type { PosRange } from '@/lib/pos';
+import { ProductionDateRange } from './production-date-range';
 import { ProductionPreOrderActionDialog, type ProductionPreOrderAction } from './preorders-production-actions';
 import { PreOrderPicture, PreOrderStatus } from './preorders-production-media';
 import styles from './preorders.module.css';
@@ -22,8 +23,6 @@ const callDate = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', date
 const orderDay = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', month: 'numeric', day: 'numeric', year: 'numeric' });
 const stamp = (value?: string, dateOnly = false) => value && Number.isFinite(Date.parse(value))
   ? (dateOnly ? orderDay : callDate).format(new Date(value)) : '—';
-const rangeDate = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit' });
-const displayDate = (value: string) => Number.isFinite(Date.parse(value)) ? rangeDate.format(new Date(value + 'T00:00:00Z')) : '—';
 const groups = [['China → Bangladesh', inboundPreOrderStatuses], ['Bangladesh → Customer', outboundPreOrderStatuses], ['Other', preOrderStatuses.slice(10)]] as const;
 const columns = [
   ['Actions', 66], ['Pre-Order Id', 137], ['Date', 80], ['Product / Reference', 276], ['Customer Info', 236],
@@ -35,19 +34,16 @@ type Dialog = { kind: ProductionPreOrderAction; row?: PreOrderRow; ids?: string[
 export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, pageSize, counts, access, mediaOrigin, today }: Props) {
   const router = useRouter();
   const [local, setLocal] = useState(filters);
-  const [calendar, setCalendar] = useState(false);
-  const [preset, setPreset] = useState(filters.from || filters.to ? 'custom' : 'all');
+  const [preset, setPreset] = useState<PosRange>(filters.from || filters.to ? 'Custom Range' : 'All Time');
   const [selected, setSelected] = useState<string[]>([]);
   const [dialog, setDialog] = useState<Dialog>();
   const [message, setMessage] = useState('');
   const [calling, setCalling] = useState('');
-  const dateTrigger = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const selectAll = useRef<HTMLInputElement>(null);
   const selectedVisible = selected.filter(id => rows.some(row => row._id === id));
   const some = selectedVisible.length > 0 && selectedVisible.length < rows.length;
   const all = rows.length > 0 && selectedVisible.length === rows.length;
-  const range = { from: local.from ?? '', to: local.to ?? '' };
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -62,19 +58,6 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
     const go = () => router.replace(destination, { scroll: false });
     if (delay) timer.current = setTimeout(go, delay);
     else go();
-  }
-  function datePreset(value: string) {
-    setPreset(value);
-    if (value === 'custom') { setCalendar(true); return; }
-    setCalendar(false);
-    const from = new Date(today + 'T00:00:00Z');
-    if (value === 'yesterday') from.setUTCDate(from.getUTCDate() - 1);
-    if (value === 'last7') from.setUTCDate(from.getUTCDate() - 6);
-    if (value === 'last30') from.setUTCDate(from.getUTCDate() - 29);
-    if (value === 'month') from.setUTCDate(1);
-    const key = from.toISOString().slice(0, 10);
-    navigate({ ...local, from: value === 'all' ? undefined : key,
-      to: value === 'all' ? undefined : value === 'yesterday' ? key : today });
   }
   async function markCalled(row: PreOrderRow) {
     if (calling) return;
@@ -98,17 +81,10 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
       <form className={styles.filterFields} onSubmit={event => { event.preventDefault(); navigate(local); }}>
         <label>Search<input className={styles.searchField} type="search" placeholder="PO id, phone, name, product" value={local.q ?? ''} maxLength={100}
           onChange={event => navigate({ ...local, q: event.target.value }, 1, pageSize, 400)}/></label>
-        <div className={styles.filterDate}><span>Date Range</span><div className={styles.inline}>
-          <select aria-label="Date range preset" value={preset} onChange={event => datePreset(event.target.value)}>
-            {Object.entries({ all: 'All Time', today: 'Today', yesterday: 'Yesterday', last7: 'Last 7 Days', last30: 'Last 30 Days', month: 'This Month', custom: 'Custom Range' }).map(([value, label]) =>
-              <option value={value} key={value}>{label}</option>)}
-          </select>
-          <button ref={dateTrigger} type="button" className={styles.control} aria-label="Select date range" aria-expanded={calendar} aria-haspopup="dialog"
-            onClick={() => setCalendar(open => !open)}><CalendarDays size={16}/>{displayDate(range.from || '1970-01-01')} - {displayDate(range.to || range.from || today)}</button>
-          {calendar && <OrderDateRangeCalendar today={today} range={range} trigger={dateTrigger} close={() => setCalendar(false)} onChange={value => {
-            setPreset('custom'); navigate({ ...local, ...value });
-          }}/>}
-        </div></div>
+        <ProductionDateRange range={preset} today={today} from={local.from ?? ''} to={local.to ?? ''} onChange={(next, from, to) => {
+          setPreset(next);
+          navigate({ ...local, from: from || undefined, to: to || undefined });
+        }}/>
         <label>Batch<select className={styles.batchField} value={local.batch ?? ''} onChange={event => navigate({ ...local, batch: event.target.value })}>
           <option value="">All</option>{batches.map(batch => <option key={batch}>{batch}</option>)}
         </select></label>
@@ -116,7 +92,7 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
           <option value="">All</option><option value="LISTED">Listed</option><option value="EXTERNAL">External</option>
         </select></label>
       </form>
-      <button type="button" className={styles.primary} onClick={() => { setPreset('all'); setCalendar(false); navigate({}); }}>Clear Filter</button>
+      <button type="button" className={styles.primary} onClick={() => { setPreset('All Time'); navigate({}); }}>Clear Filter</button>
     </section>
     <nav className={`${styles.surface} ${styles.statusFilters}`} aria-label="Pre-order statuses">
       <button type="button" className={styles.statusFilter} aria-pressed={!local.status} onClick={() => changeStatus()}>All - {counts.ALL ?? 0}</button>

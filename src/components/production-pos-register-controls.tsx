@@ -1,14 +1,17 @@
 'use client';
 
-import { CalendarDays, ChevronDown, File, FileSpreadsheet, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { ChevronDown, File, FileSpreadsheet, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
-import { dateLabel, posColumns, posMoney, posRanges, posRegisterPath, type PosColumn, type PosRegisterRow } from '@/lib/pos';
+import { posColumns, posMoney, posRegisterPath, type PosColumn, type PosRange, type PosRegisterRow } from '@/lib/pos';
 import type { PosReturnDetails } from '@/lib/production-pos';
+import { ProductionDateRange } from './production-date-range';
 import styles from './production-pos-register.module.css';
 
-export function PosRegisterFilterForm({ children }: { children: ReactNode }) {
+export function PosRegisterFilterForm({ children, path = posRegisterPath, className = styles.controls }: {
+  children: ReactNode; path?: string; className?: string;
+}) {
   const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -17,29 +20,34 @@ export function PosRegisterFilterForm({ children }: { children: ReactNode }) {
     if (!form.checkValidity()) return;
     const values = new URLSearchParams();
     for (const [key, value] of new FormData(form)) if (typeof value === 'string' && value) values.set(key, value);
-    router.replace(posRegisterPath + '?' + values, { scroll: false });
+    router.replace(path + (values.size ? '?' + values : ''), { scroll: false });
   }
-  return <form action={adminPath(posRegisterPath)} className={styles.controls} onChange={event => {
+  return <form action={adminPath(path)} className={className} onChange={event => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement) || !target.name) return;
     const form = event.currentTarget;
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => filter(form), 270);
+    if (target instanceof HTMLInputElement && target.type === 'search') timer.current = setTimeout(() => filter(form), 270);
+    else filter(form);
   }} onSubmit={event => { event.preventDefault(); filter(event.currentTarget); }}>{children}</form>;
 }
 
-export function PosRangeFilter({ from, to, range }: { from: string; to: string; range: string }) {
-  const [selected, setSelected] = useState(range);
-  const [custom, setCustom] = useState(range === 'Custom Range');
-  return <fieldset className={styles.range}>
-    <legend>Date Range</legend>
-    <select name="selectedOption" value={selected} aria-label="Date Range" onChange={event => { setSelected(event.target.value); setCustom(event.target.value === 'Custom Range'); }}>
-      {posRanges.map(option => <option key={option}>{option}</option>)}
-    </select>
-    {selected !== 'All Time' && <button className={styles.dateButton} type="button" onClick={() => { setCustom(!custom); if (!custom) setSelected('Custom Range'); }}>
-      <CalendarDays size={15}/> {dateLabel(from, true)} – {dateLabel(to, true)}
-    </button>}
-    {custom && <div className={styles.dates}><input type="date" name="from" aria-label="Start date" required defaultValue={from}/>
-      <input type="date" name="to" aria-label="End date" required defaultValue={to}/></div>}
-  </fieldset>;
+export function PosRangeFilter({ from, to, range, today }: { from: string; to: string; range: PosRange; today: string }) {
+  const selection = useRef<HTMLInputElement>(null);
+  const start = useRef<HTMLInputElement>(null);
+  const end = useRef<HTMLInputElement>(null);
+  return <>
+    <input type="hidden" name="selectedOption" defaultValue={range} ref={selection}/>
+    <input type="hidden" name="from" defaultValue={range === 'Custom Range' ? from : ''} ref={start}/>
+    <input type="hidden" name="to" defaultValue={range === 'Custom Range' ? to : ''} ref={end}/>
+    <ProductionDateRange today={today} from={from} to={to} range={range} onChange={(preset, from, to) => {
+      if (!selection.current || !start.current || !end.current) return;
+      selection.current.value = preset;
+      start.current.value = preset === 'Custom Range' ? from : '';
+      end.current.value = preset === 'Custom Range' ? to : '';
+      selection.current.form?.requestSubmit();
+    }}/>
+  </>;
 }
 
 type Dialog = { row: PosRegisterRow; action: 'return' | 'delete'; detail?: PosReturnDetails };

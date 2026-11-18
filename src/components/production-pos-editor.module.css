@@ -28,7 +28,7 @@
 .suggestions span { margin-left: auto; }
 .table { border: 1px solid #dfdfe4; border-radius: 10px; overflow: auto; }
 .edit .table { border-radius: 0; }
-.table table, .receipt table { width: 100%; border-collapse: collapse; min-width: 635px; }
+.table table { width: 100%; border-collapse: collapse; min-width: 635px; }
 .table th, .table td { text-align: left; padding: 8px; font-weight: 400; white-space: nowrap; }
 .table th { border-bottom: 1px solid #dfdfe4; }
 .table input, .table select { min-width: 66px; }
@@ -63,7 +63,19 @@
 @media print {
   body:has(.receipt) * { visibility: hidden; }
   body:has(.receipt) .receipt, body:has(.receipt) .receipt * { visibility: visible; }
-  .receipt { display: block; position: absolute; top: 0; left: 0; width: 100%; font: 14px sans-serif; }
+  .receipt { display: block; position: absolute; top: 0; left: 0; width: 100%; max-width: 76mm; font: 12px/1.4 sans-serif; color: #111; }
+  .receipt header { display: grid; justify-items: center; gap: 4px; text-align: center; margin-bottom: 16px; }
+  .receipt header img { object-fit: contain; }
+  .receipt header strong, .receipt h2 { font-size: 16px; font-weight: 500; }
+  .receipt h2 { margin: 0; text-align: center; border-bottom: 1px solid currentColor; padding-bottom: 4px; }
+  .receipt header p, .receipt dd { margin: 0; }
+  .receipt dl { margin: 4px 0; }
+  .receipt dl div { display: flex; justify-content: space-between; gap: 8px; padding-block: 2px; }
+  .receipt table { width: 100%; border-collapse: collapse; border-block: 1px solid currentColor; }
+  .receipt table th, .receipt table td { padding: 4px; }
+  .receipt table :is(th, td):first-child { text-align: start; }
+  .receipt table :is(th, td):nth-child(2) { text-align: center; }
+  .receipt table :is(th, td):last-child { text-align: end; white-space: nowrap; }
 }
 .customerPanel { position: absolute; top: 100%; inset-inline: 0; z-index: 3; background: #fff; border: 1px solid #dfdfe4; border-radius: 8px;
   box-shadow: 0 2px 4px #17171719; padding: 12px; display: grid; gap: 8px; }
