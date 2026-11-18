@@ -86,6 +86,7 @@ function visibleStatus(order: HybridOrder) {
   if (delivery === 'OUT_FOR_DELIVERY' || delivery === 'IN_TRANSIT' || order.fulfillmentStatus === 'SHIPPED') return 'IN_TRANSIT';
   if (order.fulfillmentStatus === 'READY_TO_SHIP') return 'IN_REVIEW';
   if (order.fulfillmentStatus === 'PACKING') return 'PROCESSING';
+  if (order.payment?.status === 'AWAITING_VERIFICATION') return 'INCOMPLETE';
   return 'PLACED';
 }
 

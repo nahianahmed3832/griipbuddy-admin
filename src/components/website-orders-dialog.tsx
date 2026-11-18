@@ -164,6 +164,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const read = readKinds.includes(kind);
   const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' :
     kind === 'return' && !order?.scanReturn ? 'return-items' : read ? kind : undefined;
+  const statusChoices = order?.status === 'AWAITING_STOCK' ? ['ACCEPTED'] : manualStatuses;
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
@@ -344,7 +345,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       {kind === 'handover' && <p>Confirm that parcel {order?.consignment_id} physically left the warehouse with the courier.</p>}
       {kind === 'update-status' && <p>Current status: <Badge value={order?.status || 'Unknown'}/></p>}
       {kind === 'update-status' && <label>New status<select name="status" defaultValue="" required>
-        <option value="" disabled>Select status</option>{manualStatuses.filter(status => status !== order?.status).map(status =>
+        <option value="" disabled>Select status</option>{statusChoices.filter(status => status !== order?.status).map(status =>
           <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
       {error && <p role="alert" className="notice warn">{error}</p>}
       <div className="page-actions website-dialog-actions">

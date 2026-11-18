@@ -311,7 +311,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id}>
               <td><ProductionOrderMenu order={order} href={href} actions={actions}
-                editHref={access.product && !order.managed ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
+                editHref={access.product && !order.managed && !order.transfer_to_courier && !order.scanReturn &&
+                  !order.assigned_business_location && !order.consignment_id &&
+                  ['PLACED', 'ACCEPTED', 'PROCESSING', 'NO_RESPONSE', 'AWAITING_STOCK'].includes(order.status) ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
                 select={kind => open(kind, order)}/></td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
                 {order.order_note && <small>Customer Note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
