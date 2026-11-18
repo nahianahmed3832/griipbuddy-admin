@@ -3,7 +3,7 @@
 import { ArrowLeft, CalendarDays, Plus, Printer, Scan, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import { dateLabel, posDiscountMinor, posLineTotal, posMethods, posMoney, posRegisterPath, posTimeZone,
   type PosDiscount, type PosItem, type PosLine, type PosReceipt } from '@/lib/pos';
@@ -85,6 +85,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
   const [receipt, setReceipt] = useState<PosReceipt>();
   const writeId = useRef('');
   const barcodeInput = useRef<HTMLInputElement>(null);
+  const readScanner = useRef<(value: string) => Promise<void>>(undefined);
   const submitting = useRef(false);
 
   useEffect(() => {
@@ -128,7 +129,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     return () => { printing = false; window.removeEventListener('afterprint', cleanup); };
   }, [receipt]);
 
-  const readScanner = useEffectEvent((value: string) => { void scan(value); });
+  useEffect(() => { readScanner.current = scan; });
   useEffect(() => {
     if (draft.id || !location || customerOpen || busy || receipt) return;
     let barcode = '';
@@ -138,7 +139,7 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
       const captured = barcode;
       barcode = '';
       window.clearTimeout(timer);
-      if (captured.length >= 10 && captured.length <= 100) readScanner(captured);
+      if (captured.length >= 10 && captured.length <= 100) void readScanner.current?.(captured);
     }
     function collect(event: globalThis.KeyboardEvent) {
       const active = document.activeElement;
@@ -158,8 +159,6 @@ export function ProductionPosEditor({ draft, locations, canSearchCustomers, canC
     }
     window.addEventListener('keydown', collect);
     return () => { window.removeEventListener('keydown', collect); window.clearTimeout(timer); };
-    // The Effect Event reads current sale state without resetting the scanner buffer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.id, location, customerOpen, busy, receipt]);
 
   const gross = lines.reduce((sum, line) => sum + Math.round(line.regularPrice * 100) * Number(line.quantity || 0), 0);
