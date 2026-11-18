@@ -3,7 +3,9 @@ import { arr, obj, str, type RecordData } from './api';
 
 type Cell = string | number;
 const time = new Intl.DateTimeFormat('sv-SE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Dhaka' });
+const day = new Intl.DateTimeFormat('sv-SE', { dateStyle: 'short', timeZone: 'Asia/Dhaka' });
 const suffix: Record<string, string> = { money: 'BDT', count: '', percent: '%', cost: 'BDT', hours: 'hours', days: 'days' };
+const numberFormats: Record<string, string> = { money: '#,##0.00', cost: '#,##0.00', count: '#,##0', percent: '0.00', hours: '0.0', days: '0.0' };
 
 function label(record: RecordData) {
   const unit = suffix[str(record.type)];
@@ -12,11 +14,13 @@ function label(record: RecordData) {
 
 function cell(value: unknown, type: unknown): Cell {
   if (typeof value === 'string') {
-    const at = type === 'datetime' ? Date.parse(value) : NaN;
-    return Number.isFinite(at) ? time.format(at) : value;
+    const at = ['date', 'datetime'].includes(str(type)) ? Date.parse(value) : NaN;
+    return Number.isFinite(at) ? (type === 'date' ? day : time).format(at) : value;
   }
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
-  return type === 'percent' ? Math.round(value * 10_000) / 100 : value;
+  if (type === 'percent') return Math.round(value * 10_000) / 100;
+  if (type === 'hours' || type === 'days') return Math.round(value * 10) / 10;
+  return type === 'money' || type === 'cost' ? Math.round(value * 100) / 100 : value;
 }
 
 export function hybridReportDownload(reportId: string, result: RecordData, format: 'csv' | 'xlsx') {
@@ -27,12 +31,16 @@ export function hybridReportDownload(reportId: string, result: RecordData, forma
   const to = str(meta.to);
   const asOf = Date.parse(str(meta.generated_at));
   const timezone = str(meta.timezone) || 'Asia/Dhaka';
-  const groupBy = str(obj(result.params).groupBy);
-  const groupOption = arr(obj(arr(result.filters).find(filter => obj(filter).key === 'groupBy')).options).map(obj).find(option => option.value === groupBy);
+  const params = obj(result.params);
+  const filters = arr(result.filters).map(obj).flatMap(filter => {
+    const value = str(params[str(filter.key)]);
+    const option = arr(filter.options).map(obj).find(option => option.value === value);
+    return value ? [[str(filter.label), str(option?.label) || value]] : [];
+  });
   const overview: Cell[][] = [
     ['Report', title], ...(from && to ? [['Period', from + ' to ' + to + ' (' + timezone + ')']] : []),
-    ['Date basis', str(report.dateBasis)], ['Region', 'BD (BDT)'], ['Locations', 'All'],
-    ...(groupBy ? [['Group by', str(groupOption?.label) || groupBy]] : []),
+    ['Date basis', str(report.dateBasis)], ['Region', 'BD (BDT)'],
+    ...(report.usesLocations ? [['Locations', 'All']] : []), ...filters,
     ...(Number.isFinite(asOf) ? [['Generated', time.format(asOf) + ' (' + timezone + ')']] : []),
     ...arr(result.quality).map(flag => ['Note', str(obj(flag).message)]),
   ];
@@ -48,7 +56,7 @@ export function hybridReportDownload(reportId: string, result: RecordData, forma
     return { title: str(table.title) || title, columns, rows };
   });
   const dateSuffix = /^(\d{4}-\d{2}-\d{2})$/.test(from) && /^(\d{4}-\d{2}-\d{2})$/.test(to)
-    ? '_' + from + (to === from ? '' : '_to_' + to) : '';
+    ? '_' + from + (to === from ? '' : '_to_' + to) : '_' + day.format(Date.now());
   const filename = reportId + '_bd' + dateSuffix + '.' + format;
   const headers = { 'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment; filename="' + filename + '"' };
   if (format === 'csv') {
@@ -66,12 +74,12 @@ export function hybridReportDownload(reportId: string, result: RecordData, forma
     columns.forEach((column, c) => {
       for (let r = 1; r < rows.length; r++) {
         const entry = sheet[XLSX.utils.encode_cell({ c, r })];
-        if (entry?.t === 'n') entry.z = ['money', 'percent', 'cost', 'hours', 'days'].includes(str(column.type)) ? '#,##0.00' : '#,##0';
+        if (entry?.t === 'n' && numberFormats[str(column.type)]) entry.z = numberFormats[str(column.type)];
       }
     });
     const name = title.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 27).trim() || 'Data';
     let unique = name;
-    for (let index = 2; book.SheetNames.includes(unique); index++) unique = name + ' ' + index;
+    for (let index = 2; book.SheetNames.some(sheet => sheet.toLowerCase() === unique.toLowerCase()); index++) unique = name + ' ' + index;
     XLSX.utils.book_append_sheet(book, sheet, unique);
   });
   return new Response(XLSX.write(book, { type: 'buffer', bookType: 'xlsx', compression: true }),
