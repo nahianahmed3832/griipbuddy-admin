@@ -126,7 +126,7 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
       <header className={styles.heading}><h1>Expense Report</h1><p>Spend analytics across categories, statuses and payment methods.</p></header>
       <div className={styles.report}>
         <p className={styles.notice}>Showing paid, approved expenses (what the Overview counts). Change Status or Approval to include pending or rejected ones. Dates are Bangladesh days.</p>
-        <form className={styles.filters} action={adminPath(productionFinancePath('expense-report'))}>
+        <FinanceListFilters path={productionFinancePath('expense-report')} preserveEmpty={['status', 'is_approved']}>
           <label>From<input name="start_date" type="date" defaultValue={filters.start_date}/></label>
           <label>To<input name="end_date" type="date" defaultValue={filters.end_date}/></label>
           {select('status', 'All statuses', labels(expenseStatuses))}
@@ -135,8 +135,7 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
           {select('category', 'All categories', choices.category)}
           {select('subcategory', 'All subcategories', choices.subcategory)}
           {select('payment_source', 'All sources', choices.payment_source)}
-          <button className="button primary">Apply</button>
-        </form>
+        </FinanceListFilters>
         <div className={styles.summary}>
           {[['Grand Total', meta.grand_total], ['Transactions', meta.total_transactions], ['Avg. Transaction', meta.average_transaction], ['Categories', arr(report.data).length]].map(([label, value]) =>
             <section key={String(label)} className={styles.card}><h2>{String(label)}</h2><p>{numeric(value)}</p></section>)}

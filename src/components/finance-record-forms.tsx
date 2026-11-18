@@ -12,14 +12,18 @@ import productionStyles from './production-finance.module.css';
 
 const FinanceDialogClose = createContext<(() => void) | undefined>(undefined);
 
-export function FinanceListFilters({ path, children }: { path: string; children: ReactNode }) {
+export function FinanceListFilters({ path, children, preserveEmpty = [] }: {
+  path: string; children: ReactNode; preserveEmpty?: readonly string[];
+}) {
   const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   function apply(form: HTMLFormElement, delay = 0) {
     clearTimeout(timer.current);
     const query = new URLSearchParams();
-    for (const [key, value] of new FormData(form)) if (typeof value === 'string' && value.trim()) query.set(key, value.trim());
+    for (const [key, value] of new FormData(form)) {
+      if (typeof value === 'string' && (value.trim() || preserveEmpty.includes(key))) query.set(key, value.trim());
+    }
     const destination = query.size ? path + '?' + query : path;
     const navigate = () => router.replace(destination, { scroll: false });
     if (delay) timer.current = setTimeout(navigate, delay);
