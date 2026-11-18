@@ -69,3 +69,14 @@
 .addGroupIcon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: #e6f4ee; }
 @media (max-width: 1023px) { .arrivalRows { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 767px) { .arrivalRows { grid-template-columns: minmax(0,1fr); } }
+.bestGrid { grid-template-columns: repeat(4, minmax(0,1fr)); align-items: flex-start; }
+.bestGrid > :is(.addGroup,p) { grid-column: 1 / -1; }
+.bestGrid fieldset { padding: 16px; }
+.bestGrid :global(.editor-grid) { grid-template-columns: minmax(0,1fr); }
+.bestCardHeading, .bestCardHeading > span { display: flex; align-items: center; gap: 7px; }
+.bestCardHeading { justify-content: space-between; margin-bottom: 12px; }
+.bestCardHeading button { color: #dc2626; }
+.bestImage { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #f4f4f5; }
+@media (max-width: 1279px) { .bestGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width: 1023px) { .bestGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 767px) { .bestGrid { grid-template-columns: minmax(0,1fr); } }

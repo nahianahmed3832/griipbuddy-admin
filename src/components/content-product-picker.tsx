@@ -65,7 +65,7 @@ function ProductionProductPicker({ multiple, value, update, products, onSelect }
   return <div className="cms-product-picker">
     <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (!next) { clear(); setQuery(''); } }}>
       <Popover.Trigger type="button" className={styles.productTrigger}>
-        {!multiple && ids[0] ? <ProductReference item={label(ids[0])}/> : multiple ? 'Select products...' : 'Select product...'}
+        {!multiple && ids[0] ? <ProductReference item={label(ids[0])}/> : multiple ? 'Select products...' : 'Select product'}
         <ChevronsUpDown size={16} aria-hidden="true"/>
       </Popover.Trigger>
       <Popover.Content className={styles.productPopover} align="start" sideOffset={4} aria-label="Products">
@@ -83,7 +83,7 @@ function ProductionProductPicker({ multiple, value, update, products, onSelect }
         }}><ProductReference item={item}/></button></li>)}</ul>
       </Popover.Content>
     </Popover.Root>
-    {ids.length > 0 && <ul className={styles.selectedProducts}>{ids.map(id => <li key={id}>
+    {multiple && ids.length > 0 && <ul className={styles.selectedProducts}>{ids.map(id => <li key={id}>
       <ProductReference item={label(id)}>
         <button type="button" className="icon-button" aria-label={'Remove ' + label(id).name}
           onClick={() => update(ids.filter(value => value !== id).join(', '))}><X size={15}/></button>
