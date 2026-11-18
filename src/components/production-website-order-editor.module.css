@@ -172,3 +172,10 @@
   .panel { padding: 24px; }
 }
 @media (max-width: 767px) { .heading { margin-bottom: 8px; } .layout textarea { font-size: 16px; } }
+
+
+.orderFraud { margin: 8px 0; }
+.orderFraud > button { margin-bottom: 8px; }
+.lineDiscount { display: flex; gap: 12px; align-items: end; padding-top: 8px; }
+.lineDiscount label { display: grid; gap: 4px; font-size: 12px; }
+.lineDiscount :is(select,input) { min-height: 32px; width: 112px; }

@@ -8,8 +8,11 @@ import { has } from '@/lib/sections';
 import { addressLabel, orderFilterKeys, type Listing } from '@/lib/website-orders';
 
 const root = '/order/workspace';
-const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail'];
+const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail', 'calls', 'sms-history'];
 const actions: Record<string, { path: string; method: string }> = {
+  'accept-stock': { path: '/accept-stock', method: 'PATCH' },
+  'decline-stock': { path: '/decline-stock', method: 'PATCH' },
+  delete: { path: '', method: 'DELETE' },
   called: { path: '/called', method: 'PATCH' },
   edit: { path: '/details', method: 'PATCH' },
   draft: { path: '/draft', method: 'PATCH' },
@@ -137,7 +140,7 @@ export async function POST(request: NextRequest) {
       if (!/^01\d{9}$/.test(str(body.phone))) return reject('Enter an 11-digit Bangladesh mobile number.', 400);
       path = '/fraud-check';
     } else {
-      const permission = action === 'fraud' ? 'order.view' : 'order.update';
+      const permission = action === 'fraud' ? 'order.view' : action === 'delete' ? 'order.delete' : 'order.update';
       if (!has(auth.staff, 'order.view') || !has(auth.staff, permission)
         || action === 'draft' && (region !== 'BD' || !has(auth.staff, 'product.view'))
         || action === 'return-untracked' && !has(auth.staff, 'order.return')

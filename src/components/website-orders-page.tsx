@@ -33,7 +33,8 @@ function selectedFilters(q: Query) {
 export function accessFor(auth: Session, region: Region): OrderAccess {
   const write = canWrite(auth.staff);
   const update = write && has(auth.staff, 'order.update');
-  return { update, fraud: write && region === 'BD', return: canOperate(auth.staff, 'order-return'), pick: canOperate(auth.staff, 'order-pick'),
+  return { update, fraud: region === 'BD' && has(auth.staff, 'order.view'), delete: write && has(auth.staff, 'order.delete'),
+    product: has(auth.staff, 'product.view'), return: canOperate(auth.staff, 'order-return'), pick: canOperate(auth.staff, 'order-pick'),
     handover: update && has(auth.staff, 'courier.update'), dispatch: update && has(auth.staff, 'business_locations.view') };
 }
 
@@ -68,7 +69,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
         (results[0].reason.status !== 400 && !(productionLayout && limit === 'all' && results[0].reason.status === 422))) throw results[0].reason;
     if (productionLayout) return <ProductionWebsiteOrders key={region} filters={filters} region={region}
       creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes}
-      selectedSize={limit} issue={results[0].reason.status === 422 ? 'too-many' : 'dates'}/>;
+      selectedSize={limit} executive={executive} issue={results[0].reason.status === 422 ? 'too-many' : 'dates'}/>;
     return <>
       <PageHeading eyebrow="COMMERCE / WEBSITE ORDERS" title={title} description="Review the date range and try again."/>
       <OrderFiltersForm key={JSON.stringify(filters)} filters={filters} region={region} listPath={listPath}
@@ -78,7 +79,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
   const listing = results[0].value;
   if (!listing) throw new ApiError(503);
   if (productionLayout) return <ProductionWebsiteOrders key={region} listing={listing} filters={filters} region={region}
-    creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit}/>;
+    creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit} executive={executive}/>;
   return <>
     <PageHeading eyebrow="COMMERCE / WEBSITE ORDERS" title={title + ' (' + listing.total.toLocaleString('en') + ')'}
       description="Review website orders, customer follow-ups and courier activity.">
@@ -108,7 +109,7 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
     const back = '/dashboard/orders' + orderListQuery(region, selectedFilters(q), param(q, 'page'))
       + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
     return <ProductionWebsiteOrderDetail order={order} region={region} back={back}
-      access={{ update: false, fraud: false, return: false, pick: false, handover: false, dispatch: false }}
+      access={{ update: false, fraud: false, delete: false, product: false, return: false, pick: false, handover: false, dispatch: false }}
       locations={[]} hybridFulfillment={fulfillment} integrations={{}}/>;
   }
   if (!mongoId(id)) throw new ApiError(404);

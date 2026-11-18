@@ -2,16 +2,18 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Filter, Info, MoreHorizontal, Truck } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Filter, Info, Truck } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import {
-  addressLabel, canSync, currencyFor, money, orderActions, orderDate, orderFilterKeys, orderNumber, orderRequest, ordersApi,
+  addressLabel, currencyFor, money, orderActions, orderDate, orderFilterKeys, orderNumber, orderRequest, ordersApi,
   type Listing, type Order, type OrderAccess, type OrderFilters, type OrderLocation,
 } from '@/lib/website-orders';
 import { OrderDateRangeCalendar, type OrderDateRange } from './order-date-range-calendar';
+import { normalizeFraudPhone, useCourierFraud } from './production-fraud';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
+import { ProductionOrderMenu } from './production-order-menu';
 import { OrderThumbnail } from './website-orders-table';
 import styles from './production-website-orders.module.css';
 
@@ -109,11 +111,32 @@ type Props = {
   selectedSize?: string;
   issue?: 'dates' | 'too-many';
   assigned?: boolean;
+  executive?: boolean;
 };
 
-export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false }: Props) {
+function FraudCell({ phone, open }: { phone: string; open: () => void }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [visible, setVisible] = useState(false);
+  const { result, busy, error } = useCourierFraud(phone, visible);
+  useEffect(() => {
+    if (!anchor.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setVisible(true); observer.disconnect(); }
+    });
+    observer.observe(anchor.current);
+    return () => observer.disconnect();
+  }, []);
+  const tone = result ? result.successRate >= 80 ? 'safe' : result.successRate >= 50 ? 'warning' : 'danger' : undefined;
+  return <button ref={anchor} type="button" className={styles.fraudLink} data-tone={tone} onClick={open}>
+    Fraud Check{busy && <small role="status">Checking…</small>}
+    {result && <small>{result.statusTag || 'No status'} · <strong>{result.successRate}% ({result.totalDelivered ?? 0}/{result.totalOrders ?? result.totalParcels ?? 0})</strong></small>}
+    {error && <small>Error loading data</small>}
+  </button>;
+}
+
+export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false, executive = false }: Props) {
   const router = useRouter();
-  const listPath = assigned ? '/dashboard/assigned-orders' : '/dashboard/orders';
+  const listPath = assigned ? '/dashboard/assigned-orders' : executive ? '/dashboard/sales-executive' : '/dashboard/orders';
   const filterId = useId();
   const [formFilters, setFormFilters] = useState(filters);
   const [expanded, setExpanded] = useState(true);
@@ -137,7 +160,6 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const pageSize = selectedSize ?? String(size);
   const status = formFilters.filter ?? '';
   const exportFilters = formFilters.from || formFilters.to ? formFilters : { ...formFilters, from: '1970-01-01', to: today };
-  const syncIds = rows.filter(canSync).map(row => row._id);
   const path = (value: OrderFilters, number?: number, limit = pageSize) => listPath + query(region, value, number, limit);
   const open = (kind: OrderDialogKind, order: Order) => setDialog({ kind, order });
   useEffect(() => () => clearTimeout(searchTimer.current), []);
@@ -180,27 +202,19 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
     ? [...statusTabs, [status, status.replaceAll('_', ' ').toLowerCase()]]
     : statusTabs;
 
-  async function openActions(order: Order, href: string) {
-    try {
-      const current = assigned ? await orderRequest<Order>('detail', region, { query: { id: order._id } }) : order;
-      setDialog({ kind: 'actions', order: current, href, actions: orderActions(current, access, region) });
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not open the order actions.');
-    }
-  }
 
   return <section className={styles.orders} aria-label={assigned ? 'Assigned orders' : 'Website orders'}>
-    <h1>{assigned ? 'Assigned Orders' : 'All Orders'} ({total.toLocaleString('en')})</h1>
+    <h1>{assigned ? 'Assigned Orders' : executive ? 'Sales Executive' : 'All Orders'} ({total.toLocaleString('en')})</h1>
     <section className={styles.panel}>
       <div className={styles.panelHeader}>
         <button type="button" className={styles.filterToggle} aria-expanded={expanded} aria-controls={filterId}
           onClick={() => setExpanded(value => !value)}><Filter size={20}/> Filter</button>
         {!assigned && <div className={styles.headerActions}>
           {region === 'BD' && access.update && <button type="button" className={styles.outlineAction}
-            disabled={!syncIds.length} onClick={() => setDialog({ kind: 'sync', ids: syncIds })}>
+            onClick={() => setDialog({ kind: 'sync' })}>
             <Truck size={16}/> Sync with Courier
           </button>}
-          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: '1' })} download>
+          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: executive ? undefined : '1' })} download>
             <FileSpreadsheet size={16}/> Download Excel
           </a>
         </div>}
@@ -265,7 +279,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             </SelectField>
           </label>}
         </div>
-        <button className={styles.primary} type="button" onClick={() => { submit({}); setCalendar(false); setCustomPreset(false); }}>Clear Filter</button>
+        <button className={styles.primary} type="button" onClick={() => { submit(executive ? { from: today, to: today } : {}); setCalendar(false); setCustomPreset(false); }}>Clear Filter</button>
       </form>}
     </section>
     {issue && <p role="alert" className={styles.notice}>{issue === 'too-many'
@@ -290,15 +304,17 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const href = '/dashboard/order-details/' + order._id + destinationQuery +
               (assigned ? (destinationQuery ? '&' : '?') + 'source=assigned' : '');
             const projected = order.checkoutProjection;
+            const actions = orderActions(order, access, region);
+            const awaitStock = actions.some(action => action.kind === 'accept-stock');
             const newCall = access.update && !deferred.includes(order._id);
             const date = orderDateParts(order.order_date || order.createdAt, region);
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id}>
-              <td>{projected ? '—' : <button type="button" className={styles.iconButton} aria-label={'Actions for ' + number} aria-haspopup="dialog"
-                onClick={() => void openActions(order, href)}>
-                <MoreHorizontal size={18}/></button>}</td>
+              <td><ProductionOrderMenu order={order} href={href} actions={actions}
+                editHref={access.product && !order.managed ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
+                select={kind => open(kind, order)}/></td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
-                <small>Customer Note: {order.order_note ?? ''}</small></td>
+                {order.order_note && <small>Customer Note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
               <td><span className={styles.dateCell}>{date.day}</span>{date.time && <span>{date.time}</span>}</td>
               <td><div className={styles.products}>{order.products.map((line, index) => <div key={index}>
                 <OrderThumbnail src={line.image}/><span><strong>{line.sku || line.name || 'Item'}</strong>
@@ -307,15 +323,20 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
               <td>{!projected && <button className={styles.customerLink} onClick={() => open('history', order)}>{order.customer_name || 'Customer details'}
                 {order.customer_phone ? ' - ' + order.customer_phone : ''}</button>}
                 <span>{address || '-'}</span>
-                {access.fraud && order.customer_phone && <button className={styles.fraudLink} onClick={() => open('fraud', order)}>Fraud Check</button>}</td>
+                {access.fraud && normalizeFraudPhone(order.customer_phone) && <FraudCell phone={order.customer_phone!} open={() => open('fraud', order)}/>}</td>
               <td className={styles.nowrap}>{orderMoney(order.COD, currency)}</td>
               <td>{order.paid_by_courier == null ? '-' : orderMoney(order.paid_by_courier, currency)}</td>
-              <td>{projected ? orderMoney(order.paid_amount, currency) : <button className={styles.customerLink} aria-label="Pay Info" title="Pay Info" onClick={() => open('payment', order)}>
-                {orderMoney(order.paid_amount, currency)}</button>}</td>
+              <td>{projected ? orderMoney(order.paid_amount, currency) : <>{orderMoney(order.paid_amount, currency)}
+                <button className={styles.textLink} onClick={() => open('payment', order)}>Pay Info</button></>}</td>
               <td><span className={styles.orderStatus} data-status={order.status}>{order.status.replaceAll('_', ' ')}</span>
+                {awaitStock && <div className={styles.stockActions}>
+                  <button type="button" className={styles.primary} onClick={() => open('accept-stock', order)}>Accept</button>
+                  <button type="button" className={styles.smallButton} onClick={() => open('decline-stock', order)}>Decline</button>
+                </div>}
                 {!projected && <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button>}</td>
               <td>{projected ? '—' : order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
-                <small>{orderDate(order.latestCall?.called_at, region)}</small></>
+                <small>{orderDate(order.latestCall?.called_at, region)}</small>
+                <button type="button" className={styles.textLink} onClick={() => open('calls', order)}>Call History</button></>
                 : newCall ? <><small>Have you called?</small><div className={styles.callActions}>
                   <button className={styles.smallButton} aria-label={'Mark ' + number + ' as called'} onClick={() => open('called', order)}>Yes</button>
                   <button className={styles.smallButton} aria-label={'Skip call record for ' + number}

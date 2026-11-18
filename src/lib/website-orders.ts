@@ -28,7 +28,7 @@ export type Order = {
   order_by?: string; user?: { full_name?: string; role?: string }; assigned_business_location?: { _id?: string; name?: string; business_location_name?: string };
   is_called?: boolean; latestCall?: { called_by_name?: string; called_at?: string }; latestNote?: string;
   tracking_code?: string; consignment_id?: number; transfer_to_courier?: boolean; managed?: boolean; scanReturn?: boolean;
-  checkoutProjection?: boolean;
+  checkoutProjection?: boolean; assigned?: boolean;
 };
 export type OrderNote = { text?: string; at?: string; by?: string };
 export type OrderDetail = Order & {
@@ -42,12 +42,12 @@ export type WebsiteOrderDraft = {
   id: string; revision: string; serial: number; customer_name?: string; customer_phone?: string;
   delivery_address?: Address; order_note?: string; payment_type: 'CASH_ON_DELIVERY' | 'FULL_PAYMENT';
   delivery_charge: number; paid_amount: number; total_discount: number; paymentLocked: boolean; proofPresent: boolean;
-  sender?: string; reference?: string; products: (Variant & { quantity: number })[];
+  sender?: string; reference?: string; products: (Variant & { quantity: number; discountAmount?: number; discountType?: 'FLAT' | 'PERCENTAGE' })[];
 };
-export type OrderAccess = { update: boolean; fraud: boolean; return: boolean; pick: boolean; handover: boolean; dispatch: boolean };
+export type OrderAccess = { update: boolean; fraud: boolean; return: boolean; pick: boolean; handover: boolean; dispatch: boolean; delete: boolean; product: boolean };
 export type OrderLocation = { value: string; label: string };
 export type OrderMutation = 'edit' | 'update-status' | 'note' | 'sms' | 'pick' | 'dispatch' | 'handover'
-  | 'delivered' | 'return' | 'pending-return' | 'cancel' | 'called';
+  | 'delivered' | 'return' | 'pending-return' | 'cancel' | 'called' | 'delete' | 'accept-stock' | 'decline-stock' | 'accept';
 export type OrderAction = { kind: OrderMutation; label: string; group: 'Order' | 'Fulfillment' | 'Exceptions' };
 
 export function orderActions(order: Order, access: OrderAccess, region: Region): OrderAction[] {
@@ -59,9 +59,14 @@ export function orderActions(order: Order, access: OrderAccess, region: Region):
   const beforeDispatch = legacy && !order.transfer_to_courier && openStatuses.includes(order.status);
   const editable = access.update && beforeDispatch;
   const shipped = legacy && order.transfer_to_courier && courierStatuses.includes(order.status);
+  if (editable && order.status === 'PLACED') add('accept', 'Accept Order');
+  if (editable && order.status === 'AWAITING_STOCK') {
+    add('accept-stock', 'Accept Order');
+    add('decline-stock', 'Decline Order');
+  }
   if (editable) {
     add('edit', 'Edit Order');
-    if (order.status !== 'AWAITING_STOCK') add('update-status', 'Update Status');
+    add('update-status', 'Update Status');
   }
   if (access.update) add('note', 'Update Note');
   if (access.update && bd && order.customer_phone) add('sms', 'Send SMS');
@@ -73,9 +78,11 @@ export function orderActions(order: Order, access: OrderAccess, region: Region):
     add('handover', 'Mark as Handed Over', 'Fulfillment');
   if (shipped && access.update) add('delivered', 'Mark as Delivered', 'Fulfillment');
   if (access.update && legacy && pendingStatuses.includes(order.status)) add('pending-return', 'Mark as Pending Return', 'Exceptions');
-  if (access.return && legacy && ['DELIVERED', 'PENDING_RETURN', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'PARTIAL'].includes(order.status))
+  if (access.return && legacy && ['ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'DELIVERED', 'PENDING_RETURN', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'PARTIAL', 'RETURN_REQUESTED', 'AWAITING_STOCK'].includes(order.status))
     add('return', 'Return Order', 'Exceptions');
-  if (editable) add('cancel', 'Cancel Order', 'Exceptions');
+  if (legacy && access.delete && !order.tracking_code && !order.consignment_id && !order.transfer_to_courier &&
+      !order.paid_amount && ['FAILED', 'INCOMPLETE'].includes(order.status)) add('delete', 'Delete Order', 'Exceptions');
+  if (editable && order.status !== 'INCOMPLETE') add('cancel', 'Cancel Order', 'Exceptions');
   return actions;
 }
 

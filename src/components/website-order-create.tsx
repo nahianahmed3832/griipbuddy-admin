@@ -1,13 +1,19 @@
 'use client';
 
 import { Camera, ChevronDown, ImagePlus, Minus, Package, Plus, ScanBarcode, ScanLine, Search, Trash2, X } from 'lucide-react';
+import { normalizeFraudPhone, OrderFraudResults } from './production-fraud';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { money, orderRequest, ordersPath, type ProductListing, type Variant, type WebsiteOrderDraft } from '@/lib/website-orders';
 import { OrderThumbnail } from './website-orders-table';
 import productionStyles from './production-website-order-editor.module.css';
 
-type CartLine = Variant & { quantity: number };
+type CartLine = WebsiteOrderDraft['products'][number];
+const lineGross = (line: CartLine) => Math.round(line.price * 100) * line.quantity;
+const discountMinor = (line: CartLine) => {
+  const minor = Math.round((line.discountAmount || 0) * 100);
+  return line.discountType === 'PERCENTAGE' ? Math.round(lineGross(line) * minor / 10_000) : minor;
+};
 type Detector = { detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]> };
 type BarcodeDetectorConstructor = {
   new (options: { formats: string[] }): Detector;
@@ -105,6 +111,12 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
   const [advance, setAdvance] = useState(draft ? String(draft.paid_amount) : '');
   const [discount, setDiscount] = useState(draft ? String(draft.total_discount) : '');
   const [payment, setPayment] = useState<string>(draft?.payment_type ?? 'CASH_ON_DELIVERY');
+  const [phone, setPhone] = useState(draft?.customer_phone ?? '');
+  const [showFraud, setShowFraud] = useState(false);
+  const fraud = normalizeFraudPhone(phone) && <div className={productionStyles.orderFraud}>
+    <button type="button" className="button secondary" aria-expanded={showFraud} onClick={() => setShowFraud(value => !value)}>Fraud Check</button>
+    {showFraud && <OrderFraudResults phone={phone}/>}
+  </div>;
   const [proof, setProof] = useState<File>();
   const [proofError, setProofError] = useState('');
   const [error, setError] = useState('');
@@ -115,10 +127,15 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
     clearTimeout(searchTimer.current);
     searchRequest.current?.abort();
   }, []);
-  const subtotal = Math.round(cart.reduce((sum, line) => sum + line.price * line.quantity, 0) * 100) / 100;
-  const total = Math.round((subtotal + Number(delivery) - Number(discount)) * 100) / 100;
+  const subtotal = cart.reduce((sum, line) => sum + lineGross(line), 0) / 100;
+  const itemDiscounts = cart.reduce((sum, line) => sum + discountMinor(line), 0) / 100;
+  const total = Math.round((subtotal + Number(delivery) - Number(discount) - itemDiscounts) * 100) / 100;
   const balance = Math.round((total - Number(advance)) * 100) / 100;
-  const validation = Number(discount) > subtotal ? 'Discount cannot exceed the subtotal.'
+  const invalidDiscount = cart.some(line => discountMinor(line) > lineGross(line) ||
+    !Number.isFinite(line.discountAmount ?? 0) || (line.discountAmount ?? 0) < 0 ||
+    Math.abs((line.discountAmount ?? 0) * 100 - Math.round((line.discountAmount ?? 0) * 100)) > 0.00001 ||
+    line.discountType === 'PERCENTAGE' && (line.discountAmount ?? 0) > 100);
+  const validation = invalidDiscount ? 'Check the discount on each item.' : Number(discount) + itemDiscounts > subtotal ? 'Discount cannot exceed the subtotal.'
     : balance < 0 ? 'Advance payment cannot exceed the order total.'
       : cart.length > 0 && total <= 0 ? 'The order total must be greater than zero.'
         : payment === 'FULL_PAYMENT' && balance !== 0 ? 'Full payment requires the entire order total as the amount paid.' : '';
@@ -192,7 +209,8 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
       const result = await orderRequest<{ _id: string; status: string }>(draft ? 'draft' : 'create', 'BD', {
         query: draft ? { id: draft.id } : undefined, values: {
         revision: draft?.revision,
-        products: cart.map(line => ({ product: line.product, variant: line.id, total_quantity: line.quantity })),
+        products: cart.map(line => ({ product: line.product, variant: line.id, total_quantity: line.quantity,
+          discount_amount: line.discountAmount || 0, discount_type: line.discountType })),
         customer_name: fields.name, customer_phone: fields.phone,
         delivery_address: { address: fields.address, division: fields.division ?? '', district: fields.district ?? '', thana: fields.thana ?? '' },
         order_note: fields.notes, payment_type: payment, delivery_charge: Number(delivery), paid_amount: Number(advance),
@@ -211,8 +229,8 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
     const styles = productionStyles;
     const full = !!draft;
     const totals: [string, number][] = full ? [
-      ['Sub Total:', subtotal], ['Delivery Charge:', Number(delivery)], ['Discount:', Number(discount)], ['Advance:', Number(advance)], ['Grand Total:', balance],
-    ] : [['Subtotal', subtotal], ['Delivery Charge', Number(delivery)], ['Discounts', Number(discount)],
+      ['Sub Total:', subtotal], ['Item Discount:', itemDiscounts], ['Delivery Charge:', Number(delivery)], ['Discount:', Number(discount)], ['Advance:', Number(advance)], ['Grand Total:', balance],
+    ] : [['Subtotal', subtotal], ['Item Discounts', itemDiscounts], ['Delivery Charge', Number(delivery)], ['Discounts', Number(discount)],
       ['Advanced', Number(advance)], ['Grand Total', balance]];
     const attributes = (value: Variant['attributes']) => Object.entries(value || {}).map(([key,val]) => key + ': ' + val).join(' • ');
     const productPrice = (variant: Variant) => variant.salePrice ?? variant.regularPrice ?? variant.price;
@@ -279,8 +297,24 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
               <output aria-label={'Quantity for ' + line.sku}>{line.quantity}</output>
               <button type="button" className={styles.outline} aria-label={'Increase ' + line.sku}
                 onClick={() => quantity(line.id, line.quantity + 1)} disabled={line.quantity >= 999}><Plus size={16}/></button>
-              <span>{(line.quantity * line.price).toFixed(2)}</span>
+              <span>{((lineGross(line) - discountMinor(line)) / 100).toFixed(2)}</span>
             </div>
+            {full && <div className={styles.lineDiscount}>
+              <label>Discount Type<select aria-label={'Discount type for ' + line.sku} value={line.discountType ?? ''}
+                onChange={event => {
+                  const discountType = (event.currentTarget.value || undefined) as CartLine['discountType'];
+                  setCart(lines => lines.map(item => item.id === line.id
+                    ? { ...item, discountType, discountAmount: discountType ? item.discountAmount : undefined } : item));
+                }}>
+                <option value="">No discount</option><option value="FLAT">Flat</option><option value="PERCENTAGE">Percentage</option>
+              </select></label>
+              {line.discountType && <label>Discount<input aria-label={'Discount for ' + line.sku} type="number" step="0.01" min="0"
+                max={line.discountType === 'PERCENTAGE' ? 100 : lineGross(line) / 100} value={line.discountAmount || ''}
+                onChange={event => {
+                  const discountAmount = Number(event.currentTarget.value);
+                  setCart(lines => lines.map(item => item.id === line.id ? { ...item, discountAmount } : item));
+                }}/></label>}
+            </div>}
           </article>)}</div>}
         </section>
       </section>
@@ -290,8 +324,9 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
             <label>Customer Name *<input name="name" required maxLength={120} autoComplete="off"
               placeholder={full ? undefined : 'Arif Khan'} defaultValue={draft?.customer_name}/></label>
             <label>Customer Phone *<input name="phone" required type="tel" pattern="01[0-9]{9}" maxLength={11}
-              placeholder={full ? undefined : '01XXXXXXXXX'} defaultValue={draft?.customer_phone}/></label>
+              placeholder={full ? undefined : '01XXXXXXXXX'} value={phone} onChange={event => { setPhone(event.currentTarget.value); setShowFraud(false); }}/></label>
           </div>
+          {fraud}
           {full ? <>
             <div className={styles.two}>
               <label>Division *<input name="division" maxLength={80} defaultValue={draft?.delivery_address?.division}/></label>
@@ -398,8 +433,9 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
       <fieldset disabled={saving} className="website-create-fields">
         <div className="website-form-grid">
           <label>Customer Name *<input name="name" required maxLength={120} autoComplete="off" placeholder="Customer name" defaultValue={draft?.customer_name}/></label>
-          <label>Customer Phone *<input name="phone" required type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX" defaultValue={draft?.customer_phone}/></label>
+          <label>Customer Phone *<input name="phone" required type="tel" pattern="01[0-9]{9}" maxLength={11} placeholder="01XXXXXXXXX" value={phone} onChange={event => { setPhone(event.currentTarget.value); setShowFraud(false); }}/></label>
         </div>
+        {fraud}
         <label>Delivery Address *<textarea name="address" required maxLength={450} placeholder="House, road and area" defaultValue={draft?.delivery_address?.address}/></label>
         <div className="website-form-grid three">
           <label>Division<input name="division" maxLength={80} defaultValue={draft?.delivery_address?.division}/></label><label>District<input name="district" maxLength={80} defaultValue={draft?.delivery_address?.district}/></label>
@@ -430,7 +466,7 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
         </section>
         <dl className="website-totals">
           {[
-            ['Subtotal', subtotal], ['Delivery Charge', Number(delivery)], ['Discount', -Number(discount)],
+            ['Subtotal', subtotal], ['Item discounts', -itemDiscounts], ['Delivery Charge', Number(delivery)], ['Discount', -Number(discount)],
             ['Order Total', total], ['Advance Payment', -Number(advance)], ['Balance Due', balance],
           ].map(([label, amount]) => <div key={label}><dt>{label}</dt><dd>{money(Number(amount), 'BDT')}</dd></div>)}
         </dl>

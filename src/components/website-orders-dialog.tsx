@@ -2,20 +2,22 @@
 
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Barcode, Check, ClipboardList, ExternalLink, FileText, Flag, MessageSquare, Package, Pencil, RotateCcw,
-  Truck, UserRound, X } from 'lucide-react';
+  Trash2, Truck, UserRound, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import { addressLabel, currencyFor, manualStatuses, money, orderDate, orderNumber, orderRequest, ordersApi, ordersPath,
   statusLabel, type CustomerHistory, type Order, type OrderAction, type OrderLocation, type OrderMutation, type OrderNote } from '@/lib/website-orders';
 import { Badge } from './tables';
+import { OrderFraudResults } from './production-fraud';
 
-type ReadKind = 'history' | 'payment' | 'status' | 'tracking';
+type ReadKind = 'history' | 'payment' | 'status' | 'tracking' | 'calls';
 export type OrderDialogKind = ReadKind | 'actions' | 'track' | 'fraud' | OrderMutation;
-export type DialogState = { kind: 'sync'; ids: string[] } |
+export type DialogState = { kind: 'sync'; ids?: string[] } |
   { kind: OrderDialogKind; order: Order; href?: string; actions?: OrderAction[] };
 const titles: Record<DialogState['kind'], string> = {
   actions: 'Order Actions', history: 'Customer Details', payment: 'Payment Information', status: 'Status Logs', tracking: 'Tracking Logs',
+  calls: 'Call History', 'accept-stock': 'Accept Order', 'decline-stock': 'Decline Order', accept: 'Accept Order', delete: 'Delete Order',
   track: 'Track Order', fraud: 'Fraud Check', edit: 'Edit Order', 'update-status': 'Update Status', note: 'Update Note',
   sms: 'Send SMS', delivered: 'Mark as Delivered', return: 'Return Order', 'pending-return': 'Mark as Pending Return',
   cancel: 'Cancel Order', called: 'Record Customer Call', sync: 'Sync with Courier',
@@ -23,21 +25,23 @@ const titles: Record<DialogState['kind'], string> = {
 };
 const actionIcons: Record<OrderMutation, typeof Pencil> = {
   edit: Pencil, 'update-status': ClipboardList, note: FileText, sms: MessageSquare, dispatch: Truck, handover: Truck,
-  delivered: Check, return: RotateCcw, 'pending-return': Flag, cancel: X, called: Check, pick: Barcode,
+  delivered: Check, return: RotateCcw, 'pending-return': Flag, cancel: X, called: Check, pick: Barcode, delete: Trash2, 'accept-stock': Check, 'decline-stock': X, accept: Check,
 };
 const buttonLabels: Partial<Record<DialogState['kind'], string>> = {
   note: 'Add note', 'update-status': 'Save status', edit: 'Save changes', sms: 'Send SMS', dispatch: 'Send to Steadfast',
   handover: 'Confirm handover', pick: 'Assign barcodes', cancel: 'Cancel order', delivered: 'Confirm delivery',
-  'pending-return': 'Confirm pending return', return: 'Confirm return', fraud: 'Run Fraud Check', sync: 'Sync orders',
+  'pending-return': 'Confirm pending return', return: 'Confirm return', sync: 'Sync orders',
+  'accept-stock': 'Accept order', 'decline-stock': 'Decline order', accept: 'Accept order', delete: 'Delete order',
 };
-const readKinds = ['history', 'payment', 'status', 'tracking'];
+const readKinds = ['history', 'payment', 'status', 'tracking', 'calls'];
 const mutationMessage: Partial<Record<DialogState['kind'], string>> = {
   edit: 'Order details updated.', 'update-status': 'Order status updated.', note: 'Staff note added.', sms: 'SMS sent.',
   delivered: 'Order marked as delivered.', return: 'Scanned items returned.', 'pending-return': 'Order marked as pending return.',
+  'accept-stock': 'Order accepted.', 'decline-stock': 'Order declined.', accept: 'Order accepted.', delete: 'Order deleted.',
   cancel: 'Order cancelled.', called: 'Customer call recorded.',
   dispatch: 'Order sent to Steadfast.', handover: 'Courier handover recorded.', pick: 'Barcodes assigned to the order.',
 };
-const targets: Partial<Record<DialogState['kind'], string>> = { delivered: 'DELIVERED', 'pending-return': 'PENDING_RETURN', cancel: 'CANCELLED' };
+const targets: Partial<Record<DialogState['kind'], string>> = { delivered: 'DELIVERED', 'pending-return': 'PENDING_RETURN', cancel: 'CANCELLED', accept: 'ACCEPTED' };
 
 type Payment = {
   currency?: string; payment_type?: string; total_amount?: number; COD?: number; paid_amount?: number; paid_by_courier?: number;
@@ -52,7 +56,9 @@ type Tracking = {
   events: { _id: string; status?: string; at?: string; detail?: string }[];
 };
 type StatusLog = { _id?: string; status?: string; changed_at?: string; changed_by?: { full_name?: string } };
-type Fraud = { status_tag?: string; success_rate?: number; required_delivery_charge?: boolean };
+type CallLog = { called_by_name?: string; called_at?: string };
+type SmsLog = { message: string; phone?: string; status?: string; sent_by_name?: string; sent_at?: string };
+type SyncBatch = { synced: number; failed: number; skipped: number; next?: string };
 
 export function OrderNotes({ notes, region }: { notes: OrderNote[]; region: Region }) {
   return notes.length ? <ul className="website-note-list">{notes.map((note, index) => <li key={index}>
@@ -147,12 +153,14 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
+  const [confirmation, setConfirmation] = useState('');
+  const [syncProgress, setSyncProgress] = useState(0);
   const [load, setLoad] = useState<{ page: number; data?: unknown; error?: string }>();
   const kind = state.kind;
   const order = 'order' in state ? state.order : undefined;
   const id = order?._id;
   const read = readKinds.includes(kind);
-  const readAction = kind === 'note' ? 'notes' : read ? kind : undefined;
+  const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' : read ? kind : undefined;
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
@@ -175,8 +183,19 @@ export function OrderDialog({ state, region, locations = [], close, change, save
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     try {
       if (state.kind === 'sync') {
-        const data = await orderRequest<{ synced: number; failed: number; skipped: number }>('sync', region, { values: { ids: state.ids } });
-        saved(`Courier sync: ${data.synced} refreshed, ${data.failed} failed, ${data.skipped} no longer eligible.`);
+        let synced = 0, failed = 0, skipped = 0;
+        let after: string | undefined;
+        setSyncProgress(0);
+        do {
+          const values = state.ids ? { ids: state.ids } : { scope: 'queue', after };
+          const data: SyncBatch = await orderRequest('sync', region, { values });
+          synced += data.synced;
+          failed += data.failed;
+          skipped += data.skipped;
+          setSyncProgress(synced + failed);
+          after = data.next;
+        } while (after);
+        saved(`Courier sync: ${synced} refreshed, ${failed} failed, ${skipped} no longer eligible.`);
       } else if (kind === 'return' && !order?.scanReturn) {
         await orderRequest('return-untracked', region, { query: { id }, values: {} });
         saved('Order returned.');
@@ -185,9 +204,6 @@ export function OrderDialog({ state, region, locations = [], close, change, save
           body: JSON.stringify({ action: kind === 'pick' ? 'order-pick' : 'order-return', recordId: id, region, values: { barcodes: fields.barcodes } }) });
         if (!response.ok) throw new Error((await response.text()).slice(0, 320));
         saved(mutationMessage[kind]!);
-      } else if (kind === 'fraud') {
-        const data = await orderRequest<Fraud>(kind, region, { query: { id }, values: {} });
-        setLoad({ page, data });
       } else if (mutationMessage[kind]) {
         const action = targets[kind] ? 'update-status' : kind === 'edit' && order?.managed ? 'edit-managed' : kind;
         const values = kind === 'edit' ? { customer_name: fields.customer_name, customer_phone: fields.customer_phone, order_note: fields.order_note,
@@ -206,8 +222,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   }
   const readData = load?.page === page ? load.data : undefined;
   const readError = load?.page === page ? load.error : undefined;
-  const fraud = kind === 'fraud' ? load?.data as Fraud | undefined : undefined;
-  const actionForm = kind !== 'actions' && kind !== 'track' && !read;
+  const actionForm = kind !== 'actions' && kind !== 'track' && kind !== 'fraud' && !read;
   return <dialog className={`form-dialog website-dialog${kind === 'history' ? ' website-history-dialog' : ''}`} ref={dialog}
     aria-labelledby={heading} onCancel={event => { event.preventDefault(); if (!busyRef.current) close(); }}>
     <div className="website-dialog-header"><div><h2 id={heading}>{titles[kind]}</h2>{order && <small>Order {orderNumber(order)}</small>}</div>
@@ -219,6 +234,11 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       ? <ul className="website-log">{(readData as StatusLog[]).map((entry, index) => <li key={entry._id || index}>
         <Badge value={entry.status || 'Unknown'}/><small>{orderDate(entry.changed_at, region)} · {entry.changed_by?.full_name || 'System'}</small></li>)}</ul>
       : <p>No status changes recorded.</p>)}
+    {kind === 'calls' && !!readData && ((readData as CallLog[]).length
+      ? <ul className="website-log">{(readData as CallLog[]).map((call, index) => <li key={index}>
+        <strong>{call.called_by_name || 'Staff'}</strong><small>{orderDate(call.called_at, region)}</small></li>)}</ul>
+      : <p>No calls recorded.</p>)}
+    {kind === 'fraud' && <OrderFraudResults phone={order?.customer_phone}/>}
     {kind === 'tracking' && !!readData && <TrackingDetails data={readData as Tracking} region={region}/>}
     {kind === 'track' && order && <div className="stack-form">
       <p>Tracking code: <strong>{order.tracking_code}</strong></p>
@@ -241,7 +261,12 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       })}
     </>}
     {actionForm && <form className="stack-form" onSubmit={submit}>
-      {state.kind === 'sync' && <p>Refresh tracking for {state.ids.length} eligible orders on this page.</p>}
+      {state.kind === 'sync' && <p>{state.ids ? 'Refresh tracking for eligible orders on this page.' : 'Refresh tracking for all orders handed over to the courier or in transit.'}
+        {busy && !!syncProgress && <span role="status"> {syncProgress} orders checked.</span>}</p>}
+      {(kind === 'accept-stock' || kind === 'accept') && <p>Confirm that you want to accept this order.</p>}
+      {kind === 'decline-stock' && <label>Reason (optional)<textarea name="reason" maxLength={240} rows={3}/></label>}
+      {kind === 'delete' && <label>Type DELETE to confirm<input name="confirmation" required autoComplete="off" value={confirmation}
+        onChange={event => setConfirmation(event.currentTarget.value)}/></label>}
       {kind === 'called' && <p>Record that you called {order?.customer_name || 'this customer'}.</p>}
       {kind === 'cancel' && <p>Cancel this order and release any reserved stock.</p>}
       {kind === 'delivered' && <p>Confirm the courier has delivered this order.</p>}
@@ -270,7 +295,13 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         </section>
       </>}
       {kind === 'sms' && <><p>Send an SMS to <strong>{order?.customer_phone}</strong>.</p>
-        <label>Message<textarea name="message" rows={4} maxLength={480} required/></label></>}
+        <label>Message<textarea name="message" rows={4} maxLength={480} required/></label>
+        <section aria-label="SMS History" className="website-note-history"><h3>SMS History</h3>
+          {readData ? (readData as SmsLog[]).length ? <ul className="website-note-list">{(readData as SmsLog[]).map((sms, index) =>
+            <li key={index}><p>{sms.message}</p><Badge value={sms.status || 'Unknown'}/>
+              <small>{sms.phone} · {sms.sent_by_name || 'Staff'} · {orderDate(sms.sent_at, region)}</small></li>)}</ul>
+            : <p>No messages sent.</p> : <p role={readError ? 'alert' : 'status'}>{readError || 'Loading history…'}</p>}
+        </section></>}
       {kind === 'return' && (order?.scanReturn ? <><p>Scan only the returned items. Eligible units will be restored to stock.</p>
         <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label></>
         : <p>Confirm all items in this order were returned. Eligible units will be restored to stock.</p>)}
@@ -293,16 +324,11 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       {kind === 'update-status' && <label>New status<select name="status" defaultValue="" required>
         <option value="" disabled>Select status</option>{manualStatuses.filter(status => status !== order?.status).map(status =>
           <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
-      {kind === 'fraud' && (fraud ? <dl className="website-data-list">
-        <div><dt>Delivery success</dt><dd>{fraud.success_rate ?? '—'}{fraud.success_rate != null && '%'}</dd></div>
-        <div><dt>Provider result</dt><dd>{fraud.status_tag || '—'}</dd></div>
-        <div><dt>Advance delivery charge</dt><dd>{fraud.required_delivery_charge ? 'Required' : 'Not required'}</dd></div>
-      </dl> : <p>Check delivery history for {order?.customer_phone} with the configured courier fraud service.</p>)}
       {error && <p role="alert" className="notice warn">{error}</p>}
       <div className="page-actions website-dialog-actions">
-        <button type="button" className="button secondary" disabled={busy} onClick={close}>{fraud ? 'Done' : 'Close'}</button>
-        {!fraud && <button className={'button primary' + (kind === 'cancel' ? ' website-destructive' : '')}
-          disabled={busy || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>}
+        <button type="button" className="button secondary" disabled={busy} onClick={close}>Close</button>
+        <button className={'button primary' + (['cancel', 'delete', 'decline-stock'].includes(kind) ? ' website-destructive' : '')}
+          disabled={busy || (kind === 'delete' && confirmation !== 'DELETE') || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>
       </div>
     </form>}
   </dialog>;

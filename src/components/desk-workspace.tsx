@@ -194,7 +194,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         <CourierFraud enabled={process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1' && canWrite(auth.staff)}
           simulated={process.env.GRIIP_ADMIN_TARGET === 'integration' && process.env.GRIIP_ADMIN_FRAUD_LOOKUP === '1'}/></>;
     }
-    else if (sectionId === 'orders' && active === 'sales-executive' && !view[1]) content = await WebsiteOrdersPage({auth, region, q, executive:true});
+    else if (sectionId === 'orders' && active === 'sales-executive' && !view[1]) content = await WebsiteOrdersPage({auth, region, q, executive:true, productionLayout: Boolean(production)});
     else if (sectionId === 'orders' && active === 'assigned' && !view[1]) content = await AssignedOrders({auth, region, q, productionLayout: Boolean(production)});
     else if (sectionId === 'orders' && active === 'preorders') content = await PreOrdersPage({ auth, q, region, view, productionLayout: Boolean(production) });
     else if (sectionId === 'orders' && active === 'create' && view.length === 1) content = await WebsiteOrderCreatePage({ auth, region, productionLayout: Boolean(production) });

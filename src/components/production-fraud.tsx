@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Search } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import styles from './production-fraud.module.css';
@@ -10,7 +10,7 @@ type Courier = {
   totalParcels?: number; totalDelivered?: number; totalCancelled?: number; lastCourierSyncAt?: string;
   successRate?: number;
 };
-type Summary = {
+export type FraudSummary = {
   successRate: number; statusTag?: string;
   totalOrders?: number; totalParcels?: number; totalDelivered?: number;
   totalCancelled?: number; totalCancel?: number; apis?: Courier[];
@@ -21,7 +21,7 @@ export function ProductionFraudChecker({ header = false, className, resultClassN
 }) {
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Summary>();
+  const [result, setResult] = useState<FraudSummary>();
   const [error, setError] = useState('');
   const [details, setDetails] = useState(!header);
 
@@ -33,11 +33,7 @@ export function ProductionFraudChecker({ header = false, className, resultClassN
     setError('');
     setDetails(!header);
     try {
-      const response = await fetch(adminPath('/api/fraud-check?phone=' + encodeURIComponent(phone)), { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch fraud status');
-      const body: { data?: Summary } = await response.json();
-      if (!body.data || !Number.isFinite(body.data.successRate)) throw new Error('Failed to fetch fraud status');
-      setResult(body.data);
+      setResult(await lookupFraud(phone));
     } catch {
       setError('Failed to fetch fraud status');
     } finally {
@@ -67,7 +63,73 @@ export function ProductionFraudChecker({ header = false, className, resultClassN
   </form>;
 }
 
-function FraudResults({ result }: { result: Summary }) {
+export function normalizeFraudPhone(value?: string) {
+  const phone = (value || '').replace(/\D/g, '').replace(/^88(?=01[0-9]{9}$)/, '');
+  return /^01[0-9]{9}$/.test(phone) ? phone : '';
+}
+
+const lookups = new Map<string, { expires: number; result: Promise<FraudSummary> }>();
+let activeLookups = 0;
+const queuedLookups: (() => void)[] = [];
+
+function lookupFraud(phone: string) {
+  const now = Date.now();
+  for (const [number, entry] of lookups) if (entry.expires <= now) lookups.delete(number);
+  const existing = lookups.get(phone);
+  if (existing) return existing.result;
+  const result = new Promise<FraudSummary>((resolve, reject) => {
+    const run = async () => {
+      activeLookups++;
+      try {
+        const url = adminPath('/api/fraud-check?phone=' + encodeURIComponent(phone));
+        const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error(response.status === 429 ? 'Wait before making another lookup' : 'Failed to fetch fraud status');
+        const body: { data?: FraudSummary } = await response.json();
+        if (!body.data || !Number.isFinite(body.data.successRate)) throw new Error('Failed to fetch fraud status');
+        resolve(body.data);
+      } catch (error) {
+        lookups.delete(phone);
+        reject(error);
+      } finally {
+        activeLookups--;
+        queuedLookups.shift()?.();
+      }
+    };
+    if (activeLookups < 3) void run();
+    else queuedLookups.push(run);
+  });
+  lookups.set(phone, { expires: now + 60_000, result });
+  return result;
+}
+
+export function useCourierFraud(value?: string, active = true) {
+  const phone = normalizeFraudPhone(value);
+  const [state, setState] = useState<{ phone: string; result?: FraudSummary; error?: string }>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!phone || !active) return;
+    let current = true;
+    const timer = setTimeout(() => {
+      lookupFraud(phone).then(
+        result => { if (current) setState({ phone, result }); },
+        error => { if (current) setState({ phone, error: error.message || 'Failed to fetch fraud status' }); },
+      );
+    }, 150);
+    return () => { current = false; clearTimeout(timer); };
+  }, [phone, attempt, active]);
+  const data = state?.phone === phone ? state : undefined;
+  return { ...data, busy: Boolean(phone && active && !data), retry: () => { setState(undefined); setAttempt(value => value + 1); } };
+}
+
+export function OrderFraudResults({ phone }: { phone?: string }) {
+  const { result, error, busy, retry } = useCourierFraud(phone);
+  if (!normalizeFraudPhone(phone)) return <p>A Bangladesh mobile number is required.</p>;
+  if (busy) return <p role="status">Loading fraud data…</p>;
+  if (error) return <div role="alert"><p>{error}</p><button type="button" className="button secondary" onClick={retry}>Retry</button></div>;
+  return result ? <FraudResults result={result}/> : null;
+}
+
+export function FraudResults({ result }: { result: FraudSummary }) {
   const total = result.totalOrders ?? result.totalParcels ?? 0;
   const delivered = result.totalDelivered ?? 0;
   const cancelled = result.totalCancelled ?? result.totalCancel ?? 0;
