@@ -176,6 +176,6 @@
 
 .orderFraud { margin: 8px 0; }
 .orderFraud > button { margin-bottom: 8px; }
-.lineDiscount { display: flex; gap: 12px; align-items: end; padding-top: 8px; }
+.lineDiscount { display: flex; gap: 12px; align-items: flex-end; padding-top: 8px; }
 .lineDiscount label { display: grid; gap: 4px; font-size: 12px; }
 .lineDiscount :is(select,input) { min-height: 32px; width: 112px; }
