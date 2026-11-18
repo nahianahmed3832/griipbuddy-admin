@@ -36,6 +36,7 @@ import { ProductionPosReport } from '@/components/production-pos-report';
 import { ProductionPosRegister } from '@/components/production-pos-register';
 import { ProductionHeaderPage } from '@/components/production-header';
 import { StockChangesPage } from '@/components/stock-changes-page';
+import { ProductionStockHistory } from '@/components/production-stock-history';
 import { StockReport } from '@/components/stock-report';
 import { LocationsPage } from '@/components/locations-page';
 import { StaffWorkspace } from '@/components/staff-workspace';
@@ -204,6 +205,10 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'inventory' && active === 'scan-to-receive' && view.length === 1) content = await ScanToReceive({ auth, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'barcode-logs' && view.length === 1) content = await BarcodeLogs({ auth, q, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'stock' && !view[1]) content = await StockReport({ auth, q, region, production: Boolean(production) });
+    else if (production && sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && !view[1]) {
+      content = await ProductionStockHistory({ auth, region, q, mode: active === 'adjustments' ? 'adjustment'
+        : production.path === '/dashboard/inventory/transfer-history' ? 'inventory' : 'transfer' });
+    }
     else if (sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && view[1] === 'create') {
       content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer' });
     }
@@ -212,7 +217,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         productionOutlet: Boolean(production) && active === 'outlet-update', outletId: param(q, 'outlet_id')});
     }
     else if (sectionId === 'inventory' && active === 'purchases') content = view[1]
-      ? await PurchaseRecordPage({auth, region, q, id: view[1]}) : await AllPurchases({ auth, region, q, production: Boolean(production) });
+      ? await PurchaseRecordPage({auth, region, q, id: view[1], production: Boolean(production)}) : await AllPurchases({ auth, region, q, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'rates' && view.length < 2) content = await DefaultRatePage({ auth, region, q, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'rates' && view[1] === 'new') content = await DefaultRateCreatePage({ auth, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1], production: Boolean(production)});

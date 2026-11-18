@@ -228,3 +228,7 @@
   .detailHead { flex-direction: column; }
   .dialog { width: calc(100vw - 16px); }
 }
+.metricStatus { display: flex; justify-content: center; gap: 16px; padding-top: 8px; color: #6b7280; font-size: 14px; }
+.metricStatus span { display: inline-flex; align-items: center; gap: 4px; }
+.metricStatus span::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #4ade80; }
+.metricStatus span + span::before { background: #60a5fa; }

@@ -69,8 +69,10 @@ export function ProductionStockFiltersForm({ filters, locations, selected }: {
         <div className={styles.locationPopup}>
           <input placeholder="Search locations..." aria-label="Search locations" value={locationSearch}
             onChange={event => setLocationSearch(event.currentTarget.value)} />
-          <button type="button" onClick={() => update({ businessLocation: locations.map(location => location.value).join(',') || 'all' })}>Select All</button>
-          <button type="button" onClick={clear}>All Locations</button>
+          <label><input type="checkbox" checked={locations.length > 0 && labels.length === locations.length}
+            onChange={event => { if (event.target.checked) update({ businessLocation: locations.map(location => location.value).join(',') }); else clear(); }}/>
+            Select All</label>
+          <label><input type="checkbox" checked={!active.length} onChange={clear}/>All Locations</label>
           {visibleLocations.map(location => <label key={location.value}>
             <input type="checkbox" checked={active.includes(location.value)} onChange={() => toggle(location.value)} />{location.label}
           </label>)}

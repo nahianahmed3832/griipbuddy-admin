@@ -102,8 +102,11 @@ function StockMetrics({ summary, permissions }: { summary: StockSummary; permiss
     ...(permissions.profit ? [{ title: 'Potential Profit Value (by sale price)', value: stockCurrency(summary.profit), icon: TrendingUp, tone: 'orange' }] : []),
     { title: 'Total Sold Value (sell)', value: stockCurrency(summary.sold), icon: Coins, tone: 'purple' },
   ];
-  return <div className={styles.metrics}>{metrics.map(({ title, value, icon: Icon, tone }) =>
-    <article key={title} data-tone={tone}><div>{title}<Icon size={16} aria-hidden="true"/></div><p>{value}</p></article>)}</div>;
+  return <>
+    <div className={styles.metrics}>{metrics.map(({ title, value, icon: Icon, tone }) =>
+      <article key={title} data-tone={tone}><div>{title}<Icon size={16} aria-hidden="true"/></div><p>{value}</p></article>)}</div>
+    <div className={styles.metricStatus}><span>Real-time data</span><span>Analytics ready</span></div>
+  </>;
 }
 
 async function StockDetail({ auth, region, id, closeUrl, locations, canSeeCost }: {

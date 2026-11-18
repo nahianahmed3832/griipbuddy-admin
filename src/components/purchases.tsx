@@ -187,7 +187,7 @@ export async function DefaultRateCreatePage({ auth, region, production = false }
   </div>;
 }
 
-export async function PurchaseRecordPage({ auth, region, id, q }: { auth: Session; region: Region; id: string; q: Query }) {
+export async function PurchaseRecordPage({ auth, region, id, q, production = false }: { auth: Session; region: Region; id: string; q: Query; production?: boolean }) {
   if (param(q, 'invoice') === '1') return PurchaseInvoice({ auth, region, id });
   const row = await purchaseRecord(auth, region, id);
   const canEdit = canEditPurchase(auth.staff) && row.inventory_ordered !== true;
@@ -207,6 +207,10 @@ export async function PurchaseRecordPage({ auth, region, id, q }: { auth: Sessio
         quantity: String(item.qty ?? ''), cost: String(item.unit_cost ?? ''), discount: String(item.discount ?? 0), tax: String(item.tax ?? 0) })),
       expenses: arr(row.expenses_applied).map(obj).map(item => ({ type: str(item.type), amount: String(item.amount ?? ''), note: str(item.note) })),
     };
+    if (production) return <div className="purchases-workspace"><header className="purchase-heading"><div className="purchase-heading-title">
+      <Link className="icon-button" aria-label="Back to purchases" href={purchaseQueryPath(productionPurchasePath, { region })}><ChevronLeft size={19}/></Link>
+      <h1>Edit Purchase</h1></div></header>
+      <PurchaseRecordForm record={record} suppliers={vendors} locations={locations} region={region} production/></div>;
     return <div className="purchases-workspace"><header className="purchase-heading"><h1>Edit purchase {purchaseNumber(row.purchase_number)}</h1>
       <Link className="button secondary" href={url(purchasePath + '/' + id, { region })}>Back to purchase</Link></header>
       <PurchaseRecordForm record={record} suppliers={vendors} locations={locations} region={region}/></div>;

@@ -155,3 +155,10 @@
   .stockFields, .ratesFilters { grid-template-columns: minmax(0, 1fr); }
   .rateList:global(.purchase-rate-list), .rateCreate:global(.purchase-rate-create) { padding: 8px; }
 }
+.purchaseEdit { gap: 24px; }
+.purchaseDay { display: flex; position: relative; justify-content: space-between; align-items: center; min-height: 38px; gap: 8px; padding: 6px 12px; border: 1px solid #e0e0e4; border-radius: 8px; }
+.purchaseDay:focus-within { outline: 2px solid currentColor; outline-offset: 2px; }
+.purchaseDay input[type="date"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.purchaseDay input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.expenseEditHeader { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.expenseEditHeader h2 { margin: 0; }
