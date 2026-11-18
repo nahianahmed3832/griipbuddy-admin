@@ -170,7 +170,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
       const search = new URLSearchParams(window.location.search);
       setCalendar(false);
       setCustomPreset(false);
-      setFormFilters(Object.fromEntries(orderFilterKeys.map(key => [key, search.get(key) ?? undefined])));
+      setFormFilters(Object.fromEntries(orderFilterKeys.map(key => [key, search.get(key) ?? (key === 'filter' ? search.get('status') : null) ?? undefined])));
     };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);

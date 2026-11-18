@@ -24,6 +24,7 @@ export function canCreateWebsiteOrder(auth: Session, region: Region) {
 
 function selectedFilters(q: Query) {
   const filters: OrderFilters = Object.fromEntries(orderFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100)]));
+  filters.filter ||= param(q, 'status')?.trim().slice(0, 100);
   if (filters.filter && !filters.filter.split(',').every(value => statuses.some(status => status === value))) delete filters.filter;
   if (filters.location && !mongoId(filters.location)) delete filters.location;
   if (filters.creator && !mongoId(filters.creator) && !['USER', 'GUEST'].includes(filters.creator)) delete filters.creator;
