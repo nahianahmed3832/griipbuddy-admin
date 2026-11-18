@@ -29,11 +29,12 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   if (assigned && !scopedLocations.length) scopedLocations.push({ value: assigned, label: 'Assigned location' });
 
   const period = { from: from || '1970-01-01', to: to || today };
+  const includeProfit = has(auth.staff, 'potential.profit.view');
   const [legacy, hybrid] = await Promise.all([
     api(url('/report/business-report', { region, businessLocationId: location, startDate: period.from, endDate: period.to }), auth.token),
-    loadHybridReportOrders(auth, region, { locations: location, ...period, milestones: true, returnCosts: true }),
+    loadHybridReportOrders(auth, region, { locations: location, ...period, milestones: true, returnCosts: true, profit: includeProfit }),
   ]);
-  const { report, note, returnNote } = mergeHybridClassic(obj(legacy), hybrid, period);
+  const { report, note, returnNote } = mergeHybridClassic(obj(legacy), hybrid, period, includeProfit);
   const orderMoney = (value: unknown) => region === 'BD' ? money(value) : whole(value) + '\u00a0USD';
   const totals = obj(report.totals);
   const sales = obj(totals.orders);
@@ -49,7 +50,7 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
       ['Total Orders Amount', orderMoney(sales.totalOrdersAmount), DollarSign],
       ['Total Orders Discount', orderMoney(sales.totalOrdersDiscount), CircleAlert],
       ['Total Due', orderMoney(sales.totalDue), CircleAlert],
-      ...(has(auth.staff, 'potential.profit.view') ? [['Total Profit', orderMoney(sales.totalProfit), TrendingUp] as const] : []),
+      ...(includeProfit ? [['Total Profit', orderMoney(sales.totalProfit), TrendingUp] as const] : []),
       ['Quantity Ordered', units(sales.total_quantity), Boxes],
       ['Order Count', whole(sales.count), Users],
     ] },

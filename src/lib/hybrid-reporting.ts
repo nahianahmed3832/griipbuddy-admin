@@ -252,12 +252,31 @@ export function mergeHybridOverview(section: string, data: RecordData, hybrid: H
   }, orders);
 }
 
-export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData | null, period: Period) {
+function hybridOrderMargin(order: HybridReportOrder) {
+  if (order.status === 'CANCELLED' || (!order.wasDelivered && ['RETURNED', 'PENDING_RETURN'].includes(order.status))) return 0;
+  if (!order.dispatched || order.purchaseCostMinor == null) return undefined;
+  let margin = order.totalMinor - order.purchaseCostMinor;
+  for (const receipt of order.returns) {
+    if (order.deliveredAt != null && receipt.receivedAt < order.deliveredAt) continue;
+    const recoveredCost = receipt.disposition === 'HOLD' ? 0 : receipt.returnedCostMinor;
+    if (recoveredCost == null) return undefined;
+    // Classic adjusts order margin using the net sale value of physically returned merchandise.
+    margin -= receipt.estimateMinor - recoveredCost;
+  }
+  return margin;
+}
+
+export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData | null, period: Period, includeProfit = false) {
   if (!hybrid || !hybrid.orders.length) return { report, note: hybrid?.issue };
   const placed = hybrid.orders.filter(order => within(order.placedAt, period));
   const hybridTotals = totals(placed);
   const summary = obj(report.totals);
   const native = obj(summary.orders);
+  const margins = includeProfit ? placed.filter(order => order.dispatched || order.wasDelivered).map(hybridOrderMargin) : [];
+  const measuredMargins = margins.filter((margin): margin is number => margin != null);
+  const profit = measuredMargins.reduce((sum, margin) => sum + Math.max(0, margin), 0);
+  const loss = measuredMargins.reduce((sum, margin) => sum + Math.max(0, -margin), 0);
+  const missingProfit = margins.length - measuredMargins.length;
   const returns = obj(summary.returns);
   const receipts = periodActivity(hybrid.orders, period).returns;
   const paidRefund = hybrid.orders.filter(order => order.wasDelivered).reduce((sum, order) => sum + order.returns.reduce((subtotal, receipt) =>
@@ -276,11 +295,16 @@ export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData 
     totalOrdersAmount: round(numeric(native.totalOrdersAmount) + hybridTotals.value / 100),
     totalOrdersDiscount: round(numeric(native.totalOrdersDiscount) + hybridTotals.discount / 100),
     totalDue: round(numeric(native.totalDue) + placed.reduce((due, order) => due + numeric(order.dueMinor), 0) / 100),
+    ...(includeProfit && { totalProfit: round(numeric(native.totalProfit) + profit / 100),
+      totalLoss: round(numeric(native.totalLoss) + loss / 100) }),
   }, returns: { ...returns, totalRefund: round(numeric(returns.totalRefund) + paidRefund),
     ...(costReceipts.length && { totalReturnedCost: round(numeric(returns.totalReturnedCost) + returnedCost) }),
     total_quantity: numeric(returns.total_quantity) + returnedUnits, count: numeric(returns.count) + receipts.length,
   } }, daily: arr(report.daily).map(obj).map(row => ({ ...row, orders: round(numeric(row.orders) + (byDay.get(str(row.date).slice(0, 10)) ?? 0) / 100) })) },
-  note: placed.length ? 'Online order totals and outstanding payments include Hybrid checkout. Hybrid profit is unavailable because order purchase costs are not recorded.' : undefined,
+  note: [
+    placed.length ? 'Online order totals and outstanding payments include Hybrid checkout.' : '',
+    missingProfit ? 'Profit excludes ' + missingProfit + (missingProfit === 1 ? ' Hybrid order' : ' Hybrid orders') + ' with incomplete warehouse cost records.' : '',
+  ].filter(Boolean).join(' ') || undefined,
   returnNote: [
     receipts.length || paidRefund ? 'Includes Hybrid returns by receipt date and refunds by confirmation date.' : '',
     missingCosts ? 'Purchase-cost evidence is missing for ' + missingCosts + ' Hybrid ' + (missingCosts === 1 ? 'return receipt.' : 'return receipts.') : '',

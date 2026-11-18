@@ -6,7 +6,7 @@ import {
 } from './hybrid-reporting';
 import type { Region } from './sections';
 
-const mergedReports = ['sales-summary', 'sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts'];
+const mergedReports = ['sales-summary', 'sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts', 'data-health'];
 
 export function canMergeHybridReport(id: string, auth: Session, region: Region) {
   return mergedReports.includes(id) && canReadHybridReports(auth, region);
@@ -240,6 +240,59 @@ function pendingFulfilment(data: RecordData, orders: HybridReportOrder[]) {
   ])), item => ({ ...item, tone: numeric(item.value) ? item.key === 'courier_overdue' ? 'danger' : 'warning' : 'success' }));
 }
 
+async function inventoryDataHealth(data: RecordData, auth: Session, region: Region, locations?: string, exporting = false) {
+  const inputs = obj(data.mergeInputs);
+  const windowDays = numeric(inputs.windowDays);
+  const scopes = arr(inputs.warehouseLocationIds).map(str).filter(mongoId);
+  if (!scopes.length || !Number.isSafeInteger(windowDays) || windowDays < 1) return data;
+  const nativeStart = Date.parse(str(inputs.windowStart));
+  const snapshotAt = Date.parse(str(obj(data.meta).generated_at));
+  const since = Number.isFinite(nativeStart) ? nativeStart
+    : (Number.isFinite(snapshotAt) ? snapshotAt : Date.now()) - windowDays * 86_400_000;
+  const requested = locations?.split(',');
+  const filter = new Set(requested ? scopes.filter(location => requested.includes(location)) : scopes);
+  if (!filter.size) return data;
+  const hybrid = await loadHybridReportOrders(auth, region, { locations, milestones: true, warehouseSince: new Date(since).toISOString() });
+  if (hybrid?.issue) return appendQuality(data, hybrid.issue, 'HYBRID_INVENTORY_SCOPE');
+  const orders = hybrid?.orders.filter(order => order.warehouseId && filter.has(order.warehouseId) &&
+    order.updatedAt != null && order.updatedAt >= since && order.warehouseStockExpected === true) ?? [];
+  const shippedWithoutStock = orders.filter(order => order.warehouseInventoryRecorded === false && order.wasDelivered &&
+    ['DELIVERED', 'PARTIAL', 'RETURN_REQUESTED'].includes(order.status));
+  const cancelledWithStockOut = orders.filter(order => order.status === 'CANCELLED' && order.dispatched &&
+    order.warehouseInventoryRecorded === true && Number.isSafeInteger(order.warehouseUnitsPendingRestock) &&
+    (order.warehouseUnitsPendingRestock ?? 0) > 0);
+  const reportRow = (order: HybridReportOrder) => ({
+    order: order.reference, value: order.totalMinor / 100, _links: { order: '/dashboard/order-details/' + order.id },
+  });
+  const dated = (value?: number) => value != null && Number.isFinite(value) ? new Date(value).toISOString() : null;
+  const additions = {
+    deliveredWithoutStockOut: shippedWithoutStock.map(order => ({
+      ...reportRow(order), deliveredAt: dated(order.deliveredAt ?? order.updatedAt),
+    })),
+    courierCancelledNotRestocked: cancelledWithStockOut.map(order => ({
+      ...reportRow(order), cancelledAt: dated(order.cancelledAt ?? order.updatedAt),
+      units: order.warehouseUnitsPendingRestock, _tones: { units: 'danger' },
+    })),
+  };
+  if (!shippedWithoutStock.length && !cancelledWithStockOut.length) return data;
+  const native = array(data.kpis);
+  let combined = data;
+  for (const key of ['deliveredWithoutStockOut', 'courierCancelledNotRestocked'] as const) {
+    const rows = additions[key];
+    if (!rows.length) continue;
+    const date = key === 'deliveredWithoutStockOut' ? 'deliveredAt' : 'cancelledAt';
+    combined = replaceTable(combined, key, table => ({
+      ...table,
+      rows: [...array(table.rows), ...rows].sort((a, b) =>
+        str(obj(b)[date]).localeCompare(str(obj(a)[date])) || str(a.order).localeCompare(str(b.order)))
+        .slice(0, exporting ? 50_000 : 200),
+    }));
+  }
+  return updateMetrics(combined, Object.fromEntries(Object.entries(additions).map(([key, rows]) =>
+    [key, numeric(native.find(metric => metric.key === key)?.value) + rows.length])),
+  metric => Object.hasOwn(additions, str(metric.key)) && numeric(metric.value) > 0 ? { ...metric, tone: 'danger' } : metric);
+}
+
 function finalize(id: string, data: RecordData, exporting: boolean) {
   const { mergeInputs, ...result } = data;
   const page = numeric(obj(mergeInputs).page) || 1;
@@ -269,6 +322,7 @@ function finalize(id: string, data: RecordData, exporting: boolean) {
 
 export async function reportWithHybrid(id: string, data: RecordData, auth: Session, region: Region, locations?: string, exporting = false): Promise<RecordData> {
   if (!canMergeHybridReport(id, auth, region)) return data;
+  if (id === 'data-health') return inventoryDataHealth(data, auth, region, locations, exporting);
   const meta = obj(data.meta);
   const range = periodOf(meta);
   const hybrid = await loadHybridReportOrders(auth, region, {

@@ -53,7 +53,8 @@ function recordLink(key: string, raw: unknown, auth: Session, region: Region, pr
   const parts = str(raw).split('/');
   const id = parts[3];
   if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'dashboard') return undefined;
-  if (key === 'order' && parts[2] === 'order-details' && hybridOrderId(id) && has(auth.staff, 'order.view') && region === 'BD') {
+  if ((key === 'order' || key === 'reference') && parts[2] === 'order-details' && hybridOrderId(id) &&
+      has(auth.staff, 'order.view') && region === 'BD') {
     return url('/dashboard/order-details/' + id, { region });
   }
   if (!mongoId(id ?? '')) return undefined;

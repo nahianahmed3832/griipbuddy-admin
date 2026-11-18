@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     const scope = reportQuery(query, region);
     if (canMergeHybridReport(query.id, auth, region)) {
       scope.locations = hybridReportLocations(auth, scope.locations);
-      const native = obj(await api(url('/analytics/reports/' + query.id, { ...scope, hybridMerge: '1', ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
+      const native = obj(await api(url('/analytics/reports/' + query.id, { ...scope, hybridMerge: '1',
+        ...(query.id === 'data-health' && { hybridExport: '1' }), ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
       const combined = await reportWithHybrid(query.id, native, auth, region, scope.locations, true);
       if (combined !== native) return hybridReportDownload(query.id, combined, query.format as 'csv' | 'xlsx');
     }

@@ -10,6 +10,7 @@ const uuid = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const workspaceLimit = 10_000;
 
 type HybridItem = { productName: string; variantName: string; sku: string; quantity: number; unitPriceMinor: number; lineTotalMinor: number;
+  id?: string;
   variantId?: string; variant?: { productId: string; inventory?: { available: number } | null; product: { department: { id: string; name: string } } } };
 type HybridReturn = { id?: string; status: string; createdAt?: string; returnReceivedAt?: string | null;
   returnDisposition?: 'RESTOCK' | 'HOLD' | null; returnCost?: HybridReturnCost | null;
@@ -20,6 +21,8 @@ type HybridOrder = {
   districtLabel: string; totalMinor: number; subtotalMinor?: number; discountMinor?: number; deliveryMinor?: number; taxMinor?: number;
   items: HybridItem[];
   shippingWarehouseId?: string | null; shippingWarehouseName?: string | null;
+  updatedAt?: string; cancelledAt?: string | null; purchaseCostMinor?: number | null;
+  warehouseStockExpected?: boolean; warehouseInventoryRecorded?: boolean; warehouseUnitsPendingRestock?: number;
   payment: { method: string; status: string; amountMinor: number; collectedAt?: string | null } | null;
   bangladeshShipment: (HybridShipment & { statusUpdatedAt?: string }) | null;
   bangladeshRefusedParcelReceipt?: HybridFulfillment['receipt'];
@@ -155,12 +158,15 @@ export type HybridReportOrder = {
   status: string; placedAt: number; totalMinor: number; dueMinor: number; productMinor: number; discountMinor: number; units: number;
   awaitingPayment: boolean; claimedMinor: number; inTransit: boolean; uncollectedCodMinor: number; dispatched: boolean;
   id: string; reference: string; district: string; warehouse?: string; statusAt: number; dispatchedAt?: number; deliveredAt?: number; deliveryMinor: number;
+  warehouseId?: string; warehouseStockExpected?: boolean; warehouseInventoryRecorded?: boolean; warehouseUnitsPendingRestock?: number;
+  updatedAt?: number; cancelledAt?: number; purchaseCostMinor?: number;
   wasDelivered: boolean; lines: HybridReportLine[]; returns: HybridReportReturn[];
   inventoryReceipts?: { receivedAt: number; costMinor?: number }[];
 };
 export type HybridReportLine = { id: string; sku: string; name: string; productId?: string;
   categoryId?: string; category?: string; quantity: number; amountMinor: number; pooledOnHand?: number };
-export type HybridReportReturn = { receivedAt: number; confirmedAt?: number; estimateMinor: number; confirmedMinor?: number; lines: HybridReportLine[] };
+export type HybridReportReturn = { receivedAt: number; confirmedAt?: number; estimateMinor: number; confirmedMinor?: number;
+  disposition?: 'RESTOCK' | 'HOLD' | null; returnedCostMinor?: number; lines: HybridReportLine[] };
 export type HybridReportData = { orders: HybridReportOrder[]; issue?: string };
 
 function eventTime(value?: string | null) {
@@ -179,6 +185,7 @@ function returnLine(item: HybridItem, quantity: number): HybridReportLine {
 
 export async function loadHybridReportOrders(auth: Session, region: Region, scope: {
   locations?: string; from?: string; to?: string; active?: boolean; milestones?: boolean; returnCosts?: boolean;
+  profit?: boolean; warehouseSince?: string;
 }): Promise<HybridReportData | null> {
   if (!canReadHybridReports(auth, region)) return null;
   const locations = hybridReportLocations(auth, scope.locations);
@@ -186,9 +193,11 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
   const validNumber = (value: number) => Number.isSafeInteger(value) && value >= 0;
   try {
     const readPurchaseCost = scope.milestones && scope.returnCosts && has(auth.staff, 'purchase.price.view');
+    const readProfit = scope.milestones && scope.profit && has(auth.staff, 'potential.profit.view');
     const listing = await checkoutRead<{ workspaceOrders?: HybridOrder[]; reportOrders?: HybridOrder[]; tooMany: boolean }>(
       connection, { view: scope.milestones ? 'reporting' : 'workspace', from: scope.from, to: scope.to, locations,
-        active: scope.active ? '1' : undefined, costs: readPurchaseCost ? '1' : undefined }, 5000);
+        active: scope.active ? '1' : undefined, costs: readPurchaseCost ? '1' : undefined,
+        profit: readProfit ? '1' : undefined, warehouseSince: scope.warehouseSince }, 5000);
     if (listing.tooMany) return { orders: [], issue: 'Hybrid checkout exceeds the reporting feed limit. These figures cover legacy orders.' };
     const seen = new Set<string>();
     const selected = locations?.split(',');
@@ -210,7 +219,10 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
       const returnCases = scope.milestones ? order.cases ?? [] : [];
       const openReturnAt = returnCases.reduce<number | undefined>((time, entry) => !entry.returnReceivedAt
         ? Math.max(time ?? placedAt, eventTime(entry.createdAt) ?? placedAt) : time, undefined);
-      const returns = returnCases.flatMap(entry => {
+      const receivedQuantities = new Map<string, number>();
+      const returns = [...returnCases].sort((left, right) =>
+        (eventTime(left.returnReceivedAt) ?? Infinity) - (eventTime(right.returnReceivedAt) ?? Infinity) ||
+        (left.id ?? '').localeCompare(right.id ?? '')).flatMap(entry => {
         const receivedAt = eventTime(entry.returnReceivedAt);
         if (receivedAt == null) return [];
         const confirmedAt = eventTime(entry.refundConfirmedAt);
@@ -219,9 +231,20 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
         const lines = entry.returnLines.map(line => {
           if (!line.orderItem || !validNumber(line.quantity) || line.quantity === 0 || line.quantity > line.orderItem.quantity ||
               !validNumber(line.orderItem.quantity) || !validNumber(line.orderItem.lineTotalMinor)) throw new Error('Invalid Hybrid return data');
-          return returnLine(line.orderItem, line.quantity);
+          const item = line.orderItem;
+          const result = returnLine(item, line.quantity);
+          if (!item.id) return result;
+          const previous = receivedQuantities.get(item.id) ?? 0;
+          const received = previous + line.quantity;
+          if (received > item.quantity) throw new Error('Invalid Hybrid return quantity');
+          receivedQuantities.set(item.id, received);
+          return { ...result, amountMinor: Math.floor(item.lineTotalMinor * received / item.quantity) -
+            Math.floor(item.lineTotalMinor * previous / item.quantity) };
         });
-        return [{ receivedAt, confirmedAt, confirmedMinor, lines, estimateMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0) }];
+        const returnedCost = entry.returnCost?.amountMinor;
+        return [{ receivedAt, confirmedAt, confirmedMinor, lines, estimateMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
+          disposition: entry.returnDisposition, returnedCostMinor: readProfit && returnedCost != null && validNumber(returnedCost)
+            ? returnedCost : undefined }];
       });
       const inventoryReceipts = readPurchaseCost ? returnCases.flatMap(entry => {
         const receivedAt = eventTime(entry.returnReceivedAt);
@@ -240,6 +263,13 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
         dueMinor: order.status === 'PLACED' && (awaitingPayment || order.payment?.status === 'AWAITING_COLLECTION')
           ? order.payment!.amountMinor : 0,
         id: orderIdPrefix + order.id, reference: order.reference, district: order.districtLabel, warehouse: order.shippingWarehouseName ?? undefined,
+        warehouseId: order.shippingWarehouseId ?? undefined, warehouseStockExpected: order.warehouseStockExpected ??
+          order.items.some(item => /^v-[a-f0-9]{24}$/i.test(item.variantId ?? '')),
+        warehouseInventoryRecorded: order.warehouseInventoryRecorded === true,
+        warehouseUnitsPendingRestock: order.warehouseUnitsPendingRestock != null && validNumber(order.warehouseUnitsPendingRestock)
+          ? order.warehouseUnitsPendingRestock : undefined,
+        updatedAt: eventTime(order.updatedAt), cancelledAt: eventTime(order.cancelledAt),
+        purchaseCostMinor: readProfit && order.purchaseCostMinor != null && validNumber(order.purchaseCostMinor) ? order.purchaseCostMinor : undefined,
         dispatchedAt, deliveredAt, deliveryMinor: order.deliveryMinor ?? 0,
         wasDelivered: deliveredAt != null || order.fulfillmentStatus === 'DELIVERED' || order.bangladeshShipment?.status === 'DELIVERED',
         statusAt: (status === 'RETURN_REQUESTED' ? openReturnAt : undefined) ?? eventTime(order.bangladeshShipment?.statusUpdatedAt) ??
