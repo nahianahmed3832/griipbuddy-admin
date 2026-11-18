@@ -8,7 +8,7 @@ import { has } from '@/lib/sections';
 import { addressLabel, orderFilterKeys, type Listing } from '@/lib/website-orders';
 
 const root = '/order/workspace';
-const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail', 'calls', 'sms-history'];
+const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail', 'calls', 'sms-history', 'return-items'];
 const actions: Record<string, { path: string; method: string }> = {
   'accept-stock': { path: '/accept-stock', method: 'PATCH' },
   'decline-stock': { path: '/decline-stock', method: 'PATCH' },
@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
       const listing = q.get('checkout') === '1' ? await loadWebsiteOrders(auth, region, filters, undefined, 'all', { exportOrders: true }) : null;
       return listing ? workbook(listing) : await forward(url('/export', { region, ...filters }), auth.token, undefined, 'xlsx');
     }
+    if (action === 'return-items' && !has(auth.staff, 'order.return')) return reject('Access denied.', 403);
     if (!reads.includes(action) || !mongoId(id)) return reject('Order request not found.', 404);
     return await forward(url('/orders/' + id + (action === 'detail' ? '' : '/' + action), { region, page: q.get('page') || undefined }), auth.token);
   } catch (error) {

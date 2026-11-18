@@ -19,7 +19,7 @@ export function ProductionOrderMenu({ order, href, editHref, actions, select }: 
   const menu = useRef<HTMLDivElement>(null);
   const label = 'Actions for ' + orderNumber(order);
   const orderedKinds: OrderAction['kind'][] = [
-    'accept', 'accept-stock', 'decline-stock', 'edit', 'update-status', 'note', 'sms', 'pick', 'dispatch', 'handover', 'delivered', 'return', 'pending-return', 'cancel', 'delete',
+    'accept', 'edit', 'update-status', 'note', 'sms', 'pick', 'dispatch', 'handover', 'delivered', 'return', 'pending-return', 'cancel', 'delete',
   ];
   const items = orderedKinds.flatMap(kind => actions.filter(action => action.kind === kind));
 
@@ -33,7 +33,7 @@ export function ProductionOrderMenu({ order, href, editHref, actions, select }: 
     choices[next]?.focus();
   }
 
-  const accepts = ['accept', 'accept-stock', 'decline-stock'];
+  const accepts = ['accept'];
   const leading = items.filter(item => accepts.includes(item.kind));
   const following = items.filter(item => !accepts.includes(item.kind));
 

@@ -58,6 +58,7 @@ type Tracking = {
 type StatusLog = { _id?: string; status?: string; changed_at?: string; changed_by?: { full_name?: string } };
 type CallLog = { called_by_name?: string; called_at?: string };
 type SmsLog = { message: string; phone?: string; status?: string; sent_by_name?: string; sent_at?: string };
+type ReturnItems = { revision: number; items: { variant: string; sku?: string; name?: string; quantity: number }[] };
 type SyncBatch = { synced: number; failed: number; skipped: number; next?: string };
 
 export function OrderNotes({ notes, region }: { notes: OrderNote[]; region: Region }) {
@@ -154,13 +155,15 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [confirmation, setConfirmation] = useState('');
+  const [returnKind, setReturnKind] = useState('RETURNED');
   const [syncProgress, setSyncProgress] = useState(0);
   const [load, setLoad] = useState<{ page: number; data?: unknown; error?: string }>();
   const kind = state.kind;
   const order = 'order' in state ? state.order : undefined;
   const id = order?._id;
   const read = readKinds.includes(kind);
-  const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' : read ? kind : undefined;
+  const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' :
+    kind === 'return' && !order?.scanReturn ? 'return-items' : read ? kind : undefined;
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
@@ -197,8 +200,16 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         } while (after);
         saved(`Courier sync: ${synced} refreshed, ${failed} failed, ${skipped} no longer eligible.`);
       } else if (kind === 'return' && !order?.scanReturn) {
-        await orderRequest('return-untracked', region, { query: { id }, values: {} });
-        saved('Order returned.');
+        const data = load?.data as ReturnItems | undefined;
+        if (!data) return;
+        const products = returnKind === 'PARTIAL' ? data.items.flatMap(item => {
+          const quantity = Number(fields['qty:' + item.variant]);
+          if (!quantity) return [];
+          return [{ variant: item.variant, quantity, return_note: fields['note:' + item.variant] }];
+        }) : undefined;
+        if (products && !products.length) { setError('Select at least one returned item.'); return; }
+        await orderRequest('return-untracked', region, { query: { id }, values: { status: returnKind, revision: data.revision, products } });
+        saved(returnKind === 'PARTIAL' ? 'Partial return recorded.' : 'Order returned.');
       } else if (kind === 'return' || kind === 'pick') {
         const response = await fetch(adminPath('/api/operations'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: kind === 'pick' ? 'order-pick' : 'order-return', recordId: id, region, values: { barcodes: fields.barcodes } }) });
@@ -222,6 +233,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   }
   const readData = load?.page === page ? load.data : undefined;
   const readError = load?.page === page ? load.error : undefined;
+  const returnItems = readAction === 'return-items' ? readData as ReturnItems | undefined : undefined;
   const actionForm = kind !== 'actions' && kind !== 'track' && kind !== 'fraud' && !read;
   return <dialog className={`form-dialog website-dialog${kind === 'history' ? ' website-history-dialog' : ''}`} ref={dialog}
     aria-labelledby={heading} onCancel={event => { event.preventDefault(); if (!busyRef.current) close(); }}>
@@ -304,7 +316,17 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         </section></>}
       {kind === 'return' && (order?.scanReturn ? <><p>Scan only the returned items. Eligible units will be restored to stock.</p>
         <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label></>
-        : <p>Confirm all items in this order were returned. Eligible units will be restored to stock.</p>)}
+        : returnItems ? <>
+          <label>Return Status<select value={returnKind} onChange={event => setReturnKind(event.currentTarget.value)}>
+            <option value="RETURNED">Full Return</option><option value="PARTIAL">Partial Return</option>
+          </select></label>
+          {returnKind === 'RETURNED' ? <p>Confirm all remaining items were returned.</p>
+            : returnItems.items.map(item => <fieldset key={item.variant} className="website-form-grid">
+              <legend>{item.sku || item.name} ({item.quantity} remaining)</legend>
+              <label>Quantity returned<input type="number" name={'qty:' + item.variant} min={0} max={item.quantity} step={1} defaultValue={0}/></label>
+              <label>Return note<input name={'note:' + item.variant} maxLength={500}/></label>
+            </fieldset>)}
+        </> : <p role={readError ? 'alert' : 'status'}>{readError || 'Loading return items…'}</p>)}
       {kind === 'pick' && <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label>}
       {kind === 'dispatch' && <>
         <p>Create a Steadfast consignment. Record handover once the parcel physically leaves your warehouse.</p>
@@ -328,7 +350,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       <div className="page-actions website-dialog-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={close}>Close</button>
         <button className={'button primary' + (['cancel', 'delete', 'decline-stock'].includes(kind) ? ' website-destructive' : '')}
-          disabled={busy || (kind === 'delete' && confirmation !== 'DELETE') || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>
+          disabled={busy || (kind === 'return' && !order?.scanReturn && !returnItems) || (kind === 'delete' && confirmation !== 'DELETE') || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>
       </div>
     </form>}
   </dialog>;
