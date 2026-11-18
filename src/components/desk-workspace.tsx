@@ -17,7 +17,7 @@ import { CheckoutPanel } from '@/components/checkout-panel';
 import { contentViews, ContentWorkspace, SaleWorkspace } from '@/components/workspace-pages';
 import { CommerceMarkets, CommerceReceipts, type CommerceMarket } from '@/components/integrated-commerce';
 import { CatalogRegistry, CategoryWorkspace, ProductWorkspace } from '@/components/catalog-workspace';
-import { CouponEditor, GlobalOffer } from '@/components/promotion-pages';
+import { CouponEditor, GlobalOffer, ProductionCouponWorkspace } from '@/components/promotion-pages';
 import { CustomerCreatePage, CustomerProfilePage, CustomersPage, canCreateCustomer } from '@/components/customers-page';
 import { PreOrdersPage } from '@/components/preorders-page';
 import { WebsiteOrderCreatePage, WebsiteOrderDetailPage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
@@ -183,6 +183,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await CatalogRegistry({ auth, q, region, id: view[1], kind: active, production: Boolean(production) });
     }
     else if (sectionId === 'markets' && active === 'countries') content = await CatalogRegistry({ auth, q, region, id: view[1], kind: 'countries', production: Boolean(production) });
+    else if (sectionId === 'marketing' && active === 'coupons' && production) content = await ProductionCouponWorkspace({ auth, region, id: view[1], q });
     else if (sectionId === 'marketing' && active === 'coupons' && view[1]) content = await CouponEditor({ auth, region, id: view[1] === 'new' ? undefined : view[1] });
     else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
     else if (production && sectionId === 'pos' && active === 'sales' && view.length === 1) content = await ProductionPosRegister({ auth, q, region });

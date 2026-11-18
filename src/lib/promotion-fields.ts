@@ -1,3 +1,5 @@
+export const couponPageSizes = ['20', '40', '60', '80', '100', 'all'];
+
 export const couponScopes = [
   ['categoryIds', 'Category IDs'], ['subcategoryIds', 'Subcategory IDs'], ['sub_subcategoryIds', 'Third level category IDs'],
   ['productIds', 'Product IDs'], ['variant', 'Variant IDs'], ['userIds', 'Customer IDs'],

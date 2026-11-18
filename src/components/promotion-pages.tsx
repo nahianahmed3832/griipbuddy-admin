@@ -1,16 +1,55 @@
 import Link from 'next/link';
-import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type Session } from '@/lib/api';
-import { couponAmounts, couponScopes } from '@/lib/promotion-fields';
-import { has, type Region } from '@/lib/sections';
+import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
+import { loadCategoryTree } from '@/lib/catalog-list';
+import { loadResource, param, type Query } from '@/lib/data';
+import { couponAmounts, couponPageSizes, couponScopes } from '@/lib/promotion-fields';
+import { has, resources, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { CouponForm, OfferForm, ProductionOfferForm, type OfferOption } from './promotion-forms';
 import { OperationActions } from './operation-actions';
+import { ProductionCouponCreate, ProductionCouponDetail, ProductionCouponList, type CouponSummary } from './production-coupons';
 
 type Fields = Record<string, string | boolean>;
 const reference = (value: unknown) => str(obj(value)._id) || str(value);
 function minute(value: unknown, hours = 0) {
   const date = Date.parse(str(value));
   return Number.isFinite(date) ? new Date(date + hours * 3600000).toISOString().slice(0, 16) : '';
+}
+
+function summary(row: RecordData): CouponSummary {
+  return { id: reference(row), code: str(row.code), type: str(row.discountType), discount: String(row.discountValue ?? 0),
+    used: Number(row.usedCount) || 0, active: row.isActive === true, expires: str(row.expireAt) };
+}
+
+export async function ProductionCouponWorkspace({ auth, region, id, q }: { auth: Session; region: Region; id?: string; q: Query }) {
+  if (!has(auth.staff, 'coupon.view')) throw new ApiError(403);
+  const writable = canWrite(auth.staff);
+  const canCreate = writable && has(auth.staff, 'coupon.create');
+  if (id === 'new') {
+    if (!canCreate) throw new ApiError(403);
+    const tree = has(auth.staff, 'product.view') ? await loadCategoryTree(auth) : [];
+    const now = Date.now();
+    const day = new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC' });
+    return <ProductionCouponCreate region={region} tree={tree} starts={day.format(now)} expires={day.format(now + 7 * 86400000)}/>;
+  }
+  if (id) {
+    if (!mongoId(id)) throw new ApiError(404);
+    const row = obj(await api('/coupon/' + id, auth.token));
+    if (reference(row) !== id) throw new ApiError(404);
+    const amounts = ['Min Order Amount', 'Max Discount', 'Usage Limit', 'Per User Limit'];
+    const detail: [string, string][] = ['minOrderAmount', 'maxDiscountAmount', 'usageLimit', 'usagePerUser']
+      .map((key, index) => [amounts[index], row[key] == null || row[key] === 0 ? '—' : String(row[key])]);
+    detail.push(['First Order Only', row.firstOrderOnly === true ? 'Yes' : 'No']);
+    const targeting = ['Categories','Sub Categories','Sub-Sub Categories','Specific Products','Variants'];
+    return <ProductionCouponDetail region={region} coupon={{ ...summary(row), description: str(row.description), starts: str(row.startAt), created: str(row.createdAt), details: detail,
+      targeting: couponScopes.slice(0, 5).map(([key], index) => [targeting[index], arr(row[key]).map(item => str(obj(item).name) || str(obj(item).name_en) || str(obj(item).sku) || reference(item)).filter(Boolean)]) }}/>;
+  }
+  const requested = param(q, 'limit') ?? '';
+  const limit = couponPageSizes.includes(requested) ? requested : '20';
+  const all = limit === 'all';
+  const list = await loadResource(resources.marketing.coupons, auth, all ? { page: '1' } : q, region, all ? 10000 : Number(limit));
+  return <ProductionCouponList rows={list.rows.map(summary).filter(row => mongoId(row.id))} region={region} limit={limit} total={list.total ?? list.rows.length}
+    page={list.page} hasNext={!all && list.hasNext} canCreate={canCreate} canEdit={writable && has(auth.staff, 'coupon.update')} canDelete={writable && has(auth.staff, 'coupon.delete')}/>;
 }
 export async function CouponEditor({ auth, region, id }: { auth: Session; region: Region; id?: string }) {
   const allowed = canWrite(auth.staff);

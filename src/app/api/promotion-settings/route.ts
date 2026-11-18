@@ -1,6 +1,35 @@
-import { ApiError, canWrite, mongoId, obj, publicSandbox, requestApi, sameOrigin, session, str } from '@/lib/api';
+import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, publicSandbox, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { readProduct } from '@/lib/catalog-admin';
 import { couponPayload, offerPayload } from '@/lib/promotion-settings';
 import { has } from '@/lib/sections';
+
+export async function GET(req: Request) {
+  const auth = await session();
+  if (!auth) return Response.json({ message: 'Sign in required.' }, { status: 401 });
+  if (!['coupon.view', 'coupon.create', 'product.view'].every(key => has(auth.staff, key)) || !canWrite(auth.staff)) {
+    return Response.json({ message: 'Access denied.' }, { status: 403 });
+  }
+  const params = new URL(req.url).searchParams;
+  const region = getRegion(params.get('region') ?? undefined, auth.staff);
+  try {
+    const product = params.get('product');
+    if (product) await readProduct(product, auth, region);
+    const raw = (params.get('q') ?? '').trim().slice(0, 80);
+    const searchQuery = raw.replace(/[.*+?^\x24{}()|[\]\\]/g, '\\$&');
+    const results = product ? await api('/product/variant/' + product, auth.token)
+      : await api(url('/product/admin/all', { region, searchQuery, limit: '20', fields: 'name,sku,region' }), auth.token);
+    const rows = arr(Array.isArray(results) ? results : obj(results).data).map(obj);
+    return Response.json(rows.flatMap(row => {
+      const id = str(row._id);
+      if (!mongoId(id) || (!product && (str(row.region) || 'BD') !== region)) return [];
+      const sku = str(row.sku);
+      const name = product ? Object.values(obj(row.attribute_values)).map(str).filter(Boolean).join(' - ') : str(row.name);
+      return [{ id, label: [name, sku].filter(Boolean).join(' · ') || id }];
+    }), { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (error) {
+    return Response.json({ message: 'Product options could not be loaded.' }, { status: error instanceof ApiError ? error.status : 502 });
+  }
+}
 
 export async function POST(req: Request) {
   if (!sameOrigin(req) || publicSandbox()) return Response.json({ message: 'Access denied.' }, { status: 403 });
@@ -17,13 +46,21 @@ export async function POST(req: Request) {
     const id = str(input.id);
     const action = str(input.action);
     let path: string, method: string, body: unknown, grants: string[];
-    if (action === 'save-coupon') {
+    if (action === 'save-coupon' || action === 'create-coupon') {
+      if (id && action === 'create-coupon') throw new ApiError(400, 'This action only creates coupons.');
       if (id && !mongoId(id)) throw new ApiError(400, 'Invalid coupon reference.');
       path = id ? '/coupon/' + id : '/coupon';
       method = id ? 'PATCH' : 'POST';
       grants = ['coupon.view', id ? 'coupon.update' : 'coupon.create'];
-      const values = couponPayload(obj(input.values));
-      body = id ? values : Object.fromEntries(Object.entries({ ...values, isActive: false, createdBy: auth.staff.id }).filter(([,value]) => value !== null));
+      const payload = obj(input.values);
+      const values = couponPayload(payload);
+      body = id ? values : Object.fromEntries(Object.entries({ ...values,
+        isActive: action === 'create-coupon' && payload.isActive === true, createdBy: auth.staff.id }).filter(([,value]) => value !== null));
+    } else if (action === 'set-coupon-status') {
+      const { isActive } = obj(input.values);
+      if (!mongoId(id) || typeof isActive !== 'boolean') throw new ApiError(400, 'Invalid coupon status.');
+      path = '/coupon/toggle-status/' + id; method = 'PATCH'; grants = ['coupon.view', 'coupon.update'];
+      body = { isActive };
     } else if (action === 'delete-coupon' || action === 'delete-announcement') {
       if (!mongoId(id)) throw new ApiError(400, 'Invalid record reference.');
       const coupon = action === 'delete-coupon';

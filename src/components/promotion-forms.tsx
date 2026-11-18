@@ -10,7 +10,7 @@ import offerStyles from './production-offer.module.css';
 type Fields = Record<string, string | boolean>;
 type Result = { message: string; ok: boolean };
 
-function usePromotionSave() {
+export function usePromotionSave() {
   const lock = useRef(false);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<Result>();
@@ -38,7 +38,7 @@ function usePromotionSave() {
 }
 
 const utc = (value: FormDataEntryValue | null) => typeof value === 'string' && value ? value + 'Z' : '';
-function Report({ result }: { result?: Result }) {
+export function PromotionResult({ result }: { result?: Result }) {
   return result && <p className={result.ok ? 'notice' : 'notice warn'} role={result.ok ? 'status' : 'alert'}>{result.message}</p>;
 }
 
@@ -84,7 +84,7 @@ export function CouponForm({ initial, id, writable, canDelete, back }: {
         }
       }}>Delete coupon</button>}
     </div>
-    <Report result={result}/>
+    <PromotionResult result={result}/>
   </form>;
 }
 
@@ -98,7 +98,7 @@ export function AnnouncementDelete({ id, back }: { id: string; back: string }) {
         router.refresh();
       }
     }}>Delete announcement</button>
-    <Report result={result}/>
+    <PromotionResult result={result}/>
   </div>;
 }
 
@@ -159,7 +159,7 @@ export function OfferForm({ initial, writable, options, selected }: {
       {writable && <><button type="reset" className="button secondary" disabled={pending}>Reset form</button>
         <button className="button primary" disabled={pending || !ids.length}>Save offer</button></>}
     </div>
-    <Report result={result}/>
+    <PromotionResult result={result}/>
   </form>;
 }
 
@@ -240,7 +240,7 @@ export function ProductionOfferForm({ initial, writable, options, selected }: {
       <button type="button" disabled={pending || refreshing} onClick={() => refresh(() => router.refresh())}><RefreshCcw size={16}/>Refresh</button>
       <button type="button" disabled={disabled} onClick={reset}>Reset Defaults</button>{saveButton}
     </div></header>
-    {validation ? <p className="notice warn" role="alert">{validation}</p> : <Report result={result}/>}
+    {validation ? <p className="notice warn" role="alert">{validation}</p> : <PromotionResult result={result}/>}
     <div className={offerStyles.layout}>
       <div className={offerStyles.column}>
         <fieldset className={offerStyles.card} disabled={disabled}>
