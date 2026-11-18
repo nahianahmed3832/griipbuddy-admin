@@ -47,7 +47,7 @@ export function bucketKey(time: number, unit: string) {
 export function periodActivity(orders: HybridReportOrder[], period: Period) {
   const delivered = orders.filter(order => within(order.deliveredAt, period));
   const returns = orders.flatMap(order => order.returns
-    .filter(receipt => order.deliveredAt != null && order.deliveredAt <= receipt.receivedAt && within(receipt.receivedAt, period))
+    .filter(receipt => order.wasDelivered && (order.deliveredAt == null || order.deliveredAt <= receipt.receivedAt) && within(receipt.receivedAt, period))
     .map(receipt => ({ ...receipt, orderId: order.id })));
   return { booked: bookings(orders, period), delivered, returns };
 }
@@ -183,7 +183,7 @@ function addSeriesActivity(row: RecordData, extra: ReturnType<typeof activityTot
 
 function noteMissingDeliveryDates(data: RecordData, orders: HybridReportOrder[]) {
   return orders.some(order => order.wasDelivered && order.deliveredAt == null)
-    ? appendQuality(data, 'Some Hybrid deliveries have no recorded delivery time and are excluded from dated delivery and return figures.', 'HYBRID_DELIVERED_DATE_UNRECORDED')
+    ? appendQuality(data, 'Some Hybrid deliveries have no recorded delivery time and are excluded from dated delivery figures.', 'HYBRID_DELIVERED_DATE_UNRECORDED')
     : data;
 }
 
@@ -252,22 +252,31 @@ export function mergeHybridOverview(section: string, data: RecordData, hybrid: H
   }, orders);
 }
 
-export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData | null) {
+export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData | null, period: Period) {
   if (!hybrid || !hybrid.orders.length) return { report, note: hybrid?.issue };
-  const hybridTotals = totals(hybrid.orders);
+  const placed = hybrid.orders.filter(order => within(order.placedAt, period));
+  const hybridTotals = totals(placed);
   const summary = obj(report.totals);
   const native = obj(summary.orders);
+  const returns = obj(summary.returns);
+  const receipts = periodActivity(hybrid.orders, period).returns;
+  const paidRefund = hybrid.orders.filter(order => order.wasDelivered).reduce((sum, order) => sum + order.returns.reduce((subtotal, receipt) =>
+    subtotal + (within(receipt.confirmedAt, period) ? receipt.confirmedMinor ?? 0 : 0), 0), 0) / 100;
+  const returnedUnits = receipts.reduce((sum, receipt) => sum + receipt.lines.reduce((qty, line) => qty + line.quantity, 0), 0);
   const byDay = new Map<string, number>();
-  for (const order of hybrid.orders) {
+  for (const order of placed) {
     const key = date(order.placedAt);
     byDay.set(key, (byDay.get(key) ?? 0) + order.totalMinor);
   }
   return { report: { ...report, totals: { ...summary, orders: {
-    ...native, count: numeric(native.count) + hybrid.orders.length, total_quantity: numeric(native.total_quantity) + hybridTotals.units,
+    ...native, count: numeric(native.count) + placed.length, total_quantity: numeric(native.total_quantity) + hybridTotals.units,
     totalOrdersAmount: round(numeric(native.totalOrdersAmount) + hybridTotals.value / 100),
     totalOrdersDiscount: round(numeric(native.totalOrdersDiscount) + hybridTotals.discount / 100),
+  }, returns: { ...returns, totalRefund: round(numeric(returns.totalRefund) + paidRefund),
+    total_quantity: numeric(returns.total_quantity) + returnedUnits, count: numeric(returns.count) + receipts.length,
   } }, daily: arr(report.daily).map(obj).map(row => ({ ...row, orders: round(numeric(row.orders) + (byDay.get(str(row.date).slice(0, 10)) ?? 0) / 100) })) },
-  note: 'Online order amount, discounts, quantity and count include Hybrid checkout. Due and profit figures use legacy records.' };
+  note: placed.length ? 'Online order amount, discounts, quantity and count include Hybrid checkout. Due and profit figures use legacy records.' : undefined,
+  returnNote: receipts.length || paidRefund ? 'Includes Hybrid returns by receipt date and refunds by confirmation date. Returned cost uses legacy records.' : undefined };
 }
 
 export function mergeHybridSalesReport(data: RecordData, orders: HybridReportOrder[]) {
