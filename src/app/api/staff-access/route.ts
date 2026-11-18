@@ -1,4 +1,4 @@
-import { api, ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str } from '@/lib/api';
+import { api, ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str, workspaceWritesEnabled } from '@/lib/api';
 import { endpoint } from '@/lib/staff-access';
 import { has, superAdmin } from '@/lib/sections';
 
@@ -40,7 +40,8 @@ export async function POST(req: Request) {
       if (edit !== Boolean(id)) return send({ message: 'Invalid account target.' }, 400);
       const auth = await session();
       if (!auth) return send({ message: 'Sign in to continue.' }, 401);
-      if (!canWrite(auth.staff) || !has(auth.staff, edit ? 'user.update' : 'user.create') || (!edit && !staffEnrollmentAvailable())) {
+      if (!workspaceWritesEnabled() || !has(auth.staff, 'user.view') ||
+          !has(auth.staff, edit ? 'user.update' : 'user.create') || (!edit && !staffEnrollmentAvailable())) {
         return send({ message: 'Staff management is read-only in this workspace.' }, 403);
       }
       const values = obj(body.values);
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
     if (needsId !== Boolean(id)) return send({ message: 'Invalid action target.' }, 400);
     const auth = action === 'accept' ? null : await session();
     if (action !== 'accept' && !auth) return send({ message: 'Sign in to continue.' }, 401);
-    if (action !== 'accept' && !canWrite(auth!.staff)) return send({ message: 'Staff management is read-only in this workspace.' }, 403);
+    if (action !== 'accept' && !workspaceWritesEnabled()) return send({ message: 'Staff management is read-only in this workspace.' }, 403);
     const result = await requestApi(endpoint + path, auth?.token, {
       method, ...(method !== 'DELETE' && { body: JSON.stringify(obj(body.values)) }),
     });

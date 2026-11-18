@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, BadgeCheck, Download, MessageSquare, Search, ShieldCheck, ShoppingBag, UserRoundPlus, UsersRound } from 'lucide-react';
-import { api, ApiError, canWrite, mongoId, url, type Session } from '@/lib/api';
+import { api, ApiError, canWrite, mongoId, url, workspaceWritesEnabled, type Session } from '@/lib/api';
 import { customerDate, customerFilters, customerStatus, customerStatuses, customerTypes, customersPath,
   type Customer, type CustomerActivity, type CustomerOrder } from '@/lib/customers';
 import { param, printable, type Query } from '@/lib/data';
@@ -61,7 +61,7 @@ export async function CustomersPage({ auth, q, region, production = false }: { a
   const canViewOrders = has(auth.staff, 'order.view');
   if (production) return <ProductionCustomers rows={list.rows} total={list.total} page={list.page} size={list.size}
     query={filter.q} region={region} limit={limit} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
-    canChangePassword={canWrite(auth.staff) && has(auth.staff, 'business_locations.create')}>
+    canChangePassword={workspaceWritesEnabled() && has(auth.staff, 'business_locations.create')}>
     <div className="page-actions">
       <RegistryPageSize current={limit ?? '20'} choices={pageSizes} path={productionCustomersPath} params={directory}/>
       <Pager listing={list} label="Customer pages" href={page => url(productionCustomersPath, { ...directory, limit, page: String(page) })}/>
@@ -151,7 +151,7 @@ export async function CustomerProfilePage({ auth, id, q, region, production = fa
   ]);
   const { customer } = profile;
   const canResetPassword = production
-    ? canWrite(auth.staff) && has(auth.staff, 'business_locations.create')
+    ? workspaceWritesEnabled() && has(auth.staff, 'business_locations.create')
     : canEdit && superAdmin(auth.staff) && customer.status === 'ACTIVE' && customer.is_verified_number === true;
   if (param(q, 'action') === 'password') {
     if (!canResetPassword) throw new ApiError(403);

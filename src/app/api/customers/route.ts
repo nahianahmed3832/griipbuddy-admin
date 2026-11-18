@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { ApiError, arr, canWrite, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { ApiError, arr, canWrite, mongoId, obj, requestApi, sameOrigin, session, str, url, workspaceWritesEnabled } from '@/lib/api';
 import { customerFilters } from '@/lib/customers';
 import { has, superAdmin } from '@/lib/sections';
 
@@ -34,10 +34,12 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await session();
     if (!auth) return reject('Sign in required.', 401);
-    if (!canWrite(auth.staff) || !has(auth.staff, 'user.view')) return reject('Customer updates are restricted.', 403);
     const id = request.nextUrl.searchParams.get('id');
     const password = request.nextUrl.searchParams.get('action') === 'password';
     const productionPassword = password && request.nextUrl.searchParams.get('view') === 'production';
+    if (!(productionPassword ? workspaceWritesEnabled() : canWrite(auth.staff)) || !has(auth.staff, 'user.view')) {
+      return reject('Customer updates are restricted.', 403);
+    }
     if (password && (!id || (productionPassword ? !has(auth.staff, 'business_locations.create') : !superAdmin(auth.staff)))) {
       return reject('Customer password access is required.', 403);
     }

@@ -68,12 +68,16 @@ function integrationStaffEnrollment() {
   return protectedIntegration() && process.env.GRIIP_ADMIN_INTEGRATION_STAFF_ENROLLMENT === '1';
 }
 
-export function canWrite(staff: Staff) {
+export function workspaceWritesEnabled() {
   const target = connection().name;
   const local = target === 'Local fixture' && process.env.GRIIP_ADMIN_FIXTURE_WRITES === '1';
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
   const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
-  return superAdmin(staff) && (local || stage || preview || protectedIntegration() || operationsOnly());
+  return local || stage || preview || protectedIntegration() || operationsOnly();
+}
+
+export function canWrite(staff: Staff) {
+  return superAdmin(staff) && workspaceWritesEnabled();
 }
 
 export function staffEnrollmentAvailable() {

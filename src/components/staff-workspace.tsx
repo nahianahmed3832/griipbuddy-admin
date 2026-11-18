@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, History, Plus, Search, Shield, Users } from 'lucide-react';
-import { api, ApiError, canWrite, mongoId, staffEnrollmentAvailable, url, type Session } from '@/lib/api';
+import { api, ApiError, mongoId, staffEnrollmentAvailable, url, workspaceWritesEnabled, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { has, superAdmin } from '@/lib/sections';
@@ -52,7 +52,7 @@ function NoResults({ title, detail, kind }: { title: string; detail: string; kin
 export async function StaffWorkspace({ auth, view, id, q, production = false }: { auth: Session; view: string; id?: string; q: Query; production?: boolean }) {
   const permission = view === 'staff' ? 'user.view' : 'role.view';
   if (view === 'activity' ? !superAdmin(auth.staff) : !has(auth.staff, permission)) throw new ApiError(403);
-  const write = canWrite(auth.staff);
+  const write = workspaceWritesEnabled();
   const enrollment = staffEnrollmentAvailable();
   const canInvite = write && enrollment && has(auth.staff, 'user.create');
   const search = param(q, 'q')?.slice(0, 120) ?? '';
