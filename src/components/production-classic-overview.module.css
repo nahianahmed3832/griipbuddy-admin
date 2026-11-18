@@ -9,13 +9,7 @@
 .panel header h2 { margin:0; color:#003bb2; font:700 30px/36px sans-serif; letter-spacing:normal; }
 .filters { display:grid; align-items:start; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
 .filters label { display:grid; gap:8px; font-size:16px; font-weight:500; }
-.filters select, .filters input, .rangeButton, .clear { padding:6px 12px; border:1px solid #e1e1e4; border-radius:8px; background:#fff; color:#121214; font:400 14px/20px "DM Sans", "DM Sans Fallback", sans-serif; min-height:36px; box-shadow:0 1px 2px #0001; }
-.filters select { width:100%; }
-.dateRange { display:grid; gap:8px; position:relative; }
-.dateRange select { max-width:160px; }
-.rangeButton { display:inline-flex; align-items:center; justify-self:start; gap:16px; cursor:pointer; }
-.dateDialog { display:flex; flex-wrap:wrap; align-items:end; gap:8px; }
-.clear { display:grid; place-items:center; align-self:end; min-height:44px; }
+.clear { display:grid; place-items:center; align-self:flex-end; min-height:44px; padding:6px 12px; border:1px solid #e1e1e4; border-radius:8px; background:#fff; color:#121214; font:400 14px/20px "DM Sans", "DM Sans Fallback", sans-serif; box-shadow:0 1px 2px #0001; }
 .cards { display:grid; gap:16px; grid-template-columns:repeat(5,minmax(0,1fr)); }
 .cards article { min-width:0; padding:2px; border-radius:9px; background:var(--gradient); box-shadow:0 1px 2px #0002; }
 .cards article > div { display:flex; flex-wrap:wrap; align-items:flex-start; gap:12px; height:100%; padding:24px 16px; background:white; border-radius:8px; }
@@ -37,7 +31,6 @@
 .filters label, .field { line-height:24px; }
 .field { display:grid; gap:8px; font-size:16px; font-weight:500; }
 .field > button { width:100%; }
-.dateRange .dateSelect { width:160px; }
 .cards article strong { line-height:28px; }
 
 .filters .field > button { min-height:36px; height:36px; }

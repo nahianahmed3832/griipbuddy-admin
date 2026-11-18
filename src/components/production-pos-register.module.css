@@ -7,15 +7,10 @@
 .controls { padding: 16px; border-top: 1px solid #e0e1e3; display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .controls > label { flex: 0 1 165px; }
 .controls label, .dialog label { display: grid; gap: 8px; }
-.controls input, .controls select, .pagination select, .dialog input, .dialog select, .dateButton {
+.controls input, .controls select, .pagination select, .dialog input, .dialog select {
   min-height: 36px; min-width: 0; background: white; color: #151515; padding: 7px 12px; border: 1px solid #dfdfe4;
   border-radius: 8px; box-shadow: 0 1px 2px #1717170a; font: inherit;
 }
-.range { min-width: 0; border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
-.range legend { padding: 0 0 7px; }
-.range select { max-width: 160px; }
-.dateButton { text-align: left; cursor: pointer; padding-inline: 12px; }
-.dates { display: flex; gap: 8px; flex-wrap: wrap; }
 .filterButtons { display: flex; margin-left: auto; align-self: flex-end; gap: 8px; }
 .primary, .secondary, .danger { display: inline-flex; justify-content: center; align-items: center; gap: 8px; text-decoration: none; white-space: nowrap;
   color: white; border: 0; background: #009b67; border-radius: 8px; min-height: 36px; padding: 8px 16px; cursor: pointer; font: inherit; }
@@ -73,7 +68,6 @@
 .root { grid-template-columns: minmax(0, 1fr); }
 .root h1 { letter-spacing: 0; }
 .sheet, .table { min-width: 0; }
-.dateButton { width: max-content; display: flex; align-items: center; gap: 16px; padding-inline: 12px 18px; }
 .columns summary { display: flex; align-items: center; gap: 12px; }
 .columns summary::-webkit-details-marker { display: none; }
 .metrics article { border: 0; border-radius: 8px; min-height: 92px; box-shadow: 0 3px 5px #17171726; padding: 16px; }

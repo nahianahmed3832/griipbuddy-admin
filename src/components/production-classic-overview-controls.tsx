@@ -1,20 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarDays } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ProductionReportSelect } from './production-report-filters';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { adminPath } from '@/lib/paths';
-import { dateLabel, posRanges } from '@/lib/pos';
+import type { PosRange } from '@/lib/pos';
+import { ProductionDateRange } from './production-date-range';
 import styles from './production-classic-overview.module.css';
 
-export function ClassicOverviewFilters({ locations, location, region, range, from, to }: {
-  locations: { value: string; label: string }[]; location?: string; region: string; range: string; from: string; to: string;
+export function ClassicOverviewFilters({ locations, location, region, range, from, to, today, assigned }: {
+  locations: { value: string; label: string }[]; location?: string; region: string; range: PosRange; from: string; to: string; today: string; assigned?: boolean;
 }) {
-  const [choice, setChoice] = useState(range);
-  const [custom, setCustom] = useState(false);
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   function navigate(changes: Record<string, string>) {
@@ -28,26 +26,13 @@ export function ClassicOverviewFilters({ locations, location, region, range, fro
   return <form ref={form} className={styles.filters} action={adminPath('/dashboard/overview')}>
     <input type="hidden" name="view" value="classic"/>
     <input type="hidden" name="region" value={region}/>
+    <input type="hidden" name="selectedOption" value={range}/>
+    {range === 'Custom Range' && <><input type="hidden" name="from" value={from}/><input type="hidden" name="to" value={to}/></>}
     <ProductionReportSelect label="Business Location" name="businessLocation" value={location || ''}
-      fieldClassName={styles.field} options={[{value:'',label:'All'},...locations]}
+      fieldClassName={styles.field} options={assigned ? locations : [{value:'',label:'All'},...locations]}
       change={value => navigate({businessLocation:value})}/>
-    <div className={styles.dateRange}>
-      <ProductionReportSelect label="Date Range" name="selectedOption" value={choice} fieldClassName={styles.field} selectClassName={styles.dateSelect}
-        options={posRanges.map(value => ({value,label:value}))} change={value => {
-          setChoice(value);
-          if (value === 'Custom Range') setCustom(true);
-          else navigate({selectedOption:value});
-        }}/>
-      <button type="button" className={styles.rangeButton} onClick={() => { setChoice('Custom Range'); setCustom(!custom); }}>
-        <CalendarDays size={16}/>{from && to ? dateLabel(from, true) + ' - ' + dateLabel(to, true) : 'All time'}
-      </button>
-      {custom && <div className={styles.dateDialog}>
-        <label>From<input name="from" type="date" defaultValue={from} required/></label>
-        <label>To<input name="to" type="date" defaultValue={to} required/></label>
-        <button type="submit" className="button primary">Apply</button>
-      </div>}
-      {!custom && choice === 'Custom Range' && <><input type="hidden" name="from" value={from}/><input type="hidden" name="to" value={to}/></>}
-    </div>
+    <ProductionDateRange from={from} to={to} today={today} range={range} onChange={(selection, from, to) =>
+      navigate({ selectedOption: selection, from: selection === 'Custom Range' ? from : '', to: selection === 'Custom Range' ? to : '' })}/>
     <Link className={styles.clear} href={'/dashboard/overview?view=classic' + (region === 'BD' ? '' : '&region=' + region)}>Clear Filter</Link>
   </form>;
 }

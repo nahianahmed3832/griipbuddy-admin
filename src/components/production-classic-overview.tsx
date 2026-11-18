@@ -16,14 +16,18 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   const fromQuery = param(q, 'from');
   const toQuery = param(q, 'to');
   const range = posRanges.find(value => value === param(q, 'selectedOption')) || (fromQuery || toQuery ? 'Custom Range' : 'Today');
-  const [from, to] = posRangeDates(range, posDay(), fromQuery, toQuery);
+  const today = posDay();
+  const [from, to] = posRangeDates(range, today, fromQuery, toQuery);
   const locations = has(auth.staff, 'business_locations.view') ? await loadLocations(auth, region) : [];
   const requested = param(q, 'businessLocation') || '';
   const assigned = superAdmin(auth.staff) ? undefined : auth.staff.assignedLocation;
   const location = assigned || (locations.some(value => value.value === requested) ? requested : undefined);
-  if (requested && requested !== location || (region === 'INTERNATIONAL' && !location)) throw new ApiError(403);
+  if (requested && requested !== location) throw new ApiError(403);
+  const scopedLocations = assigned ? locations.filter(row => row.value === assigned) : locations;
+  if (assigned && !scopedLocations.length) scopedLocations.push({ value: assigned, label: 'Assigned location' });
 
-  const report = obj(await api(url('/report/business-report', { businessLocationId: location, startDate: from, endDate: to }), auth.token));
+  const report = obj(await api(url('/report/business-report', { region, businessLocationId: location, startDate: from || '1970-01-01', endDate: to || today }), auth.token));
+  const orderMoney = (value: unknown) => region === 'BD' ? money(value) : whole(value) + '\u00a0USD';
   const totals = obj(report.totals);
   const sales = obj(totals.orders);
   const purchases = obj(totals.purchases);
@@ -35,10 +39,10 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
       ['Net Sales Amount', money(obj(totals.derived).netSalesAmount), TrendingUp],
     ] },
     { title: 'Online Orders', kind: 'orders', Icon: ShoppingCart, cards: [
-      ['Total Orders Amount', money(sales.totalOrdersAmount), DollarSign],
-      ['Total Orders Discount', money(sales.totalOrdersDiscount), CircleAlert],
-      ['Total Due', money(sales.totalDue), CircleAlert],
-      ...(has(auth.staff, 'potential.profit.view') ? [['Total Profit', money(sales.totalProfit), TrendingUp] as const] : []),
+      ['Total Orders Amount', orderMoney(sales.totalOrdersAmount), DollarSign],
+      ['Total Orders Discount', orderMoney(sales.totalOrdersDiscount), CircleAlert],
+      ['Total Due', orderMoney(sales.totalDue), CircleAlert],
+      ...(has(auth.staff, 'potential.profit.view') ? [['Total Profit', orderMoney(sales.totalProfit), TrendingUp] as const] : []),
       ['Quantity Ordered', units(sales.total_quantity), Boxes],
       ['Order Count', whole(sales.count), Users],
     ] },
@@ -60,8 +64,8 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   return <div className={styles.page}>
     <section className={styles.panel}>
       <header><span><Filter size={24}/></span><h2>Filter</h2></header>
-      <ClassicOverviewFilters key={JSON.stringify([location, range, from, to])} locations={assigned ? locations.filter(row => row.value === assigned) : locations}
-        location={location} region={region} range={range} from={from} to={to}/>
+      <ClassicOverviewFilters key={JSON.stringify([location, range, from, to])} locations={scopedLocations}
+        location={location} region={region} range={range} from={from} to={to} today={today} assigned={Boolean(assigned)}/>
     </section>
     {sections.map(({ title, kind, Icon, cards }) => (
       <section className={styles.panel} key={kind} data-classic-tone={kind}>

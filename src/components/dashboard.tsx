@@ -1,9 +1,10 @@
 import Link from 'next/link';
+import { Suspense, type ReactNode } from 'react';
 import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
 import { ArrowRight, BellRing, Boxes, ChevronRight, CircleAlert, ClipboardList, Info, Package, RefreshCw, ShoppingBag, TrendingUp, Truck, Wallet } from 'lucide-react';
 import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
-import { printable, valueAt, type Query } from '@/lib/data';
+import { param, printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
@@ -28,9 +29,9 @@ function rateTone(value: unknown, warn: number, alert: number): MetricTone | und
   return typeof value !== 'number' ? undefined : value >= alert ? 'danger' : value >= warn ? 'warning' : 'success';
 }
 
-function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, href, production, tone }: {
+function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, estimated, href, production, tone }: {
   title: string; value: string; detail?: string; current?: unknown; prior?: unknown; lowerIsBetter?: boolean;
-  definition?: string; href?: string; production?: boolean; tone?: MetricTone;
+  definition?: string; estimated?: string; href?: string; production?: boolean; tone?: MetricTone;
 }) {
   const baseline = number(prior);
   const actual = number(current);
@@ -42,6 +43,10 @@ function Metric({ title, value, detail, current, prior, lowerIsBetter = false, d
       {definition && <span className="overview-metric-help">
         <button type="button" aria-label="What does this mean?"><Info size={14} aria-hidden="true"/></button>
         <span role="tooltip">{definition}</span>
+      </span>}
+      {estimated && <span className="overview-metric-help">
+        <button type="button" className="overview-estimated">Estimated</button>
+        <span role="tooltip">{estimated}</span>
       </span>}
     </div><div className="overview-value"><strong>{value}</strong>
       {change !== undefined && <span className={'overview-delta ' + (neutralChange ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
@@ -130,22 +135,135 @@ function Funnel({ data, production }: { data: RecordData; production?: boolean }
 }
 
 export async function Dashboard({ auth, q, region, production = false }: { auth: Session; q: Query; region: Region; production?: boolean }) {
-  const count = (value: unknown) => formatCount(value, production);
-  const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
   const grant = (permission: string) => has(auth.staff,permission);
   const authorized = grant('overview.view');
-  const { period, scope, refresh } = overviewQuery(q,region);
-  const names = ['actions','sales','fulfilment','inventory','finance', ...(region === 'BD' && grant('pre_order.view') ? ['preorders'] : [])];
+  const query = overviewQuery(q,region);
+  const { scope, refresh } = query;
+  const names: OverviewSection[] = ['actions', 'sales', 'fulfilment', 'inventory', 'finance'];
+  if (region === 'BD' && grant('pre_order.view')) names.push('preorders');
+  const retry = production ? param(q, 'retry') : undefined;
+  const requests = authorized ? names.map(section =>
+    api(url('/analytics/overview/' + section, { ...scope, refresh: retry === section ? '1' : refresh }), auth.token)
+      .then(result => result ? obj(result) : null, () => null)) : [];
+  const loadStoreLocations = authorized && grant('business_locations.view') ? loadLocations(auth, region).catch(() => []) : [];
+  if (production && authorized) {
+    const sales = requests[names.indexOf('sales')];
+    const locations = await loadStoreLocations;
+    const scopeKey = JSON.stringify(scope);
+    const sections = names.map((section, index) => {
+      const common = { auth, region, query, section };
+      return <Suspense key={[section, scopeKey, refresh, retry === section ? param(q, 'attempt') : undefined].join(':')}
+        fallback={<OverviewPanelState {...common}/>}>
+        <LoadedOverviewSection {...common} request={requests[index]} sales={sales}/>
+      </Suspense>;
+    });
+    return renderDashboard({ auth, region, query, locations, production, sections, sales });
+  }
   const paymentScope = { region, from: scope.from, to: scope.to, currency: scope.currency };
   const showPayments = !production && authorized && !scope.locations && canReadTransactions(auth);
-  const [results, locations, payments] = authorized ? await Promise.all([
-    Promise.allSettled(names.map(name => api(url('/analytics/overview/' + name,{ ...scope, refresh }),auth.token))),
-    grant('business_locations.view') ? loadLocations(auth,region).catch(() => []) : [],
+  const [results, locations, payments] = await Promise.all([
+    Promise.all(requests),
+    loadStoreLocations,
     showPayments ? Promise.allSettled([
       readTransactions(auth, paymentScope),
       readTransactions(auth, { ...paymentScope, source: 'attempts' }),
     ]) : undefined,
-  ]) : [[],[],undefined] as const;
+  ]);
+  const payload = Object.fromEntries(names.map((name, index) => [name, results[index] ?? null]));
+  return renderDashboard({ auth, region, query, locations, production, payload, payments, failed: results.includes(null) });
+}
+
+type OverviewSection = 'actions' | 'sales' | 'fulfilment' | 'inventory' | 'finance' | 'preorders';
+type OverviewQuery = ReturnType<typeof overviewQuery>;
+type OverviewResponse = Promise<RecordData | null>;
+type PanelRequest = { auth: Session; region: Region; query: OverviewQuery; section: OverviewSection };
+type PaymentResult = PromiseSettledResult<Awaited<ReturnType<typeof readTransactions>>>;
+
+const productionPanels = {
+  actions: { title: 'Needs attention', detail: 'Live counts, independent of the selected period. Click a tile to open the list.', tone: 'attention', icon: BellRing,
+    count: 8, report: ['pending-fulfilment', 'pending_fulfilment', 'Every order needing action'] },
+  sales: { title: 'Sales', detail: 'Orders placed (demand) and orders delivered (revenue) are counted separately.', tone: 'sales', icon: TrendingUp,
+    count: 5, report: ['sales-summary', 'sales_summary', 'Sales report'] },
+  fulfilment: { title: 'Fulfilment', detail: 'How quickly orders go out, and how many reach the customer.', tone: 'fulfilment', icon: Truck,
+    count: 3, report: ['order-status', 'order_status', 'Order status report'] },
+  inventory: { title: 'Inventory', detail: 'Stock as of now, in the selected locations.', tone: 'inventory', icon: Boxes,
+    count: 4, report: ['stock-valuation', 'stock_valuation', 'Stock valuation'] },
+  finance: { title: 'Money', detail: 'Operating expenses, cash still with the courier, and stock bought. Profit figures will come with the P&L report.',
+    tone: 'money', icon: Wallet, count: 4 },
+  preorders: { title: 'Pre-orders', detail: 'Customer requests sourced from China. Advances are deposits until the pre-order is delivered.',
+    tone: 'preorders', icon: ClipboardList, count: 4 },
+} as const;
+
+function OverviewPanelState({ auth, region, query, section, error }: PanelRequest & { error?: boolean }) {
+  const config = productionPanels[section];
+  const { title, detail, tone, icon: Icon, count } = config;
+  const report = 'report' in config ? config.report : undefined;
+  const { period, scope } = query;
+  const link = report && has(auth.staff, 'report.' + report[1] + '.view')
+    ? { href: url('/dashboard/reports/' + report[0], { region: region === 'BD' ? undefined : region, ...(section === 'sales' || section === 'fulfilment' ? { period } : {}) }), label: report[2] }
+    : undefined;
+  return <Panel title={title} detail={detail} tone={tone} icon={<Icon size={20}/>} link={link}
+    id={section === 'actions' ? 'work-queue' : undefined} production>
+    {error ? <div className="overview-section-error" role="alert"><span>Couldn&apos;t load this section.</span>
+      <Link prefetch={false} replace scroll={false} href={url('/dashboard/overview', { ...scope, period, retry: section, attempt: String(Date.now()) })}>Retry</Link>
+    </div> : <div className="overview-metrics overview-section-loading" aria-busy="true" aria-label={'Loading ' + title}>
+      {Array.from({ length: count }, (_, index) => <div key={index}/>)}
+    </div>}
+  </Panel>;
+}
+
+async function LoadedOverviewSection({ request, sales, ...props }: PanelRequest & {
+  request: OverviewResponse; sales: OverviewResponse;
+}) {
+  const data = await request;
+  if (!data) return <OverviewPanelState {...props} error/>;
+  return renderDashboard({ ...props, production: true, payload: { [props.section]: data }, sales });
+}
+
+function overviewReportDate(value: unknown) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z')) : '';
+}
+
+async function OverviewHeaderMeta({ sales, query, region, asOf }: {
+  sales: OverviewResponse; query: OverviewQuery; region: Region; asOf?: boolean;
+}) {
+  const meta = obj((await sales)?.meta);
+  if (asOf) {
+    const date = str(meta.generated_at);
+    return date && Number.isFinite(Date.parse(date)) ? <time dateTime={date}>Data as of {
+      new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Dhaka' }).format(new Date(date))
+    }</time> : null;
+  }
+  const { scope } = query;
+  const currency = str(meta.currency) || scope.currency || (region === 'BD' ? 'BDT' : 'USD');
+  const compare = obj(meta.compare);
+  const current = [overviewReportDate(meta.from || scope.from), ...(scope.from !== scope.to ? [overviewReportDate(meta.to || scope.to)] : [])].join(' – ');
+  const previous = str(compare.from)
+    ? [overviewReportDate(compare.from), ...(compare.from !== compare.to ? [overviewReportDate(compare.to)] : [])].join(' – ') : '';
+  return <p>{[region === 'BD' ? 'Bangladesh' : 'International', currency, current, previous && 'compared with ' + previous].filter(Boolean).join(' · ')}</p>;
+}
+
+async function ProductionAdSpend({ sales, details, spending }: {
+  sales: OverviewResponse; details: Parameters<typeof Metric>[0]; spending: unknown;
+}) {
+  const delivered = number(obj((await sales)?.delivered).productValue);
+  const spend = number(spending);
+  return <Metric {...details} detail={delivered && spend !== undefined ? percent(spend / delivered) + ' of delivered sales' : undefined}/>;
+}
+
+function renderDashboard({ auth, region, query, production, payload = {}, locations = [], payments, failed, section, sections, sales: salesResource }: {
+  auth: Session; region: Region; query: OverviewQuery; production: boolean; payload?: Partial<Record<OverviewSection, RecordData | null>>;
+  locations?: Awaited<ReturnType<typeof loadLocations>>; payments?: PaymentResult[]; failed?: boolean; section?: OverviewSection;
+  sections?: ReactNode; sales?: OverviewResponse;
+}) {
+  const count = (value: unknown) => formatCount(value, production);
+  const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
+  const grant = (permission: string) => has(auth.staff, permission);
+  const authorized = grant('overview.view');
+  const { period, scope } = query;
+  const paymentScope = { region, from: scope.from, to: scope.to, currency: scope.currency };
+  const showPayments = Boolean(payments);
   const paymentCount = (source: number, state: string) => {
     const result = payments?.[source];
     return result?.status === 'fulfilled'
@@ -157,10 +275,6 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
     return result?.status === 'fulfilled' ? result.value.summary.filter(entry => entry.state === state && entry.currency && entry.amount !== null)
       .map(entry => printable(entry.amount, 'money', entry.currency) + ' ' + entry.currency).join(' · ') : undefined;
   };
-  const payload = Object.fromEntries(names.map((name,index) => {
-    const entry = results[index];
-    return [name, entry?.status === 'fulfilled' && entry.value ? obj(entry.value) : null];
-  }));
   const { actions, sales, fulfilment, inventory, finance, preorders } = payload;
   const currency = str(obj(sales?.meta).currency) || scope.currency || (region === 'BD' ? 'BDT' : 'USD');
   const formatMoney = (value: unknown, code: string) => {
@@ -180,10 +294,8 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const meta = obj(sales?.meta);
   const comparison = obj(meta.compare);
   const asOf = Object.values(payload).map(item => str(obj(item?.meta).generated_at)).filter(Boolean).sort()[0];
-  const reportDate = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    ? new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z')) : '';
-  const previous = str(comparison.from) ? [reportDate(comparison.from), ...(comparison.from !== comparison.to ? [reportDate(comparison.to)] : [])].join(' – ') : '';
-  const current = [reportDate(meta.from || scope.from), ...(scope.from !== scope.to ? [reportDate(meta.to || scope.to)] : [])].join(' – ');
+  const previous = str(comparison.from) ? [overviewReportDate(comparison.from), ...(comparison.from !== comparison.to ? [overviewReportDate(comparison.to)] : [])].join(' – ') : '';
+  const current = [overviewReportDate(meta.from || scope.from), ...(scope.from !== scope.to ? [overviewReportDate(meta.to || scope.to)] : [])].join(' – ');
   const quick = visibleSections(auth.staff).filter(item => !['overview','workflows','settings'].includes(item.id) &&
     (item.id !== 'operations' || operationsEnabled()));
   const points = arr(obj(sales?.series).points).map(obj).flatMap(row => {
@@ -195,6 +307,8 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const unit = seriesUnit === 'week' || seriesUnit === 'month' ? seriesUnit : 'day';
   const bookings = obj(sales?.bookings);
   const delivered = obj(sales?.delivered);
+  const estimatedDelivery = arr(sales?.quality).map(obj).find(flag => flag.code === 'DELIVERED_DATE_ESTIMATED');
+  const returns = obj(sales?.returns);
   const stock = obj(actions?.stock);
   const health = obj(actions?.dataHealth);
   const healthLabels = [
@@ -266,7 +380,12 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const value = obj(inventory?.value);
   const aging = obj(inventory?.aging);
   const dead = obj(inventory?.deadStock);
+  const productionMetric = (definition: string, href?: string, tone?: MetricTone) => production ? { definition, href, tone, production } : {};
   const expenses = obj(finance?.expenses);
+  const spendMetric = {
+    title: 'Ad spend', value: money(expenses.adSpend), current: expenses.adSpend, prior: obj(expenses.previous).adSpend, lowerIsBetter: production,
+    ...productionMetric('Recorded advertising expenses during the selected period.'),
+  };
   const received = obj(finance?.stockReceived);
   const cod = obj(finance?.codWithCourier);
   const phases = obj(preorders?.phases);
@@ -277,27 +396,24 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
       return amount === undefined ? [] : [{name:str(row[name]),value:amount,formatted:moneyFormat ? moneyFormat(amount) : count(amount),
         suffix:suffix && number(row[suffix]) !== undefined ? count(row[suffix]) + ' units' : undefined}];
     });
-  const productionMetric = (definition: string, href?: string, tone?: MetricTone) => production ? { definition, href, tone, production } : {};
   const description = [region === 'BD' ? 'Bangladesh' : 'International',currency,current,previous && 'compared with ' + previous].filter(Boolean).join(' · ');
   const asOfTime = asOf && Number.isFinite(Date.parse(asOf))
     ? new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Dhaka' }).format(new Date(asOf)) : undefined;
-  const dashboard = <>
-    {production ? <header className="production-overview-header">
-      <div><h1>Overview</h1><p>{description}</p></div>
+  const header = !section && (production ? <header className="production-overview-header">
+      <div><h1>Overview</h1>{salesResource ? <Suspense fallback={<p>{description}</p>}>
+        <OverviewHeaderMeta sales={salesResource} query={query} region={region}/>
+      </Suspense> : <p>{description}</p>}</div>
       {authorized && <div className="production-overview-actions">
-        <Link href="/dashboard/overview?view=classic">Previous overview</Link>
-        {asOfTime && <time dateTime={asOf}>Data as of {asOfTime}</time>}
+        <Link href={url('/dashboard/overview', { view: 'classic', region: region === 'BD' ? undefined : region })}>Previous overview</Link>
+        {salesResource && <Suspense><OverviewHeaderMeta sales={salesResource} query={query} region={region} asOf/></Suspense>}
         <Link prefetch={false} className="production-overview-refresh" href={url(overviewPath, { ...scope, period, refresh: '1' })}><RefreshCw size={16}/> Refresh</Link>
       </div>}
     </header> : <PageHeading eyebrow="WORKSPACE / OPERATIONS" title="Commerce overview" description={description}>
       {authorized && <Link className="button subtle" href={url("/desk/overview/classic", { ...scope, period })}>Previous overview</Link>}
       {authorized && asOfTime && <time className="muted" dateTime={asOf}>Data as of {asOfTime} Dhaka</time>}
       {authorized && <Link prefetch={false} className="button secondary" href={url('/desk/overview',{...scope,period,refresh:'1'})}><RefreshCw size={15}/> Refresh</Link>}
-    </PageHeading>}
-    {authorized ? <>
-      <OverviewFilters key={production ? region : JSON.stringify([period,scope])} region={region} period={period} from={scope.from} to={scope.to} compare={scope.compare !== 'none'}
-        selected={scope.locations?.split(',') ?? []} currency={currency} locations={locations} production={production}/>
-      {results.some(result => result.status === 'rejected') && <div className="notice warn"><CircleAlert size={17}/> Some overview sections could not load.</div>}
+    </PageHeading>);
+  const content = <>
       {actions && <Panel id="work-queue" title="Needs attention" production={production}
         detail={production ? 'Live counts, independent of the selected period. Click a tile to open the list.' : 'Current queues are independent of the selected period. Open a tile to review matching records.'}
         tone="attention" icon={production ? <BellRing size={20}/> : <CircleAlert size={23}/>} link={openOrders}>
@@ -330,6 +446,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             {...productionMetric('Product value of orders placed during the selected period.')}/>
           <Metric title="Delivered sales" value={money(delivered.productValue)} current={delivered.productValue} prior={obj(delivered.previous).productValue}
             detail={count(delivered.orders) + ' orders · ' + count(delivered.units) + ' units · ' + (production ? '+' : '') + money(delivered.deliveryIncome) + ' delivery income'}
+            estimated={production && estimatedDelivery ? count(estimatedDelivery.affected) + ' of ' + count(estimatedDelivery.total) + ' delivered orders have no recorded delivery time; their last update time is used.' : undefined}
             {...productionMetric('Product value on orders delivered during the selected period.')}/>
           <Metric title="Average order value" value={money(delivered.avgOrderValue)} current={delivered.avgOrderValue} prior={obj(delivered.previous).avgOrderValue} detail={production ? undefined : 'Delivered orders'}
             {...productionMetric('Average order value for delivered orders.')}/>
@@ -343,8 +460,9 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
           </div>
         </div>
         <div className="overview-split"><ProductTable products={arr(sales.topProducts).map(obj)} currency={currency} region={region} canOpen={grant('product.view')} production={production}/>
-          <div className="overview-stack"><Metric title="Returns processed" value={count(obj(sales.returns).orders)} detail={money(obj(sales.returns).value) + ' returned'}
-            {...productionMetric('Orders for which a return was processed.', orderQueue('returns','RETURNED,PARTIAL'))}/>
+          <div className="overview-stack"><Metric title="Returns processed" value={count(returns.orders)} detail={money(returns.value) + ' returned'}
+            estimated={production && Number(returns.estimatedValues) > 0 ? "Some returns don't record a refund amount; their value is estimated from the order lines." : undefined}
+            {...productionMetric('Orders returned by the customer after delivery. Returns from the courier before delivery are counted in Fulfilment as return-to-sender.', orderQueue('returns','RETURNED,PARTIAL'))}/>
             {sales.pos ? <Metric title={production ? 'POS sales' : 'Point-of-sale value'} value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
               prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + (Number(obj(sales.pos).sales) === 1 ? ' sale' : ' sales')}
               {...productionMetric('In-store (POS) sales by sale date. POS returns already reduce the stored sale.')}/> : null}</div>
@@ -389,6 +507,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <Bars title="Stock age (units)" bars={bars(aging.buckets,'bucket','units').map((row,index) => ({...row,name:(production ? row.name : row.name.replace('-', '–')) + ' days',
           suffix:grant('purchase.price.view') ? cost(obj(arr(aging.buckets)[index]).value) : undefined}))}/>
         {!production && link('inventory-aging','inventory_aging','Inventory aging report',{show:'dead'}) && <Link className="table-link" href={link('inventory-aging','inventory_aging','Inventory aging report',{show:'dead'})!.href}>Inventory aging report</Link>}
+        {production && <OverviewRestriction values={inventory.restricted} inventory/>}
         <Quality data={inventory.quality}/>
       </Panel>}
       {showPayments && <Panel title="Payment activity" detail="Recorded transactions and payment attempts for the selected period. Includes dev simulations."
@@ -408,8 +527,10 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             {finance.expenses ? <>
               <Metric title="Operating expenses" value={money(expenses.total)} current={expenses.total} prior={obj(expenses.previous).total} lowerIsBetter detail={counted(expenses.entries, 'entry', 'entries')}
                 {...productionMetric('Recorded operating expenses in the selected period.', grant('expense.view') ? '/dashboard/expense-report' : undefined)}/>
-              <Metric title="Ad spend" value={money(expenses.adSpend)} current={expenses.adSpend} prior={obj(expenses.previous).adSpend} lowerIsBetter={production} detail={number(delivered.productValue) && number(expenses.adSpend) !== undefined ? percent(Number(expenses.adSpend) / Number(delivered.productValue)) + ' of delivered sales' : undefined}
-                {...productionMetric('Recorded advertising expenses during the selected period.')}/>
+              {salesResource ? <Suspense fallback={<Metric {...spendMetric}/>}>
+                <ProductionAdSpend sales={salesResource} details={spendMetric} spending={expenses.adSpend}/>
+              </Suspense> : <Metric {...spendMetric} detail={number(delivered.productValue) && number(expenses.adSpend) !== undefined
+                ? percent(Number(expenses.adSpend) / Number(delivered.productValue)) + ' of delivered sales' : undefined}/>}
             </> : null}
             <Metric title="COD with courier" value={money(cod.amount)} detail={count(cod.orders) + (production && cod.orders === 1 ? ' parcel' : ' parcels')}
               {...productionMetric('Cash-on-delivery value of parcels still with the courier.', orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'))}/>
@@ -423,6 +544,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             {production && arr(expenses.adsByChannel).length > 0 && <Bars title="Ad spend by channel" bars={bars(expenses.adsByChannel,'name','amount',undefined,money)}/>}
           </div> : null}
         </div>
+        {production && <OverviewRestriction values={finance.restricted}/>}
       </Panel>}
       {preorders && <Panel title="Pre-orders" production={production}
         detail={production ? 'Customer requests sourced from China. Advances are deposits until the pre-order is delivered.' : 'Requests sourced from China. Advances remain deposits until delivery.'} tone="preorders"
@@ -438,6 +560,16 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
             {...productionMetric('Value of pre-orders delivered during the selected period.')}/>
         </div><Quality data={preorders.quality}/>
       </Panel>}
+  </>;
+  if (section) return content;
+  const dashboard = <>
+    {header}
+    {authorized ? <>
+      <OverviewFilters key={production ? region : JSON.stringify([period,scope])} region={region} period={period} from={scope.from} to={scope.to} compare={scope.compare !== 'none'}
+        selected={scope.locations?.split(',') ?? []} currency={currency} locations={locations} production={production}/>
+      {failed && <div className="notice warn"><CircleAlert size={17}/> Some overview sections could not load.</div>}
+      {sections ?? content}
+      {production && scope.locations && <p className="overview-location-note">The location filter applies to dispatch, delivery, stock and purchases. Orders that haven’t been dispatched have no location yet.</p>}
     </> : <div className="notice" id="work-queue"><CircleAlert size={17}/> Overview metrics require the Overview permission. Your available modules are below.</div>}
     {!production && <><div className="section-line"><div><h2>Quick access</h2><p>Open tools available to your account.</p></div></div>
     <div className="quick-grid">{quick.map(item => <Link key={item.id} className="panel quick-card" href={url('/desk/'+item.id,{region})}><span className="tile-icon purple"><SectionIcon name={item.icon}/></span><span><strong>{item.label}</strong><small>{item.description}</small></span><ArrowRight size={16}/></Link>)}</div>
@@ -449,4 +581,14 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
 function Quality({data}: {data: unknown}) {
   const messages = arr(data).map(row => str(obj(row).message)).filter(Boolean);
   return messages.length ? <div className="notice warn"><CircleAlert size={17}/><ul>{messages.map(message => <li key={message}>{message}</li>)}</ul></div> : null;
+}
+
+function OverviewRestriction({ values, inventory }: { values: unknown; inventory?: boolean }) {
+  const restricted = arr(values).map(str).filter(Boolean);
+  if (!restricted.length) return null;
+  const text = inventory
+    ? (restricted.includes('cost') ? restricted.includes('profit') ? 'Purchase cost and margin figures are hidden for your role.' : 'Purchase cost figures are hidden for your role.'
+      : 'Margin figures are hidden for your role.')
+    : 'Hidden for your role: ' + restricted.map(value => value === 'cost' ? 'purchase cost' : value).join(', ') + '.';
+  return <p className="overview-location-note">{text}</p>;
 }
