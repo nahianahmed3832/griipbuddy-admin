@@ -258,7 +258,7 @@ async function inventoryDataHealth(data: RecordData, auth: Session, region: Regi
     order.updatedAt != null && order.updatedAt >= since && order.warehouseStockExpected === true) ?? [];
   const shippedWithoutStock = orders.filter(order => order.warehouseInventoryRecorded === false && order.wasDelivered &&
     ['DELIVERED', 'PARTIAL', 'RETURN_REQUESTED'].includes(order.status));
-  const cancelledWithStockOut = orders.filter(order => order.status === 'CANCELLED' && order.dispatched &&
+  const cancelledWithStockOut = orders.filter(order => ['CANCELLED', 'PENDING_RETURN'].includes(order.status) && order.dispatched &&
     order.warehouseInventoryRecorded === true && Number.isSafeInteger(order.warehouseUnitsPendingRestock) &&
     (order.warehouseUnitsPendingRestock ?? 0) > 0);
   const reportRow = (order: HybridReportOrder) => ({
@@ -270,7 +270,7 @@ async function inventoryDataHealth(data: RecordData, auth: Session, region: Regi
       ...reportRow(order), deliveredAt: dated(order.deliveredAt ?? order.updatedAt),
     })),
     courierCancelledNotRestocked: cancelledWithStockOut.map(order => ({
-      ...reportRow(order), cancelledAt: dated(order.cancelledAt ?? order.updatedAt),
+      ...reportRow(order), cancelledAt: dated(order.cancelledAt ?? order.statusAt ?? order.updatedAt),
       units: order.warehouseUnitsPendingRestock, _tones: { units: 'danger' },
     })),
   };
