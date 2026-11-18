@@ -58,7 +58,7 @@ async function lookupValues(auth: Session, view: ExpenseView, body: RecordData) 
   const name = field(body, nameKey, 140);
   const status = str(body.status);
   if (!name || !ledgerStatuses.includes(status)) throw new ApiError(400, 'Enter a name and status.');
-  const payload = { [nameKey]: name, status,
+  const payload: RecordData = { [nameKey]: name, status,
     ...(Object.hasOwn(body, 'notes') && { notes: field(body, 'notes', 1000) }),
   };
   if (view === 'expense-categories' || view === 'expense-subcategories') {
