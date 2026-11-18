@@ -98,7 +98,7 @@ export function PurchaseRecordForm({ record, suppliers, locations, region, produ
     <label className="filter-label">{production ? 'Business Location' : 'Business location'}<select name="location" required defaultValue={record.location} disabled={received}>{locations.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
     {production ? <label className="filter-label">Purchase Date<span className={styles.purchaseDay}>
       <span>{date ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z')) : 'Pick a date'}</span><CalendarDays size={16}/>
-      <input type="date" name="date" required value={date} onChange={event => setDate(event.target.value)}/></span></label>
+      <input type="date" aria-label="Purchase Date" name="date" required value={date} onChange={event => setDate(event.target.value)}/></span></label>
       : <label className="filter-label">Purchase date<input type="date" name="date" required defaultValue={record.date}/></label>}
     {production ? <><input type="hidden" name="status" value={record.status}/><input type="hidden" name="note" value={record.note}/>
       <input type="hidden" name="attachments" value={record.attachments}/></> : <>
