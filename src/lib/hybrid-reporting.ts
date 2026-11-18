@@ -1,12 +1,12 @@
-import { arr, obj, str, type RecordData, type Session } from './api';
-import { loadHybridReportOrders, type HybridReportData, type HybridReportOrder } from './hybrid-orders';
-import type { Region } from './sections';
+import { arr, obj, str, type RecordData } from './api';
+import type { HybridReportData, HybridReportOrder } from './hybrid-orders';
 
-type Period = { from?: string; to?: string };
+export type Period = { from?: string; to?: string };
 const dayFormat = new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Dhaka' });
-const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
-const round = (value: number) => Math.round(value * 100) / 100;
+export const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+export const round = (value: number) => Math.round(value * 100) / 100;
 const average = (amount: number, count: number) => count ? round(amount / count) : null;
+export const ratio = (count: number, total: number) => total ? count / total : null;
 const date = (time: number) => new Date(time).toISOString().slice(0, 10);
 const dayMs = 86_400_000;
 
@@ -17,36 +17,86 @@ export function comparisonStart(from?: string, to?: string, compare = true) {
   return Number.isFinite(start) && Number.isFinite(end) && end >= start ? date(start - (end - start + dayMs)) : from;
 }
 
-function inPeriod(orders: HybridReportOrder[], period: Period) {
-  return orders.filter(order => {
-    const day = dayFormat.format(order.placedAt);
-    return (!period.from || day >= period.from) && (!period.to || day <= period.to);
-  });
+export function trailingStart(days: number) {
+  return date(Date.parse(dayFormat.format(Date.now())) - (days - 1) * dayMs);
 }
 
-function bookings(orders: HybridReportOrder[], period: Period) {
-  return inPeriod(orders, period).filter(order => !['INCOMPLETE', 'FAILED'].includes(order.status));
+export function within(at: number | undefined, period: Period) {
+  if (at == null) return false;
+  const day = dayFormat.format(at);
+  return (!period.from || day >= period.from) && (!period.to || day <= period.to);
+}
+
+export function bookings(orders: HybridReportOrder[], period: Period) {
+  return orders.filter(order => within(order.placedAt, period) && !['INCOMPLETE', 'FAILED'].includes(order.status));
 }
 
 function totals(orders: HybridReportOrder[]) {
-  return orders.reduce(({ product, value, discount, units, cancelled }, order) => ({
+  return orders.reduce(({ product, value, discount, units, cancelled, delivery }, order) => ({
     product: product + order.productMinor, value: value + order.totalMinor, discount: discount + order.discountMinor, units: units + order.units,
-    cancelled: cancelled + Number(order.status === 'CANCELLED' && !order.dispatched),
-  }), { product: 0, value: 0, discount: 0, units: 0, cancelled: 0 });
+    cancelled: cancelled + Number(order.status === 'CANCELLED' && !order.dispatched), delivery: delivery + order.deliveryMinor,
+  }), { product: 0, value: 0, discount: 0, units: 0, cancelled: 0, delivery: 0 });
 }
 
-function buckets(orders: HybridReportOrder[], unit: string) {
-  const result = new Map<string, { count: number; minor: number }>();
-  for (const order of orders) {
-    const day = dayFormat.format(order.placedAt);
-    const at = new Date(day);
-    const key = unit === 'month' ? day.slice(0, 7) : unit === 'week'
-      ? date(at.getTime() - ((at.getUTCDay() + 1) % 7) * dayMs) : day;
-    const prior = result.get(key) ?? { count: 0, minor: 0 };
-    result.set(key, { count: prior.count + 1, minor: prior.minor + order.productMinor });
-  }
-  return result;
+export function bucketKey(time: number, unit: string) {
+  const day = dayFormat.format(time);
+  return unit === 'month' ? day.slice(0, 7) : unit === 'week'
+    ? date(Date.parse(day) - ((new Date(day).getUTCDay() + 1) % 7) * dayMs) : day;
 }
+
+export function periodActivity(orders: HybridReportOrder[], period: Period) {
+  const delivered = orders.filter(order => within(order.deliveredAt, period));
+  const returns = orders.flatMap(order => order.returns
+    .filter(receipt => order.deliveredAt != null && order.deliveredAt <= receipt.receivedAt && within(receipt.receivedAt, period))
+    .map(receipt => ({ ...receipt, orderId: order.id })));
+  return { booked: bookings(orders, period), delivered, returns };
+}
+
+type Activity = ReturnType<typeof periodActivity>;
+
+function activityTotals(activity: Activity) {
+  const delivered = totals(activity.delivered);
+  return {
+    ordersPlaced: activity.booked.length, bookedValue: totals(activity.booked).product / 100,
+    deliveredOrders: activity.delivered.length, deliveredValue: delivered.product / 100,
+    deliveryIncome: delivered.delivery / 100, unitsDelivered: delivered.units,
+    returnsCount: new Set(activity.returns.map(receipt => receipt.orderId)).size,
+    returnsValue: activity.returns.reduce((sum, receipt) => sum + (receipt.confirmedMinor ?? receipt.estimateMinor), 0) / 100,
+    estimatedValues: new Set(activity.returns.filter(receipt => receipt.confirmedMinor == null).map(receipt => receipt.orderId)).size,
+  };
+}
+
+function activityBuckets(activity: Activity, unit: string) {
+  const values = new Map<string, Activity>();
+  const entry = (key: string) => {
+    const existing = values.get(key);
+    if (existing) return existing;
+    const empty: Activity = { booked: [], delivered: [], returns: [] };
+    values.set(key, empty);
+    return empty;
+  };
+  for (const order of activity.booked) entry(bucketKey(order.placedAt, unit)).booked.push(order);
+  for (const order of activity.delivered) entry(bucketKey(order.deliveredAt!, unit)).delivered.push(order);
+  for (const receipt of activity.returns) entry(bucketKey(receipt.receivedAt, unit)).returns.push(receipt);
+  return new Map([...values.entries()].map(([key, result]) => [key, activityTotals(result)]));
+}
+
+export function placedOutcome(order: HybridReportOrder) {
+  if (order.wasDelivered) return 'delivered';
+  if (order.status === 'RETURNED' || order.status === 'CANCELLED' && order.dispatched) return 'returned';
+  if (order.status === 'PENDING_RETURN') return 'returning';
+  if (order.status === 'CANCELLED') return 'cancelled';
+  return order.dispatched ? 'with_courier' : 'open';
+}
+
+export function courierOutcome(order: HybridReportOrder) {
+  if (order.wasDelivered) return 'delivered';
+  return order.status === 'RETURNED' || order.status === 'CANCELLED' ? 'rts' : 'pending';
+}
+
+export const hoursSince = (time: number, now: number) => Math.max(0, (now - time) / 3_600_000);
+export const courierLate = (order: HybridReportOrder, now: number) => order.inTransit && order.dispatchedAt !== undefined &&
+  hoursSince(order.dispatchedAt, now) > (/dhaka|ঢাকা/i.test(order.district) ? 72 : 120);
 
 function mergeBookings(native: RecordData, orders: HybridReportOrder[]) {
   if (!orders.length) return native;
@@ -61,27 +111,97 @@ function mergeBookings(native: RecordData, orders: HybridReportOrder[]) {
     cancelledBeforeDispatch: cancelled, cancellationRate: cancelled / orderCount };
 }
 
-function appendQuality(data: RecordData, message: string): RecordData {
-  return { ...data, quality: [...arr(data.quality), { code: 'HYBRID_CHECKOUT_SCOPE', message }] };
+export function appendQuality(data: RecordData, message: string, code = 'HYBRID_CHECKOUT_SCOPE'): RecordData {
+  return { ...data, quality: [...arr(data.quality), { code, message }] };
 }
 
-const periodOf = (meta: RecordData): Period => ({ from: str(meta.from) || undefined, to: str(meta.to) || undefined });
+export const periodOf = (meta: RecordData): Period => ({ from: str(meta.from) || undefined, to: str(meta.to) || undefined });
+
+function mergeDelivered(native: RecordData, hybrid: ReturnType<typeof activityTotals>) {
+  if (!hybrid.deliveredOrders) return native;
+  const orders = numeric(native.orders) + hybrid.deliveredOrders;
+  const productValue = round(numeric(native.productValue) + hybrid.deliveredValue);
+  return { ...native, orders, productValue, avgOrderValue: average(productValue, orders),
+    deliveryIncome: round(numeric(native.deliveryIncome) + hybrid.deliveryIncome), units: numeric(native.units) + hybrid.unitsDelivered };
+}
+
+function mergeDurations(native: RecordData, additions: number[], baseCount: number, medianKey: string, p90Key: string) {
+  const { durations: raw, ...base } = native;
+  if (!additions.length) return { record: base, complete: true };
+  if (!Array.isArray(raw) && baseCount) return { record: base, complete: false };
+  const samples = [...arr(raw).map(numeric), ...additions].sort((left, right) => left - right);
+  const percentile = (p: number) => Math.round(samples[Math.ceil(p * samples.length) - 1] * 10) / 10;
+  return { record: { ...base, [medianKey]: percentile(.5), [p90Key]: percentile(.9) }, complete: true };
+}
+
+function mergeFulfilment(data: RecordData, orders: HybridReportOrder[], current: Activity, prior: Period, compared: boolean) {
+  const period = periodOf(obj(data.meta));
+  const funnel = { ...obj(data.funnel) };
+  for (const order of current.booked) {
+    const outcome = placedOutcome(order);
+    funnel[outcome] = numeric(funnel[outcome]) + 1;
+  }
+  funnel.total = numeric(funnel.total) + current.booked.length;
+  const applyDispatch = (native: RecordData, range: Period) => {
+    const dispatched = orders.filter(order => within(order.dispatchedAt, range));
+    const measured = dispatched.filter(order => order.dispatchedAt! >= order.placedAt)
+      .map(order => hoursSince(order.placedAt, order.dispatchedAt!));
+    const merged = mergeDurations(native, measured, numeric(native.orders), 'medianHours', 'p90Hours');
+    return { complete: merged.complete, record: { ...merged.record, orders: numeric(native.orders) + dispatched.length } };
+  };
+  const nativeDispatch = obj(data.dispatch);
+  const dispatch = applyDispatch(nativeDispatch, period);
+  const previous = compared && nativeDispatch.previous ? applyDispatch(obj(nativeDispatch.previous), prior) : null;
+  const nativeTime = obj(data.deliveryTime);
+  const measured = current.delivered.filter(order => order.dispatchedAt != null && order.deliveredAt! >= order.dispatchedAt)
+    .map(order => hoursSince(order.dispatchedAt!, order.deliveredAt!) / 24);
+  const time = mergeDurations(nativeTime, measured, numeric(nativeTime.measured), 'medianDays', 'p90Days');
+  const nativeSuccess = obj(data.deliverySuccess);
+  const windowDays = numeric(nativeSuccess.windowDays) || 30;
+  const recent = orders.filter(order => within(order.dispatchedAt, { from: trailingStart(windowDays), to: dayFormat.format(Date.now()) }));
+  const count = (outcome: string) => recent.filter(order => courierOutcome(order) === outcome).length;
+  const delivered = numeric(nativeSuccess.delivered) + count('delivered');
+  const returnedToSender = numeric(nativeSuccess.returnedToSender) + count('rts');
+  const pending = numeric(nativeSuccess.pending) + count('pending');
+  const results = { ...data, funnel, dispatch: { ...dispatch.record, previous: previous?.record ?? null },
+    deliveryTime: { ...time.record, measured: numeric(nativeTime.measured) + (time.complete ? measured.length : 0),
+      missing: numeric(nativeTime.missing) + current.delivered.length - measured.length },
+    deliverySuccess: { ...nativeSuccess, windowDays, delivered, returnedToSender, pending,
+      successRate: ratio(delivered, delivered + returnedToSender), rtsRate: ratio(returnedToSender, delivered + returnedToSender) },
+  };
+  return dispatch.complete && (previous?.complete ?? true) && time.complete ? results
+    : appendQuality(results, 'The native timing sample exceeded its reporting limit. Timing percentiles shown cover legacy orders.');
+}
+
+function addSeriesActivity(row: RecordData, extra: ReturnType<typeof activityTotals> | undefined) {
+  if (!extra) return row;
+  return { ...row, ordersPlaced: numeric(row.ordersPlaced) + extra.ordersPlaced,
+    bookedValue: round(numeric(row.bookedValue) + extra.bookedValue),
+    deliveredOrders: numeric(row.deliveredOrders) + extra.deliveredOrders,
+    deliveredValue: round(numeric(row.deliveredValue) + extra.deliveredValue) };
+}
+
+function noteMissingDeliveryDates(data: RecordData, orders: HybridReportOrder[]) {
+  return orders.some(order => order.wasDelivered && order.deliveredAt == null)
+    ? appendQuality(data, 'Some Hybrid deliveries have no recorded delivery time and are excluded from dated delivery and return figures.', 'HYBRID_DELIVERED_DATE_UNRECORDED')
+    : data;
+}
 
 export function mergeHybridOverview(section: string, data: RecordData, hybrid: HybridReportData | null): RecordData {
   if (!hybrid) return data;
   if (hybrid.issue) return appendQuality(data, hybrid.issue);
-  if (!hybrid.orders.length) return data;
   const orders = hybrid.orders;
   if (section === 'actions') {
     const native = obj(data.orders);
     const confirm = obj(native.toConfirm);
     const verify = obj(native.paymentsToVerify);
     const courier = obj(native.courier);
+    const now = Date.now();
     const toConfirm = orders.filter(order => !order.dispatched && ['PLACED', 'PROCESSING'].includes(order.status));
     const toVerify = orders.filter(order => order.awaitingPayment);
-    const ages = toConfirm.map(order => (Date.now() - order.placedAt) / 3_600_000);
-    return appendQuality({ ...data, orders: {
-      ...native,
+    const overdue = orders.filter(order => courierLate(order, now));
+    const ages = toConfirm.map(order => hoursSince(order.placedAt, now));
+    return { ...data, orders: { ...native,
       toConfirm: { ...confirm, orders: numeric(confirm.orders) + toConfirm.length, value: round(numeric(confirm.value) + totals(toConfirm).value / 100),
         oldestHours: ages.length ? Math.max(numeric(confirm.oldestHours), ...ages) : confirm.oldestHours,
         over24h: numeric(confirm.over24h) + ages.filter(age => age > 24).length,
@@ -89,8 +209,11 @@ export function mergeHybridOverview(section: string, data: RecordData, hybrid: H
       paymentsToVerify: { ...verify, orders: numeric(verify.orders) + toVerify.length,
         claimedAmount: round(numeric(verify.claimedAmount) + toVerify.reduce((sum, order) => sum + order.claimedMinor, 0) / 100) },
       courier: { ...courier, inTransit: numeric(courier.inTransit) + orders.filter(order => order.inTransit).length,
+        overdue: numeric(courier.overdue) + overdue.length,
+        overdueCod: round(numeric(courier.overdueCod) + overdue.reduce((sum, order) => sum + order.uncollectedCodMinor, 0) / 100),
+        returnRequested: numeric(courier.returnRequested) + orders.filter(order => order.status === 'RETURN_REQUESTED').length,
         pendingReturn: numeric(courier.pendingReturn) + orders.filter(order => order.status === 'PENDING_RETURN').length },
-    } }, 'Hybrid checkout is included in order confirmation, payment review, parcels with a courier and pending returns. Overdue counts use legacy dispatch times.');
+    } };
   }
   if (section === 'finance') {
     const cod = obj(data.codWithCourier);
@@ -98,39 +221,35 @@ export function mergeHybridOverview(section: string, data: RecordData, hybrid: H
       amount: round(numeric(cod.amount) + orders.reduce((sum, order) => sum + order.uncollectedCodMinor, 0) / 100) } };
   }
   const meta = obj(data.meta);
-  const current = bookings(orders, periodOf(meta));
-  if (section === 'fulfilment') {
-    if (!current.length) return data;
-    const funnel = { ...obj(data.funnel) };
-    for (const order of current) {
-      const outcome = ({ CANCELLED: 'cancelled', DELIVERED: 'delivered', PENDING_RETURN: 'returning', RETURNED: 'returned' } as Record<string, string>)[order.status]
-        || (order.inTransit ? 'with_courier' : 'open');
-      funnel[outcome] = numeric(funnel[outcome]) + 1;
-    }
-    funnel.total = numeric(funnel.total) + current.length;
-    return appendQuality({ ...data, funnel }, 'The order outcome chart includes Hybrid checkout. Dispatch and delivery time measures use legacy milestone dates.');
-  }
-  if (section !== 'sales') return data;
+  const current = periodActivity(orders, periodOf(meta));
   const previousMeta = obj(meta.compare);
-  const previous = previousMeta.from ? bookings(orders, periodOf(previousMeta)) : [];
-  if (!current.length && !previous.length) return data;
+  const previous = previousMeta.from ? periodActivity(orders, periodOf(previousMeta)) : periodActivity([], {});
+  if (section === 'fulfilment') return noteMissingDeliveryDates(mergeFulfilment(data, orders, current, periodOf(previousMeta), !!previousMeta.from), orders);
+  if (section !== 'sales') return data;
+  if (![...current.booked, ...current.delivered, ...current.returns, ...previous.booked, ...previous.delivered].length) {
+    return noteMissingDeliveryDates(data, orders);
+  }
   const native = obj(data.bookings);
-  const merged = mergeBookings(native, current);
+  const merged = mergeBookings(native, current.booked);
   const source = arr(native.bySource).map(obj);
   const website = source.find(record => record.source === 'WEBSITE');
-  const bySource = !current.length ? source : website ? source.map(record => record === website
-    ? { ...record, orders: numeric(record.orders) + current.length } : record) : [...source, { source: 'WEBSITE', orders: current.length }];
+  const bySource = !current.booked.length ? source : website ? source.map(record => record === website
+    ? { ...record, orders: numeric(record.orders) + current.booked.length } : record) : [...source, { source: 'WEBSITE', orders: current.booked.length }];
   const series = obj(data.series);
-  const groups = buckets(current, str(series.unit));
-  return appendQuality({
+  const groups = activityBuckets(current, str(series.unit));
+  const currentTotals = activityTotals(current);
+  const priorTotals = activityTotals(previous);
+  const delivered = obj(data.delivered);
+  const returns = obj(data.returns);
+  return noteMissingDeliveryDates({
     ...data,
-    bookings: { ...merged, bySource, previous: native.previous ? mergeBookings(obj(native.previous), previous) : null },
-    series: { ...series, points: arr(series.points).map(obj).map(point => {
-      const checkout = groups.get(str(point.key));
-      return checkout ? { ...point, ordersPlaced: numeric(point.ordersPlaced) + checkout.count,
-        bookedValue: round(numeric(point.bookedValue) + checkout.minor / 100) } : point;
-    }) },
-  }, 'Placed totals and booked value include Hybrid checkout. Delivery, returns, categories and top products use the legacy records available for those measures.');
+    bookings: { ...merged, bySource, previous: native.previous ? mergeBookings(obj(native.previous), previous.booked) : null },
+    delivered: { ...mergeDelivered(delivered, currentTotals),
+      previous: delivered.previous ? mergeDelivered(obj(delivered.previous), priorTotals) : null },
+    returns: { ...returns, orders: numeric(returns.orders) + currentTotals.returnsCount,
+      value: round(numeric(returns.value) + currentTotals.returnsValue), estimatedValues: numeric(returns.estimatedValues) + currentTotals.estimatedValues },
+    series: { ...series, points: arr(series.points).map(obj).map(point => addSeriesActivity(point, groups.get(str(point.key)))) },
+  }, orders);
 }
 
 export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData | null) {
@@ -151,58 +270,69 @@ export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData 
   note: 'Online order amount, discounts, quantity and count include Hybrid checkout. Due and profit figures use legacy records.' };
 }
 
-export async function salesReportWithHybrid(data: RecordData, auth: Session, region: Region, locations?: string): Promise<RecordData> {
+export function mergeHybridSalesReport(data: RecordData, orders: HybridReportOrder[]) {
   const meta = obj(data.meta);
-  const period = periodOf(meta);
-  if (!period.from || !period.to) return data;
-  const hybrid = await loadHybridReportOrders(auth, region, {
-    locations, from: periodOf(obj(meta.compare)).from || period.from, to: period.to,
-  });
-  return mergeHybridSalesReport(data, hybrid);
-}
-
-function mergeHybridSalesReport(data: RecordData, hybrid: HybridReportData | null) {
-  if (!hybrid) return data;
-  if (hybrid.issue) return appendQuality(data, hybrid.issue);
-  const meta = obj(data.meta);
-  const current = bookings(hybrid.orders, periodOf(meta));
+  const current = periodActivity(orders, periodOf(meta));
   const previousMeta = obj(meta.compare);
-  const previous = previousMeta.from ? bookings(hybrid.orders, periodOf(previousMeta)) : [];
-  if (!current.length && !previous.length) return data;
-  const currentTotals = totals(current);
-  const priorTotals = totals(previous);
+  const previous = previousMeta.from ? periodActivity(orders, periodOf(previousMeta)) : periodActivity([], {});
+  const currentTotals = activityTotals(current);
+  const priorTotals = activityTotals(previous);
   const kpis = arr(data.kpis).map(obj);
   const placed = kpis.find(item => item.key === 'ordersPlaced');
+  const sold = kpis.find(item => item.key === 'deliveredValue');
+  const addedMetrics: Record<string, keyof typeof currentTotals | undefined> = {
+    ordersPlaced: 'ordersPlaced', bookedValue: 'bookedValue', deliveredValue: 'deliveredValue',
+    returnsValue: 'returnsValue', deliveryIncome: 'deliveryIncome',
+  };
   const revised = (item: RecordData, current: number, previous: number) => ({ ...item,
     value: round(numeric(item.value) + current),
     previous: typeof item.previous === 'number' ? round(item.previous + previous) : item.previous,
   });
   const series = obj(data.series);
-  const groups = buckets(current, str(series.unit));
-  const mergeRow = (row: RecordData) => {
-    const checkout = groups.get(str(row.key));
-    return checkout ? { ...row, ordersPlaced: numeric(row.ordersPlaced) + checkout.count,
-      bookedValue: round(numeric(row.bookedValue) + checkout.minor / 100) } : row;
+  const tables = arr(data.tables).map(obj);
+  const periodTable = tables.find(table => table.id === 'periods');
+  const nativeSold = numeric(obj(periodTable?.totals).deliveredOrders);
+  const nativePrevSold = obj(data.mergeInputs).previousDeliveredOrders;
+  const groups = activityBuckets(current, str(series.unit));
+  const mergeRow = (row: RecordData, extra = groups.get(str(row.key))) => {
+    if (!extra) return row;
+    const activity = addSeriesActivity(row, extra);
+    const netSales = round(numeric(row.netSales) + extra.deliveredValue - extra.returnsValue);
+    return { ...activity, deliveryIncome: round(numeric(row.deliveryIncome) + extra.deliveryIncome),
+      returnsCount: numeric(row.returnsCount) + extra.returnsCount, returnsValue: round(numeric(row.returnsValue) + extra.returnsValue),
+      netSales, aov: average(numeric(activity.deliveredValue), numeric(activity.deliveredOrders)),
+      _tones: { ...obj(row._tones), netSales: netSales < 0 ? 'danger' : undefined } };
   };
-  return appendQuality({
+  const valued = {
     ...data,
     kpis: kpis.map(item => {
-      if (item.key === 'ordersPlaced') return revised(item, current.length, previous.length);
-      if (item.key === 'bookedValue') return revised(item, currentTotals.product / 100, priorTotals.product / 100);
-      if (item.key !== 'cancellationRate' || !placed) return item;
+      const key = str(item.key);
+      const metric = addedMetrics[key];
+      if (metric) return {
+        ...revised(item, currentTotals[metric], priorTotals[metric]),
+        ...(metric === 'returnsValue' && currentTotals.estimatedValues > 0 && {
+          estimated: 'Some returns have no confirmed refund. Their value is estimated from the returned items.',
+        }),
+      };
+      if (key === 'netSales') return revised(item, currentTotals.deliveredValue - currentTotals.returnsValue, priorTotals.deliveredValue - priorTotals.returnsValue);
+      if (key === 'aov' && sold) return {
+        ...item, value: average(numeric(sold.value) + currentTotals.deliveredValue, nativeSold + currentTotals.deliveredOrders),
+        previous: typeof nativePrevSold === 'number' && typeof sold.previous === 'number'
+          ? average(sold.previous + priorTotals.deliveredValue, nativePrevSold + priorTotals.deliveredOrders) : item.previous,
+      };
+      if (key !== 'cancellationRate' || !placed) return item;
       const rate = (priorRate: unknown, count: number, add: number, cancelled: number) =>
         count + add ? (Math.round(numeric(priorRate) * count) + cancelled) / (count + add) : priorRate;
-      const value = rate(item.value, numeric(placed.value), current.length, currentTotals.cancelled);
+      const value = rate(item.value, numeric(placed.value), current.booked.length, totals(current.booked).cancelled);
       return { ...item, value,
-        previous: previousMeta.from ? rate(item.previous, numeric(placed.previous), previous.length, priorTotals.cancelled) : item.previous,
+        previous: previousMeta.from ? rate(item.previous, numeric(placed.previous), previous.booked.length, totals(previous.booked).cancelled) : item.previous,
         tone: typeof value === 'number' ? value >= .15 ? 'danger' : value >= .05 ? 'warning' : 'success' : item.tone,
       };
     }),
-    series: { ...series, points: arr(series.points).map(obj).map(mergeRow) },
-    tables: arr(data.tables).map(obj).map(table => table.id !== 'periods' ? table : {
-      ...table, rows: arr(table.rows).map(obj).map(mergeRow), totals: { ...obj(table.totals),
-        ordersPlaced: numeric(obj(table.totals).ordersPlaced) + current.length,
-        bookedValue: round(numeric(obj(table.totals).bookedValue) + currentTotals.product / 100) },
+    series: { ...series, points: arr(series.points).map(obj).map(point => mergeRow(point)) },
+    tables: tables.map(table => table !== periodTable ? table : {
+      ...table, rows: arr(table.rows).map(obj).map(row => mergeRow(row)), totals: mergeRow(obj(table.totals), currentTotals),
     }),
-  }, 'Placed orders, booked value and cancellation rates include Hybrid checkout. Delivered sales and return values use legacy milestone and refund records.');
+  };
+  return noteMissingDeliveryDates(valued, orders);
 }

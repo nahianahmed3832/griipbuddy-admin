@@ -16,6 +16,8 @@ import { TrendChart } from './trend-chart';
 import { ProductionReportFilters } from './production-report-filters';
 import { ProductionReportChart, type ReportPoint } from './production-report-chart';
 import { productionReportPeriodRange } from '@/lib/production-report-period';
+import { hybridOrderId } from '@/lib/hybrid-orders';
+import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
 import './production-reports.css';
 
 const shortcuts = [
@@ -46,7 +48,11 @@ const formatPercentage = (value: number) => reportValue(value,'percent','BDT');
 function recordLink(key: string, raw: unknown, auth: Session, region: Region, production?: boolean) {
   const parts = str(raw).split('/');
   const id = parts[3];
-  if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'dashboard' || !mongoId(id ?? '')) return undefined;
+  if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'dashboard') return undefined;
+  if (key === 'order' && parts[2] === 'order-details' && hybridOrderId(id) && has(auth.staff, 'order.view') && region === 'BD') {
+    return url('/dashboard/order-details/' + id, { region });
+  }
+  if (!mongoId(id ?? '')) return undefined;
   if (key === 'order' && parts[2] === 'order-details' && has(auth.staff, 'order.view')) return url((production ? '/dashboard/order-details/' : '/desk/orders/orders/') + id, {region});
   if (key === 'product' && parts[2] === 'product-details' && has(auth.staff, 'product.view')) return url((production ? '/dashboard/product-details/' : '/desk/catalog/products/') + id, {region});
 }
@@ -251,8 +257,9 @@ export async function Reports({ auth, id, q, region, production = false }: {
   const page = param(q,'page');
   const limit = production ? param(q,'limit') : undefined;
   const refresh = param(q,'refresh') === '1' ? '1' : undefined;
-  const native = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh}),auth.token));
-  const data = id === 'sales-summary' ? await salesReportWithHybrid(native, auth, region, scope.locations) : native;
+  const hybridMerge = canMergeHybridReport(id, auth, region, scope.locations) ? '1' : undefined;
+  const native = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh,hybridMerge}),auth.token));
+  const data = hybridMerge ? await reportWithHybrid(id, native, auth, region, scope.locations) : native;
   const report = obj(data.report);
   const meta = obj(data.meta);
   const domain = reportDomain(report.domain);
@@ -298,9 +305,6 @@ export async function Reports({ auth, id, q, region, production = false }: {
     ? 'Purchase price and profit figures are hidden for your role.'
     : restricted.includes('cost') ? 'Purchase price figures are hidden for your role.' : 'Profit and margin figures are hidden for your role.';
   const quality = arr(data.quality).map(obj);
-  if (['sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts'].includes(id) && canReadHybridReports(auth, region, scope.locations)) {
-    quality.push({ code: 'HYBRID_CHECKOUT_SCOPE', message: 'This report uses legacy records. All Orders includes Hybrid checkout.' });
-  }
   return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
       <div className="report-header-copy">
@@ -346,5 +350,3 @@ export async function Reports({ auth, id, q, region, production = false }: {
         <> ({String(flag.affected)} of {String(flag.total)})</>}</p></div>)}
   </div>;
 }
-import { canReadHybridReports } from '@/lib/hybrid-orders';
-import { salesReportWithHybrid } from '@/lib/hybrid-reporting';

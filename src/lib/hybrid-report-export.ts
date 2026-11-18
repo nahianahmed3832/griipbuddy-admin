@@ -11,12 +11,15 @@ function label(record: RecordData) {
 }
 
 function cell(value: unknown, type: unknown): Cell {
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const at = type === 'datetime' ? Date.parse(value) : NaN;
+    return Number.isFinite(at) ? time.format(at) : value;
+  }
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
   return type === 'percent' ? Math.round(value * 10_000) / 100 : value;
 }
 
-export function hybridSalesDownload(result: RecordData, format: 'csv' | 'xlsx') {
+export function hybridReportDownload(reportId: string, result: RecordData, format: 'csv' | 'xlsx') {
   const meta = obj(result.meta);
   const report = obj(result.report);
   const title = str(report.title);
@@ -27,7 +30,7 @@ export function hybridSalesDownload(result: RecordData, format: 'csv' | 'xlsx') 
   const groupBy = str(obj(result.params).groupBy);
   const groupOption = arr(obj(arr(result.filters).find(filter => obj(filter).key === 'groupBy')).options).map(obj).find(option => option.value === groupBy);
   const overview: Cell[][] = [
-    ['Report', title], ['Period', from + ' to ' + to + ' (' + timezone + ')'],
+    ['Report', title], ...(from && to ? [['Period', from + ' to ' + to + ' (' + timezone + ')']] : []),
     ['Date basis', str(report.dateBasis)], ['Region', 'BD (BDT)'], ['Locations', 'All'],
     ...(groupBy ? [['Group by', str(groupOption?.label) || groupBy]] : []),
     ...(Number.isFinite(asOf) ? [['Generated', time.format(asOf) + ' (' + timezone + ')']] : []),
@@ -37,31 +40,40 @@ export function hybridSalesDownload(result: RecordData, format: 'csv' | 'xlsx') 
     const metric = obj(kpi);
     return [label(metric), cell(metric.value, metric.type)];
   })];
-  const table = arr(result.tables).map(obj).find(table => table.id === 'periods') ?? {};
-  const columns = arr(table.columns).map(obj);
-  const tableRows: Cell[][] = [columns.map(label),
-    ...[...arr(table.rows).map(obj), ...(table.totals ? [obj(table.totals)] : [])]
-      .map(row => columns.map(column => cell(row[str(column.key)], column.type)))];
-  const filename = 'sales-summary_bd_' + from + (to !== from ? '_to_' + to : '') + '.' + format;
+  const tables = arr(result.tables).map(obj).map(table => {
+    const columns = arr(table.columns).map(obj);
+    const rows: Cell[][] = [columns.map(label),
+      ...[...arr(table.rows).map(obj), ...(table.totals ? [obj(table.totals)] : [])]
+        .map(row => columns.map(column => cell(row[str(column.key)], column.type)))];
+    return { title: str(table.title) || title, columns, rows };
+  });
+  const dateSuffix = /^(\d{4}-\d{2}-\d{2})$/.test(from) && /^(\d{4}-\d{2}-\d{2})$/.test(to)
+    ? '_' + from + (to === from ? '' : '_to_' + to) : '';
+  const filename = reportId + '_bd' + dateSuffix + '.' + format;
   const headers = { 'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment; filename="' + filename + '"' };
   if (format === 'csv') {
     const protect = (value: Cell) => typeof value === 'string' && /^[=+@\t\r-]/.test(value) ? "'" + value : value;
     const csv = (rows: Cell[][]) => XLSX.utils.sheet_to_csv(XLSX.utils.aoa_to_sheet(rows.map(row => row.map(protect))), { RS: '\r\n' });
-    return new Response('\uFEFF' + [csv(overview), csv(metrics), csv([[title], ...tableRows])].join('\r\n\r\n') + '\r\n',
+    return new Response('\uFEFF' + [csv(overview), csv(metrics), ...tables.map(table => csv([[table.title], ...table.rows]))].join('\r\n\r\n') + '\r\n',
       { headers: { ...headers, 'Content-Type': 'text/csv; charset=utf-8' } });
   }
   const book = XLSX.utils.book_new();
   const summary = XLSX.utils.aoa_to_sheet([...overview, [], ...metrics]);
   summary['!cols'] = [{ wch: 34 }, { wch: 72 }];
-  const sheet = XLSX.utils.aoa_to_sheet(tableRows);
-  columns.forEach((column, c) => {
-    for (let r = 1; r < tableRows.length; r++) {
-      const entry = sheet[XLSX.utils.encode_cell({ c, r })];
-      if (entry?.t === 'n') entry.z = column.type === 'money' ? '#,##0.00' : '#,##0';
-    }
-  });
   XLSX.utils.book_append_sheet(book, summary, 'Summary');
-  XLSX.utils.book_append_sheet(book, sheet, 'Sales summary');
+  tables.forEach(({ title, columns, rows }) => {
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    columns.forEach((column, c) => {
+      for (let r = 1; r < rows.length; r++) {
+        const entry = sheet[XLSX.utils.encode_cell({ c, r })];
+        if (entry?.t === 'n') entry.z = ['money', 'percent', 'cost', 'hours', 'days'].includes(str(column.type)) ? '#,##0.00' : '#,##0';
+      }
+    });
+    const name = title.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 27).trim() || 'Data';
+    let unique = name;
+    for (let index = 2; book.SheetNames.includes(unique); index++) unique = name + ' ' + index;
+    XLSX.utils.book_append_sheet(book, sheet, unique);
+  });
   return new Response(XLSX.write(book, { type: 'buffer', bookType: 'xlsx', compression: true }),
     { headers: { ...headers, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' } });
 }

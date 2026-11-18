@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server';
 import { api, ApiError, getRegion, obj, requestApi, session, url } from '@/lib/api';
 import { reportIds, reportQuery } from '@/lib/data';
-import { canReadHybridReports } from '@/lib/hybrid-orders';
-import { salesReportWithHybrid } from '@/lib/hybrid-reporting';
-import { hybridSalesDownload } from '@/lib/hybrid-sales-export';
+import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
+import { hybridReportDownload } from '@/lib/hybrid-report-export';
 
 export async function GET(req: NextRequest) {
   const auth = await session();
@@ -13,10 +12,10 @@ export async function GET(req: NextRequest) {
   try {
     const region = getRegion(query.region, auth.staff);
     const scope = reportQuery(query, region);
-    if (query.id === 'sales-summary' && canReadHybridReports(auth, region, scope.locations)) {
-      const native = obj(await api(url('/analytics/reports/sales-summary', { ...scope, ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
-      const combined = await salesReportWithHybrid(native, auth, region, scope.locations);
-      if (combined !== native) return hybridSalesDownload(combined, query.format as 'csv' | 'xlsx');
+    if (canMergeHybridReport(query.id, auth, region, scope.locations)) {
+      const native = obj(await api(url('/analytics/reports/' + query.id, { ...scope, hybridMerge: '1', ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
+      const combined = await reportWithHybrid(query.id, native, auth, region, scope.locations, true);
+      if (combined !== native) return hybridReportDownload(query.id, combined, query.format as 'csv' | 'xlsx');
     }
     const response = await requestApi(url('/analytics/reports/' + query.id + '/export', { ...scope, ...(query.order === 'desc' && {order:'desc'}), format: query.format }), auth.token);
     if (!response.ok) return new Response('Export is unavailable for this account or report', { status: response.status });

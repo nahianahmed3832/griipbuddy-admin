@@ -6,8 +6,8 @@ import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, t
 import { loadLocations } from '@/lib/advanced';
 import { param, printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
-import { loadHybridReportOrders } from '@/lib/hybrid-orders';
-import { comparisonStart, mergeHybridOverview } from '@/lib/hybrid-reporting';
+import { canReadHybridReports, loadHybridReportOrders } from '@/lib/hybrid-orders';
+import { appendQuality, comparisonStart, mergeHybridOverview, trailingStart } from '@/lib/hybrid-reporting';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
@@ -144,23 +144,33 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const names: OverviewSection[] = ['actions', 'sales', 'fulfilment', 'inventory', 'finance'];
   if (region === 'BD' && grant('pre_order.view')) names.push('preorders');
   const retry = production ? param(q, 'retry') : undefined;
+  const hybridScope = production && authorized && canReadHybridReports(auth, region, scope.locations);
   const requests = authorized ? names.map(section =>
-    api(url('/analytics/overview/' + section, { ...scope, refresh: retry === section ? '1' : refresh }), auth.token)
+    api(url('/analytics/overview/' + section, { ...scope, refresh: retry === section ? '1' : refresh,
+      hybridMerge: hybridScope && section === 'fulfilment' ? '1' : undefined }), auth.token)
       .then(result => result ? obj(result) : null, () => null)) : [];
   const loadStoreLocations = authorized && grant('business_locations.view') ? loadLocations(auth, region).catch(() => []) : [];
   if (production && authorized) {
-    const current = loadHybridReportOrders(auth, region, { locations: scope.locations });
+    const current = loadHybridReportOrders(auth, region, { locations: scope.locations, milestones: true, active: true,
+      from: trailingStart(30), to: trailingStart(1) });
     const dated = loadHybridReportOrders(auth, region, {
-      locations: scope.locations, from: comparisonStart(scope.from, scope.to, scope.compare !== 'none'), to: scope.to,
+      locations: scope.locations, milestones: true, from: comparisonStart(scope.from, scope.to, scope.compare !== 'none'), to: scope.to,
     });
     const combined = names.map(async (section, index) => {
       const data = await requests[index];
       if (!data) return data;
       if (section === 'actions' || section === 'finance') return mergeHybridOverview(section, data, await current);
-      if (section === 'sales' || section === 'fulfilment') return mergeHybridOverview(section, data, await dated);
+      if (section === 'sales') return mergeHybridOverview(section, data, await dated);
+      if (section === 'fulfilment') {
+        const [selected, recent] = await Promise.all([dated, current]);
+        if (!selected || selected.issue) return mergeHybridOverview(section, data, selected);
+        const byOrder = new Map([...recent?.orders ?? [], ...selected.orders].map(order => [order.id, order]));
+        const merged = mergeHybridOverview(section, data, { orders: [...byOrder.values()] });
+        return recent?.issue ? appendQuality(merged, recent.issue) : merged;
+      }
       return data;
     });
-    const sales = requests[names.indexOf('sales')];
+    const sales = combined[names.indexOf('sales')];
     const locations = await loadStoreLocations;
     const scopeKey = JSON.stringify(scope);
     const sections = names.map((section, index) => {
