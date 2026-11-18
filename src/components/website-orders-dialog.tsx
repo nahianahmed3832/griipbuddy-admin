@@ -283,7 +283,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         onChange={event => setConfirmation(event.currentTarget.value)}/></label>}
       {kind === 'called' && <p>Record that you called {order?.customer_name || 'this customer'}.</p>}
       {kind === 'cancel' && <p>Cancel this order and release any reserved stock.</p>}
-      {kind === 'delivered' && <p>Confirm the courier has delivered this order.</p>}
+      {kind === 'delivered' && <p>Confirm this order was delivered.</p>}
       {kind === 'pending-return' && <p>Flag this order as pending return for staff review.</p>}
       {kind === 'edit' && <>
         <div className="website-form-grid">

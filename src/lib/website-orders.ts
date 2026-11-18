@@ -76,7 +76,7 @@ export function orderActions(order: Order, access: OrderAccess, region: Region):
     add('dispatch', 'Send to Courier', 'Fulfillment');
   if (shipped && access.handover && order.status === 'IN_REVIEW' && order.consignment_id && order.assigned_business_location?._id)
     add('handover', 'Mark as Handed Over', 'Fulfillment');
-  if (legacy && access.update && ['PLACED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', ...courierStatuses].includes(order.status))
+  if (legacy && access.update && ['PLACED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'NO_RESPONSE', 'PRE_ORDER', 'INCOMPLETE', ...courierStatuses].includes(order.status))
     add('delivered', 'Mark as Delivered', 'Fulfillment');
   if (access.update && legacy && [...pendingStatuses, 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'PARTIAL'].includes(order.status))
     add('pending-return', 'Mark as Pending Return', 'Exceptions');

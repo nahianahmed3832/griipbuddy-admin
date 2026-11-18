@@ -12,6 +12,7 @@ import {
   currencyFor, money, orderActions, orderDate, orderNumber,
   type OrderAccess, type OrderDetail, type OrderLocation,
 } from '@/lib/website-orders';
+import { useManualDelivery } from './production-order-menu';
 import { OrderDialog, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionManagedPayment, ProductionManagedShipments, useManagedOrder } from './production-order-operations';
 import { ProductionHybridFulfillment } from './production-hybrid-fulfillment';
@@ -118,9 +119,13 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
   if (access.update && managed.data?.contactEditable) actions.unshift({ kind: 'edit', label: 'Edit Order', group: 'Order' });
   const [dialog, setDialog] = useState<OrderDialogKind | undefined>(openEdit && actions.some(action => action.kind === 'edit') ? 'edit' : undefined);
   const [notice, setNotice] = useState('');
+  const { deliver, delivering } = useManualDelivery(region, setNotice);
   function selectAction(kind: OrderDialogKind) {
     if (kind === 'edit' && editHref) router.push(editHref);
-    else setDialog(kind);
+    else if (kind === 'delivered') {
+      setDialog(undefined);
+      void deliver(order._id);
+    } else setDialog(kind);
   }
   const contacts = [
     ['Name:', order.customer_name], ['Phone:', order.customer_phone], ['District:', order.delivery_address?.district],
@@ -138,7 +143,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         <section className={styles.card}>
           <div className={styles.actions}>
             <h2>Actions</h2>
-            {!order.checkoutProjection && <button type="button" onClick={() => setDialog('actions')}>Order Actions</button>}
+            {!order.checkoutProjection && <button type="button" disabled={delivering.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
             <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
           </div>
         </section>

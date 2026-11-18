@@ -13,7 +13,7 @@ import {
 import { OrderDateRangeCalendar, type OrderDateRange } from './order-date-range-calendar';
 import { normalizeFraudPhone, useCourierFraud } from './production-fraud';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
-import { ProductionOrderMenu } from './production-order-menu';
+import { ProductionOrderMenu, useManualDelivery } from './production-order-menu';
 import { OrderThumbnail } from './website-orders-table';
 import styles from './production-website-orders.module.css';
 
@@ -146,6 +146,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const dateTrigger = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [notice, setNotice] = useState('');
+  const { deliver, delivering } = useManualDelivery(region, setNotice);
   const [deferred, setDeferred] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const today = day(region);
@@ -314,7 +315,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                 editHref={access.product && !order.managed && !order.transfer_to_courier && !order.scanReturn &&
                   !order.assigned_business_location && !order.consignment_id &&
                   ['PLACED', 'ACCEPTED', 'PROCESSING', 'NO_RESPONSE', 'AWAITING_STOCK'].includes(order.status) ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
-                select={kind => open(kind, order)}/></td>
+                delivering={delivering.has(order._id)} select={kind => kind === 'delivered' ? void deliver(order._id) : open(kind, order)}/></td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
                 {order.order_note && <small>Customer Note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
               <td><span className={styles.dateCell}>{date.day}</span>{date.time && <span>{date.time}</span>}</td>
