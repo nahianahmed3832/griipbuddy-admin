@@ -20,7 +20,7 @@
 .toolbar button { width: 30px; height: 32px; border: 0; border-radius: 6px; display: grid; place-items: center; background: transparent; color: inherit; }
 .toolbar button:hover, .toolbar button:focus-visible { background: #f4f4f5; }
 .richText { min-height: 134px; border: 1px solid var(--editor-line); border-radius: 10px; outline-offset: 2px; padding: 16px; line-height: 1.5; }
-.richText[data-empty="true"]::before { content: "Enter product description"; color: var(--editor-muted); pointer-events: none; }
+.richText[data-empty="true"]::before { content: attr(data-placeholder); color: var(--editor-muted); pointer-events: none; }
 .richText ul, .richText ol { padding-left: 1.5rem; }
 .specs summary { display: flex; font-size: 14px; font-weight: 500; align-items: center; justify-content: space-between; height: 52px; cursor: pointer; list-style: none; }
 .specs summary svg { color: var(--editor-muted); }
@@ -113,6 +113,7 @@
 .iconButton { display: inline-flex; align-items: center; gap: 4px; padding: 4px; border: 0; background: transparent; color: var(--editor-muted); }
 .matrix { display: grid; gap: 16px; min-width: 0; }
 .matrixDefaults { display: grid; align-items: end; gap: 16px; max-width: 56rem; }
+.variantEditor[data-create="true"] .matrixDefaults > button { grid-column: 1 / -1; max-width: 200px; }
 .tableScroll { overflow-x: auto; min-width: 0; }
 .matrixTable { width: 100%; border-collapse: collapse; font-size: 14px; }
 .matrixTable th { text-align: left; font-weight: 500; }

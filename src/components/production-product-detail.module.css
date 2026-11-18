@@ -69,6 +69,8 @@
 .policyTile svg, .policyTile p { color: var(--tile-icon); }
 .policyTile p { font-size: 14px; }
 .description { color: #364153; line-height: 26px; white-space: pre-line; }
+.description :is(ul, ol) { padding-inline-start: 1.5rem; }
+.description pre { white-space: pre-wrap; }
 .channels, .offers { display: grid; gap: 12px; }
 .channels > div { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid #a4f4cf; background: #ecfdf5; }
 .channels > div[data-channel="POS"] { border-color: #bedbff; background: #eff6ff; }

@@ -17,7 +17,7 @@ export type RegistryKind = 'brands' | 'faqs' | 'reviews';
 export type RegistryProduct = { name: string; slug: string; sku: string; image: string };
 export type RegistryRow = { id: string; name: string; tags: string[]; product: RegistryProduct; status: string;
   question: string; answer: string; creator: string; created: string; updated: string; rating: number; title: string; content: string;
-  media: { url: string; type: string }[]; attachments: string[]; upvotes: number; downvotes: number; reply: string; };
+  media: { url: string; type: string }[]; attachments: string[]; upvotes: number; downvotes: number; reply: string; repliedAt: string; };
 const routes = {
   brands: { title: 'All Brands', list: '/dashboard/all-brands', create: '/dashboard/create-brand', detail: '/dashboard/update-brand/' },
   faqs: { title: 'Product FAQS', list: '/dashboard/product-faqs', create: '/dashboard/product-faqs/add-new-faq', detail: '/dashboard/product-faqs/' },
@@ -102,9 +102,10 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
               {(canEdit || canDelete) && <ProductionCatalogActions label="Open menu" title="Actions">
                 {close => <>
                   {kind === 'brands' && canEdit && <Link href={detail} onClick={close}>Edit</Link>}
-                  {canEdit && kind !== 'brands' && statuses[kind].filter(status => status !== row.status).map(status =>
+                  {kind === 'faqs' && canEdit && <Link href={detail} onClick={close}>Reply Faq</Link>}
+                  {canEdit && kind === 'reviews' && statuses[kind].filter(status => status !== row.status).map(status =>
                     <button key={status} type="button" onClick={() => { close(); void change(row, 'status', status); }}>{labels[status]}</button>)}
-                  {canDelete && <button type="button" onClick={() => { close(); void change(row, 'delete'); }}>Delete</button>}
+                  {canDelete && <button type="button" onClick={() => { close(); void change(row, 'delete'); }}>{kind === 'faqs' ? 'Delete Faq' : 'Delete'}</button>}
                 </>}
               </ProductionCatalogActions>}
             </div></td>
@@ -312,7 +313,8 @@ export function ProductionRegistryDetail({ row, kind, region, canEdit, showAttac
           <div className={design.stars} aria-label={row.rating + ' out of 5 stars'}>{[1,2,3,4,5].map(number =>
             <Star key={number} size={20} data-filled={number <= row.rating}/>)}</div>
           <h2 className={design.reviewTitle}>{row.title}</h2><p className={design.reviewContent}>{row.content}</p>
-          {row.reply && <aside className={design.previousReply}><strong>Previous Reply</strong><p>{row.reply}</p></aside>}
+          {row.reply && <aside className={design.previousReply}><strong>Previous Reply:</strong><p>{row.reply}</p>
+            {row.repliedAt && <small>Replied on: {date(row.repliedAt)}</small>}</aside>}
         </section>
         {canEdit && <ReplyForm row={row} kind="reviews" region={region}/>}
       </div>

@@ -92,42 +92,16 @@ function variantPayload(variants: VariantDraft[], withSerial = false) {
     images: list(images), videos: list(videos),
   }));
 }
-function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id, production, uploading, setUploading, sliderImages }: {
+function VariantMatrix({ attributesText, setAttributes, variants, setVariants, allowCost, canDelete, id }: {
   attributesText: string; setAttributes: (value: string) => void; variants: VariantDraft[]; setVariants: Dispatch<SetStateAction<VariantDraft[]>>;
-  allowCost: boolean; canDelete: boolean; id?: string; production: boolean; uploading: boolean; setUploading: (value: boolean) => void;
-  sliderImages: string[];
+  allowCost: boolean; canDelete: boolean; id?: string;
 }) {
   const attributes = [...new Set(list(attributesText))];
   const [matrix, setMatrix] = useState<Record<string, string>>({});
   const [matrixError, setMatrixError] = useState('');
-  const [mediaError, setMediaError] = useState('');
-  const [imageAttribute, setImageAttribute] = useState<string>();
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const counter = useRef(0);
   const newKey = () => 'new-' + ++counter.current;
-  const savedImageAttribute = imageAttribute ?? variants.find(row => row.image_based_on)?.image_based_on;
-  const imageSource = attributes.find(attribute => attribute === savedImageAttribute) ?? '';
-  const imageValues = imageSource ? [...new Set(variants.map(row => row.attribute_values[imageSource]?.trim()).filter(Boolean))] : [];
-  function updateGroupImages(attribute: string, value: string, update: (images: string[]) => string[]) {
-    setVariants(current => current.map(row => row.attribute_values[attribute]?.trim() === value
-      ? { ...row, images: update(list(row.images)).join('\n'), image_based_on: attribute } : row));
-  }
-  async function uploadGroupImage(file: File, attribute: string, value: string) {
-    setMediaError('');
-    if (file.size > 3 * 1024 * 1024) {
-      setMediaError('Image size must be less than 3 MB.');
-      return;
-    }
-    setUploading(true);
-    try {
-      const address = await uploadImage(file);
-      updateGroupImages(attribute, value, images => [...new Set([...images, address])]);
-    } catch (error) {
-      setMediaError(error instanceof Error ? error.message : 'Could not upload the image.');
-    } finally {
-      setUploading(false);
-    }
-  }
   function change(key: string, patch: Partial<VariantDraft>) {
     setVariants(current => current.map(row => row.key === key ? { ...row, ...patch } : row));
   }
@@ -157,40 +131,6 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
     </div></details>}
     <div className="page-actions"><button className="button secondary" type="button" disabled={!attributes.length || variants.length >= 120}
       onClick={() => { const row = blankVariant(newKey()); setVariants([...variants, row]); showKeys([row.key]); }}>Add variant</button></div>
-    {production && !!attributes.length && <fieldset className="catalog-editor-group" disabled={uploading}>
-      <legend>Variant images</legend>
-      <label className="operation-field">Assign images by attribute<select value={imageSource} onChange={event => {
-        const attribute = event.target.value;
-        setImageAttribute(attribute);
-        setVariants(current => current.map(row => ({ ...row, image_based_on: attribute })));
-      }}><option value="">Select an attribute</option>
-        {attributes.map(name => <option key={name}>{name}</option>)}
-      </select></label>
-      {imageValues.map(value => {
-        const images = [...new Set(variants.filter(row => row.attribute_values[imageSource]?.trim() === value).flatMap(row => list(row.images)))];
-        return <fieldset key={value} className="catalog-editor-group">
-          <legend>{value}</legend>
-          {!!sliderImages.length && <div>
-            <h3>Select from Slider Images ({sliderImages.length})</h3>
-            {sliderImages.map((image, index) => <button type="button" className="button secondary" key={image}
-              aria-pressed={images.includes(image)} onClick={() => updateGroupImages(imageSource, value, current => images.includes(image)
-                ? current.filter(url => url !== image) : [...new Set([...current, image])])}>Slider image {index + 1}</button>)}
-          </div>}
-          <label className="operation-field">Upload New Image<input type="file" accept="image/jpeg,image/png,image/webp"
-            aria-label={'Upload New Image for ' + value} onChange={event => {
-              const file = event.currentTarget.files?.[0];
-              if (file) void uploadGroupImage(file, imageSource, value);
-              event.currentTarget.value = '';
-            }}/></label>
-          {!!images.length && <ul aria-label={'Images for ' + value}>{images.map((image, index) => <li key={image}>
-            Image {index + 1} <button type="button" className="button secondary"
-              onClick={() => updateGroupImages(imageSource, value, current => current.filter(url => url !== image))}>Remove image {index + 1}</button>
-          </li>)}</ul>}
-        </fieldset>;
-      })}
-      {mediaError && <p role="alert">{mediaError}</p>}
-      {uploading && <p role="status">Uploading image…</p>}
-    </fieldset>}
     {variants.map((row, index) => <details className="catalog-variant" key={row.key} open={opened.has(row.key)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpened(current => { if (current.has(row.key) === open) return current;
@@ -226,6 +166,8 @@ type ProductFormProps = {
 };
 
 type StagedVariants = { attributes: string[]; variants: ReturnType<typeof variantPayload>; dirty: boolean; uploading: boolean };
+const noVariants: VariantDraft[] = [];
+const noAttributes: string[] = [];
 
 export function ProductionProductUpdate(props: ProductFormProps) {
   const stagedVariants = useRef<StagedVariants>(null);
@@ -236,13 +178,16 @@ export function ProductionProductUpdate(props: ProductFormProps) {
   </>;
 }
 
-export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = [], initialAttributes = [], variantOnly = false, production = false, changeRegion = false, stagedVariants, sliderImages, setSliderImages }: ProductFormProps & {
+export function ProductEditForm({ id, region, tree, brands, policies, countries, selected, initial, allowCost, canDelete, productListQuery, initialVariants = noVariants, initialAttributes = noAttributes, variantOnly = false, production = false, changeRegion = false, stagedVariants, sliderImages, setSliderImages }: ProductFormProps & {
   stagedVariants?: RefObject<StagedVariants | null>; sliderImages?: string[]; setSliderImages?: (items: string[]) => void;
 }) {
   const [attributesText, setAttributes] = useState(initialAttributes.join('\n'));
   const [editorRegion, setEditorRegion] = useState(region);
   const [formRevision, setFormRevision] = useState(0);
   const [variants, setVariants] = useState(initialVariants);
+  const [rootSku, setRootSku] = useState(initial.sku ?? '');
+  const [createImages, setCreateImages] = useState(() => list(initial.slider_images ?? ''));
+  const productionCreate = production && !id && !variantOnly;
   useEffect(() => { if (variantOnly) { setAttributes(initialAttributes.join('\n')); setVariants(initialVariants); } }, [initialAttributes, initialVariants, variantOnly]);
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
@@ -267,7 +212,7 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
     busy.current = true;
     setSaving(true); setError(''); setNotice('');
     const form = new FormData(event.currentTarget);
-    const values = { ...Object.fromEntries(form), available_countries: form.getAll('available_countries'), attributes: list(attributesText), variants: variantPayload(variants, production && variantOnly) };
+    const values = { ...Object.fromEntries(form), available_countries: form.getAll('available_countries'), attributes: list(attributesText), variants: variantPayload(variants, production) };
     if (production && !variantOnly) {
       for (const name of ['offer_tags', 'search_tags'] as const) {
         const value = form.get(name);
@@ -289,6 +234,8 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
         setFormRevision(current => current + 1);
         setAttributes('');
         setVariants([]);
+        setRootSku('');
+        setCreateImages([]);
         setNotice('Product created successfully.');
         router.refresh();
       } else if (production && !variantOnly) {
@@ -338,39 +285,30 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
             <label className={productionStyles.field}>Delivery Time
               <input name="approximately_delivery_time" required defaultValue={initial.approximately_delivery_time || (id ? '' : '3-5 days')} placeholder="3-5 days"/>
             </label>
-            {id && <ProductTagsInput label="Highlight Labels" name="highlight_labels" placeholder="Enter your High Lights tags"
-              initial={initial.highlight_labels ?? ''} limit={3}/>}
+            <ProductTagsInput label="Highlight Labels" name="highlight_labels" placeholder="Enter your High Lights tags"
+              initial={initial.highlight_labels ?? ''} limit={3}/>
           </div>
-          {id && <>
-            <ProductPropertiesEditor field="product_specifications" initial={initial.product_specifications ?? '[]'}/>
-            <ProductPropertiesEditor field="product_card_properties" initial={initial.product_card_properties ?? '[]'}/>
-          </>}
+          <ProductPropertiesEditor field="product_specifications" initial={initial.product_specifications ?? '[]'}/>
+          <ProductPropertiesEditor field="product_card_properties" initial={initial.product_card_properties ?? '[]'}/>
         </ProductEditorPanel>
-        <ProductEditorPanel title="Sale Channels"><div className={id ? productionStyles.pairedFields : productionStyles.fields}>
+        <ProductEditorPanel title="Sale Channels"><div className={productionStyles.pairedFields}>
           <ProductEditorSwitch label="POS" hint="Is available on POS?" name="pos" initial={initial.pos === 'true'}/>
           <ProductEditorSwitch label="Website" hint="Is available on website?" name="website" initial={initialValue('website') === 'true'}/>
         </div></ProductEditorPanel>
-        <ProductEditorPanel title="Warranty &amp; Return Policy (Optional)"><div className={id ? productionStyles.pairedFields : productionStyles.fields}>
+        <ProductEditorPanel title="Warranty &amp; Return Policy (Optional)"><div className={productionStyles.pairedFields}>
           <label className={productionStyles.field}>Warranty<input name="warranty" defaultValue={initial.warranty} placeholder="Enter warranty details"/></label>
           <SelectRef name="return_policy" label="Return Policy" current={initial.return_policy} values={policies} placeholder="Select return policy"/>
         </div></ProductEditorPanel>
         <ProductEditorPanel title="Thumbnail &amp; Slider Images">
-          {id ? <ProductionProductImages initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''} onSliderImages={setSliderImages} uploading={uploading} setUploading={setUploading}/>
-            : <ImageUpload initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''}/>}
-          {!id && <label className={productionStyles.field}>Short Videos (Story / Reels) (Optional)
-            <textarea name="short_videos" defaultValue={initial.short_videos} rows={3} placeholder="One video URL per line"/>
-          </label>}
+          <ProductionProductImages initial={initial.thumbnail ?? ''} gallery={initial.slider_images ?? ''}
+            onSliderImages={productionCreate ? setCreateImages : setSliderImages} uploading={uploading} setUploading={setUploading}/>
         </ProductEditorPanel>
-        {id && <ProductEditorPanel title={<>Short Videos (Story / Reels) <small>(Optional)</small></>}>
+        <ProductEditorPanel title={<>Short Videos (Story / Reels) <small>(Optional)</small></>}>
           <ProductionProductVideos initial={initial.short_video_details ?? '[]'} uploading={uploading} setUploading={setUploading}/>
-        </ProductEditorPanel>}
+        </ProductEditorPanel>
         {['facebook','instagram','youtube','tiktok','is_published','shipping_cost','shipping_cost_per_unit','coin_per_order']
           .map(name => <input key={name} type="hidden" name={name} value={initialValue(name) || (name === 'is_published' ? 'false' : '')}/>)}
-        {id ? <input name="sku" type="hidden" value={initial.sku}/> : <ProductEditorPanel title="Add Product Attribute & Variant">
-          <label className={productionStyles.field}>Root Level SKU
-            <input name="sku" required defaultValue={initial.sku} placeholder="Enter root level SKU"/>
-          </label>
-        </ProductEditorPanel>}
+        {id && <input name="sku" type="hidden" value={initial.sku}/>}
       </>}
       {!production && !variantOnly && <>
         <fieldset className="catalog-editor-group"><legend>Product listing</legend><div className="catalog-editor-grid">
@@ -387,12 +325,11 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
           </select></label>}
         </div></fieldset>
       </>}
-      {production && variantOnly ? <ProductionVariantEditor initialAttributes={initialAttributes} initialVariants={initialVariants} variants={variants}
-        setVariants={setVariants} setAttributes={setAttributes} rootSku={initial.sku ?? ''} heading
-        uploading={uploading} setUploading={setUploading} sliderImages={sliderImages ?? [...new Set(list(initial.slider_images ?? ''))]}/>
+      {production && (variantOnly || productionCreate) ? <ProductionVariantEditor initialAttributes={initialAttributes} initialVariants={initialVariants} variants={variants}
+        setVariants={setVariants} setAttributes={setAttributes} rootSku={rootSku} heading setRootSku={productionCreate ? setRootSku : undefined}
+        uploading={uploading} setUploading={setUploading} sliderImages={productionCreate ? createImages : sliderImages ?? list(initial.slider_images ?? '')}/>
         : (variantOnly || !id) && <VariantMatrix attributesText={attributesText} setAttributes={setAttributes} variants={variants} setVariants={setVariants}
-          allowCost={allowCost} canDelete={canDelete} id={id} production={production} uploading={uploading} setUploading={setUploading}
-          sliderImages={[...new Set(list(initial.slider_images ?? ''))]}/>}
+          allowCost={allowCost} canDelete={canDelete} id={id}/>}
       {error && <p className="notice warn" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {production ? <div className={id ? productionStyles.centerSave : productionStyles.saveActions}>

@@ -24,6 +24,7 @@ import { ProductEditForm, ProductionProductUpdate, type VariantDraft } from './p
 import { ProductThumbnail } from './product-thumbnail';
 import { ProductionCountries, ProductionCountryEditor, ProductionCountryMissing, type Country } from './production-countries';
 import { ProductionProductDetail } from './production-product-detail';
+import { ProductionReturnPolicies, ProductionReturnPolicyEditor, type ReturnPolicy } from './production-return-policies';
 import { StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { Badge, Table } from './tables';
 import productEditorStyles from './production-product-editor.module.css';
@@ -238,7 +239,13 @@ function registryRow(row: RecordData): RegistryRow {
     media: arr(row.media).map(value => ({url:str(obj(value).url),type:str(obj(value).type)})), attachments: arr(row.storefrontMediaTypes).map(str),
     upvotes: Number(row.upvotes ?? obj(row.helpfulVotes).upvotes) || 0,
     downvotes: Number(row.downvotes ?? obj(row.helpfulVotes).downvotes) || 0, reply: str(obj(row.sellerReply).content),
+    repliedAt: str(obj(row.sellerReply).repliedAt),
   };
+}
+
+function returnPolicy(row: RecordData): ReturnPolicy {
+  return { id: reference(row), title: str(row.title), description: str(row.description), days: asInput(row.return_period_days),
+    active: row.is_active === true, conditions: arr(row.conditions).map(str).filter(Boolean) };
 }
 
 export async function CatalogRegistry({ auth, q, region, id, kind, production }: Props & { kind: Registry }): Promise<ReactElement> {
@@ -270,6 +277,10 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
     if (production && kind === 'brands') {
       if (!canEdit) throw new ApiError(403);
       return <ProductionBrandEditor brand={creating ? undefined : registryRow(entry)} region={region}/>;
+    }
+    if (production && kind === 'policies') {
+      if (!canEdit) throw new ApiError(403);
+      return <ProductionReturnPolicyEditor policy={creating ? undefined : returnPolicy(entry)} region={region}/>;
     }
     if (production && kind === 'faqs' && creating) {
       const ref = param(q, 'product');
@@ -342,6 +353,8 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
   const filter = param(q, 'filter');
   const page = (value: number) => url(base, { region, filter, q: search, product: productId, rating, page: String(value) });
   const filtered = scoped ? list.rows.filter(row => sameRegion(row, region)) : list.rows;
+  if (production && kind === 'policies') return <ProductionReturnPolicies policies={filtered.filter(row => mongoId(reference(row))).map(returnPolicy)}
+    region={region} canCreate={create} canEdit={canEditRegistry('policies', 'edit', auth)} canDelete={canEditRegistry('policies', 'delete', auth)}/>;
   if (production && (kind === 'brands' || kind === 'faqs' || kind === 'reviews')) return <ProductionRegistryList
     rows={filtered.filter(row => mongoId(reference(row))).map(registryRow)} kind={kind} region={region}
     page={list.page} limit={limit} pageSize={pageSize} hasNext={!all && list.hasNext} total={scoped && !productId ? undefined : list.total} search={search} filter={filter} product={productId}

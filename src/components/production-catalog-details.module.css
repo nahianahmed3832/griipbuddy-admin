@@ -84,6 +84,18 @@
 .liveSwitch input:checked::after { transform: translateX(13px); }
 .previousReply { display: grid; gap: 8px; padding: 16px; border: 1px solid color-mix(in oklab, var(--catalog-primary) 18%, white); border-radius: 10px; background: color-mix(in oklab, var(--catalog-primary) 5%, white); }
 .previousReply strong { color: var(--catalog-primary); font-size: 14px; }
+.previousReply > p { font-style: italic; }
+.previousReply > small { color: var(--catalog-muted); font-size: 10px; text-transform: uppercase; }
+.policyTable td:nth-child(2) { max-width: 440px; white-space: normal; }
+.policyStatus { display: flex; align-items: center; gap: 8px; }
+.policyToggle { appearance: none; width: 32px; height: 18px; margin: 0; border: 0; border-radius: 12px; background: #e4e4e7; position: relative; cursor: pointer; }
+.policyToggle:checked { background: var(--catalog-primary); }
+.policyToggle::after { content: ''; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; background: white; border-radius: 50%; box-shadow: 0 1px 2px #0002; }
+.policyToggle:checked::after { left: 15px; }
+.policyDays { width: min(100%, 256px); }
+.policyConditionsSpace { min-height: 58px; }
+.policyActive { border: 1px solid var(--catalog-border); border-radius: 8px; padding: 16px; }
+.policyActive :global(label) { padding: 0; border: 0; }
 .faqDetail { display: grid; gap: 32px; padding: 24px; border: 1px solid var(--catalog-border); border-radius: 10px; background: white; }
 .faqDetail h1 { color: var(--catalog-primary); font-weight: 700; }
 .faqPanels { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }

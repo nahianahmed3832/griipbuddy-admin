@@ -31,8 +31,17 @@ function copyDescription(raw: string, editor: HTMLElement) {
   editor.replaceChildren(...Array.from(parsed.body.childNodes).flatMap(safeNodes));
 }
 
-export function ProductDescriptionEditor({ initial }: { initial: string }) {
+export function ProductRichText({ source, className }: { source: string; className?: string }) {
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (content.current) copyDescription(source, content.current);
+  }, [source]);
+  return <div ref={content} className={className}/>;
+}
+
+export function ProductDescriptionEditor({ initial, placeholder = 'Enter product description' }: { initial: string; placeholder?: string }) {
   const editor = useRef<HTMLDivElement>(null);
+  const id = useId();
   const [description, setDescription] = useState(initial);
   useEffect(() => {
     if (editor.current) copyDescription(initial, editor.current);
@@ -43,7 +52,7 @@ export function ProductDescriptionEditor({ initial }: { initial: string }) {
     setDescription(blank ? '' : editor.current.innerHTML);
   }
   return <div className={styles.description}>
-    <p id="product-description-label">Description</p>
+    <p id={id}>Description</p>
     <div className={styles.toolbar} role="group" aria-label="Description formatting">
       {formats.map(([label, Icon, command, value]) => <button key={label} type="button" title={label} aria-label={label}
         onMouseDown={event => event.preventDefault()} onClick={() => {
@@ -53,7 +62,7 @@ export function ProductDescriptionEditor({ initial }: { initial: string }) {
         }}><Icon size={16} aria-hidden="true"/></button>)}
     </div>
     <div className={styles.richText} ref={editor} contentEditable suppressContentEditableWarning role="textbox"
-      tabIndex={0} aria-multiline="true" aria-labelledby="product-description-label" data-empty={!description}
+      tabIndex={0} aria-multiline="true" aria-labelledby={id} data-empty={!description} data-placeholder={placeholder}
       onInput={sync} onPaste={event => {
         event.preventDefault();
         document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));

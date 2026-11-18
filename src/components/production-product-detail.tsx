@@ -4,6 +4,9 @@ import { Award, BarChart3, CalendarDays, ChevronLeft, Download, Eye, EyeOff, Fil
   Pencil, Share2, Shield, ShoppingCart, Star, Tag, TrendingUp, Truck, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { arr, obj, str, type RecordData } from '@/lib/api';
+import { adminPath } from '@/lib/paths';
+import { cmsMediaKey, productionCmsPreview } from '@/lib/production-cms-media';
+import { ProductRichText } from './production-product-editor-fields';
 import styles from './production-product-detail.module.css';
 
 const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -14,7 +17,10 @@ const date = (value: unknown) => new Date(str(value)).toLocaleDateString('en-US'
 });
 
 function imageAddress(source: unknown) {
-  if (typeof source !== 'string' || !process.env.GRIIP_ADMIN_IMAGE_ORIGIN) return '';
+  if (typeof source !== 'string') return '';
+  const preview = productionCmsPreview(source);
+  const prefix = adminPath('/api/media/catalog/');
+  if (preview.startsWith(prefix) && cmsMediaKey(preview.slice(prefix.length))) return preview;
   try {
     const address = new URL(source);
     return address.protocol === 'https:' && address.origin === process.env.GRIIP_ADMIN_IMAGE_ORIGIN
@@ -73,8 +79,7 @@ export function ProductionProductDetail({ record, listHref, editHref, canSeeStoc
   const subcategory = obj(record.subcategory);
   const channels = obj(record.sale_channels);
   const offers = arr(record.offer_tags).map(str).filter(Boolean);
-  const description = str(record.description).replace(/<\/(?:p|div|li|h[1-6])>|<br\s*\/?\s*>/gi, '\n')
-    .replace(/<[^>]*>/g, '').replaceAll('&nbsp;', ' ').replaceAll('&amp;', '&').trim();
+  const description = str(record.description).trim();
   return <section className={styles.page}>
     <Link href={listHref} className={styles.back}><ChevronLeft aria-hidden="true" size={16}/>Back to Products</Link>
     <div className={styles.content}>
@@ -147,7 +152,7 @@ export function ProductionProductDetail({ record, listHref, editHref, canSeeStoc
               </div>
             </div>
           </Panel>
-          {description && <Panel title="Product Description" icon={FileText} color="slate"><p className={styles.description}>{description}</p></Panel>}
+          {description && <Panel title="Product Description" icon={FileText} color="slate"><ProductRichText className={styles.description} source={description}/></Panel>}
           <div className={styles.twoColumns}>
             {offers.length > 0 && <Panel title="Offer Tags" icon={Award} color="pink">
               <div className={styles.offers}>{offers.map(offer => <span key={offer}>{offer.replaceAll('_', ' ')}</span>)}</div>

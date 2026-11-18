@@ -19,6 +19,7 @@ type VariantEditor = {
   setVariants: Dispatch<SetStateAction<VariantDraft[]>>;
   setAttributes: (value: string) => void;
   rootSku: string;
+  setRootSku?: (sku: string) => void;
   sliderImages: string[];
   uploading: boolean;
   setUploading: (value: boolean) => void;
@@ -34,8 +35,10 @@ function initialAttributeValues(names: string[], rows: VariantDraft[]) {
   return names.map((name, key) => ({ key, name, values: unique(rows.map(row => row.attribute_values[name])) }));
 }
 
-function variationSku(root: string, combination: Record<string, string>) {
+function variationSku(root: string, combination: Record<string, string>, creation = false) {
   const attrs = Object.keys(combination);
+  if (creation) return [root, ...attrs.sort().map(attr => combination[attr])]
+    .map(part => part.trim().replace(/\s+/g, '').toUpperCase()).filter(Boolean).join('-');
   const first = attrs.find(attr => /size/i.test(attr)) ?? attrs[0];
   return [root, ...(first ? [combination[first], ...attrs.filter(attr => attr !== first).sort().map(attr => combination[attr])] : [])]
     .map(part => part.trim().replace(/\s+/g, '').toUpperCase()).filter(Boolean).join('-');
@@ -59,9 +62,9 @@ function makeVariants(attrs: Attribute[], existing: VariantDraft[], defaults: Va
   });
 }
 
-function VariantImages({ value, images, sliderImages, uploading, setUploading, onChange }: {
+function VariantImages({ value, images, sliderImages, uploading, setUploading, onChange, matrixRow }: {
   value: string; images: string[]; sliderImages: string[]; uploading: boolean; setUploading: (busy: boolean) => void;
-  onChange: (updater: (current: string[]) => string[]) => void;
+  onChange: (updater: (current: string[]) => string[]) => void; matrixRow?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState('');
@@ -76,8 +79,11 @@ function VariantImages({ value, images, sliderImages, uploading, setUploading, o
     finally { setUploading(false); }
   }
   return <>
-    <button type="button" className={styles.iconButton} aria-label={'Images for ' + value} onClick={() => dialog.current?.showModal()}>
-      <ImagePlus size={16} aria-hidden="true"/>{images.length > 0 && <span>{images.length}</span>}
+    <button type="button" className={matrixRow ? styles.rowGallery : styles.iconButton} aria-label={'Images for ' + value} onClick={() => dialog.current?.showModal()}>
+      {matrixRow && images.length > 0
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={productionCmsPreview(images[0])} alt="" referrerPolicy="no-referrer"/>
+        : <ImagePlus size={16} aria-hidden="true"/>}{images.length > 0 && <span>{images.length}</span>}
     </button>
     <dialog className={styles.editorDialog} ref={dialog} aria-label={'Images for ' + value}>
       <div className={styles.dialogHeading}><h3>Images for {value}</h3>
@@ -167,10 +173,11 @@ function VariantPrices({ row, onChange }: {
   </>;
 }
 
-export function ProductionVariantEditor({ initialAttributes, initialVariants, variants, setVariants, setAttributes, rootSku, sliderImages, uploading, setUploading, heading }: VariantEditor) {
+export function ProductionVariantEditor({ initialAttributes, initialVariants, variants, setVariants, setAttributes, rootSku, setRootSku, sliderImages, uploading, setUploading, heading }: VariantEditor) {
+  const creating = Boolean(setRootSku);
   const [attrs, setAttrs] = useState(() => initialAttributeValues(initialAttributes, initialVariants));
   const serial = useRef(initialAttributes.length);
-  const [defaultRegular, setDefaultRegular] = useState(initialVariants[0]?.base.regular_price ?? '');
+  const [defaultRegular, setDefaultRegular] = useState(initialVariants[0]?.base.regular_price ?? (creating ? '0' : ''));
   const [defaultSale, setDefaultSale] = useState(initialVariants[0]?.base.sale_price ?? '0');
   const [imageBy, setImageBy] = useState(initialVariants.find(row => row.image_based_on)?.image_based_on ?? '');
   const [error, setError] = useState('');
@@ -186,7 +193,7 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
   function changeAttributes(next: Attribute[], remap = (rows: VariantDraft[]) => rows) {
     const names = next.filter(attr => attr.values.some(value => value.trim())).map(attr => attr.name.trim()).filter(Boolean);
     if (new Set(names).size !== names.length) return setError('Attribute names must be unique.');
-    const rows = makeVariants(next, remap(variants), { regular_price: defaultRegular, sale_price: defaultSale }, rootSku);
+    const rows = makeVariants(next, remap(variants), { regular_price: defaultRegular, sale_price: defaultSale }, creating ? '' : rootSku);
     if (!rows) return setError('The matrix can contain at most 120 variants.');
     setError('');
     setAttrs(next);
@@ -219,12 +226,12 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
       return { ...row, images: images.join('\n'), image: images[0] ?? '', image_based_on: name };
     }));
   }
-  return <section className={styles.variantEditor}>
+  return <section className={styles.variantEditor} data-create={creating}>
     <div className={styles.variantHeading}>
-      {heading && <h2>Update Product Attribute &amp; Variant</h2>}
-      <button type="button" className={styles.secondary} disabled={attrs.length >= 3 || uploading} onClick={() => {
+      {heading && <h2>{creating ? 'Add' : 'Update'} Product Attribute &amp; Variant</h2>}
+      <button type="button" className={styles.secondary} disabled={attrs.length >= (creating ? 2 : 3) || uploading} onClick={() => {
         const key = serial.current++;
-        changeAttributes([...attrs, { key, name: '', values: [] }]);
+        changeAttributes([...attrs, { key, name: '', values: creating ? [''] : [] }]);
       }}><Plus size={16} aria-hidden="true"/> Add Attribute</button>
     </div>
     <div className={styles.attributes}>{attrs.map((attr, index) => {
@@ -259,7 +266,7 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
                 values.splice(valueIndex, 0, moved);
                 changeValues(index, values);
               }}>
-              <GripVertical size={15} aria-hidden="true"/>
+              {!creating && <GripVertical size={15} aria-hidden="true"/>}
               <input aria-label={name + ' value ' + (valueIndex + 1)} placeholder="e.g. Red" value={value} onChange={event =>
                 changeValues(index, attr.values.map((entry, i) => i === valueIndex ? event.target.value : entry), value, event.target.value)}/>
               {name === imageBy && value.trim() && <>
@@ -276,19 +283,21 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
       </div>;
     })}</div>
     {error && <p className="notice warn" role="alert">{error}</p>}
-    {variants.length > 0 && <div className={styles.matrix}>
+    {(variants.length > 0 || creating) && <div className={styles.matrix}>
       <h2>Variant Matrix</h2>
       <div className={styles.matrixDefaults}>
         <label className={styles.field}>Default Regular Price (BDT)<input type="number" min="0" step=".01" placeholder="Enter default regular price" value={defaultRegular} onChange={event => setDefaultRegular(event.target.value)}/></label>
         <label className={styles.field}>Default Sale Price (BDT)<input type="number" min="0" step=".01" placeholder="Enter default sale price" value={defaultSale} onChange={event => setDefaultSale(event.target.value)}/></label>
-        <label className={styles.field}>Root Level SKU<input value={rootSku} disabled placeholder="Enter root level SKU" title="Root level SKU cannot be edited."/></label>
+        <label className={styles.field}>Root Level SKU<input value={rootSku} name={creating ? 'sku' : undefined} required={creating} disabled={!creating}
+          onChange={event => setRootSku?.(event.target.value.toUpperCase())} placeholder="Enter root level SKU"
+          title={creating ? undefined : 'Root level SKU cannot be edited.'}/></label>
         <button className={styles.primary} type="button" onClick={() => setVariants(rows => rows.map(row => ({
-          ...row, sku: !row.sku || row.sku === rootSku ? variationSku(rootSku, row.attribute_values) : row.sku,
+          ...row, sku: !row.sku || row.sku === rootSku ? variationSku(rootSku, row.attribute_values, creating) : row.sku,
           base: { ...row.base, regular_price: defaultRegular, sale_price: defaultSale },
-        })))}>Apply to All</button>
+        })))}>{creating ? 'Apply Defaults to All' : 'Apply to All'}</button>
       </div>
       <div className={styles.tableScroll}><table className={styles.matrixTable}>
-        <thead><tr>{['Serial', 'Attribute Variation', 'Regular Price', 'Sale Price', 'SKU', 'Color Code', 'Images', 'Global Prices', 'Status'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+        <thead><tr>{!creating && <th>Serial</th>}{['Attribute Variation', 'Regular Price', 'Sale Price', 'SKU', 'Color Code', 'Images', 'Global Prices'].map(label => <th key={label}>{label}</th>)}{!creating && <th>Status</th>}</tr></thead>
         <tbody>{variants.map((row, index) => <tr key={row.key} draggable className={styles.variantRow} onDragStart={() => { draggedRow.current = row.key; }}
           onDragEnd={() => { draggedRow.current = null; }} onDragOver={event => event.preventDefault()} onDrop={event => {
             event.preventDefault();
@@ -304,15 +313,20 @@ export function ProductionVariantEditor({ initialAttributes, initialVariants, va
               return reordered;
             });
           }}>
-          <td><span className={styles.variantSerial}><GripVertical size={16} aria-hidden="true"/>{index + 1}</span></td>
+          {!creating && <td><span className={styles.variantSerial}><GripVertical size={16} aria-hidden="true"/>{index + 1}</span></td>}
           <td>{Object.values(row.attribute_values).join(' - ')}</td>
           {priceFields.slice(0, 2).map(([name, label]) => <td key={name}><input type="number" required min="0" step=".01" aria-label={label + ' for variant ' + (index + 1)}
             value={row.base[name] ?? ''} onChange={event => change(row.key, { base: { ...row.base, [name]: event.target.value } })}/></td>)}
-          <td><input required aria-label={'SKU for variant ' + (index + 1)} value={row.sku} onChange={event => change(row.key, { sku: event.target.value })}/></td>
+          <td><input required aria-label={'SKU for variant ' + (index + 1)} value={row.sku} onChange={event => change(row.key, { sku: creating ? event.target.value.toUpperCase() : event.target.value })}/></td>
           <td><span className={styles.colorCode}>{row.color_code && <span style={{ backgroundColor: row.color_code }} aria-hidden="true"/>}{row.color_code || '-'}</span></td>
-          <td><VariantImagePreview row={row}/></td>
+          <td>{creating ? <VariantImages value={'variant ' + (index + 1)} images={lines(row.images)} sliderImages={sliderImages} uploading={uploading}
+            setUploading={setUploading} matrixRow onChange={update => setVariants(rows => rows.map(current => {
+              if (current.key !== row.key) return current;
+              const images = update(lines(current.images));
+              return { ...current, images: images.join('\n'), image: images[0] ?? '' };
+            }))}/> : <VariantImagePreview row={row}/>}</td>
           <td><VariantPrices row={row} onChange={prices => change(row.key, { prices })}/></td>
-          <td><span className={styles.variantStatus} data-existing={Boolean(row._id)}>{row._id ? 'EXISTING' : 'NEW'}</span></td>
+          {!creating && <td><span className={styles.variantStatus} data-existing={Boolean(row._id)}>{row._id ? 'EXISTING' : 'NEW'}</span></td>}
         </tr>)}</tbody>
       </table></div>
     </div>}

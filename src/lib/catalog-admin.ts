@@ -116,13 +116,19 @@ export async function writeRegistry(kind: Registry, action: string, id: string, 
     if (!canEditRegistry(kind, 'create', auth) || !superAdmin(auth.staff)) throw new ApiError(403);
     return saved('/country/seed/defaults', auth, 'POST');
   }
-  if (!['save', 'delete', 'status', 'reply'].includes(action) || (action === 'status' || action === 'reply') && kind !== 'reviews' && kind !== 'faqs') throw invalid('Unknown catalog action.');
+  if (!['save', 'delete', 'status', 'reply'].includes(action)
+    || action === 'status' && kind !== 'reviews' && kind !== 'faqs' && kind !== 'policies'
+    || action === 'reply' && kind !== 'reviews' && kind !== 'faqs') throw invalid('Unknown catalog action.');
   const grant = action === 'delete' ? 'delete' : id ? 'edit' : 'create';
   if (!canEditRegistry(kind, grant, auth) || (kind === 'reviews' || action !== 'save') && !id) throw new ApiError(403);
   if (id) await readRegistry(kind, id, auth, region);
   const path = routes[kind].base + (id ? '/' + id : '');
   if (action === 'delete') return saved(path, auth, 'DELETE');
   if (action === 'status') {
+    if (kind === 'policies') {
+      if (typeof values.is_active !== 'boolean') throw invalid('Choose a return policy status.');
+      return saved(path, auth, 'PATCH', { is_active: values.is_active });
+    }
     if (kind === 'faqs') {
       if (!['active', 'inactive', 'pending'].includes(str(values.status))) throw invalid('Choose an FAQ status.');
       return saved('/faq/admin/public-faq-action/' + id, auth, 'PATCH', { status: values.status });
