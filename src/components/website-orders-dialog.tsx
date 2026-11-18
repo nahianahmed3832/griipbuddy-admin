@@ -164,7 +164,8 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const read = readKinds.includes(kind);
   const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' :
     kind === 'return' && !order?.scanReturn ? 'return-items' : read ? kind : undefined;
-  const statusChoices = order?.status === 'AWAITING_STOCK' ? ['ACCEPTED'] : manualStatuses;
+  const statusChoices = order?.status === 'AWAITING_STOCK'
+    ? ['PLACED', 'INCOMPLETE', 'NO_RESPONSE', 'CANCELLED', 'PRE_ORDER'] : manualStatuses;
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
