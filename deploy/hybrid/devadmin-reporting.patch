@@ -1,0 +1,91 @@
+diff --git a/src/lib/staff/dev-admin-orders.ts b/src/lib/staff/dev-admin-orders.ts
+index a56b0c1..a338626 100644
+--- a/src/lib/staff/dev-admin-orders.ts
++++ b/src/lib/staff/dev-admin-orders.ts
+@@ -37,11 +37,13 @@ const itemSnapshot = {
+   productName: true, variantName: true, sku: true, quantity: true,
+   unitPriceMinor: true, unitDiscountMinor: true, lineTotalMinor: true,
+ } satisfies Prisma.OrderItemSelect;
++const currentReturnCases = { kind: "RETURN", OR: [{ status: { in: ["OPEN", "IN_REVIEW", "RETURN_APPROVED"] } }, { returnReceivedAt: { not: null } }] } satisfies Prisma.OrderCaseWhereInput;
+ const workspaceSummary = {
+   ...summary, payment: { select: { method: true, status: true, amountMinor: true, collectedAt: true } },
+   bangladeshShipment: { select: { status: true, carrier: true, trackingReference: true } },
+   bangladeshRefusedParcelReceipt: { select: { receivedAt: true, disposition: true, restockedUnits: true } },
+   items: { orderBy: { id: "asc" }, select: itemSnapshot },
++  cases: { where: currentReturnCases, select: { status: true, returnReceivedAt: true, returnLines: { select: { quantity: true } } } },
+ } satisfies Prisma.OrderSelect;
+ const detail = {
+   ...workspaceSummary, subtotalMinor: true, discountMinor: true, deliveryMinor: true, taxMinor: true,
+@@ -54,14 +56,32 @@ const detail = {
+     status: true, type: true, createdAt: true, actor: { select: { name: true } },
+   } },
+ } satisfies Prisma.OrderSelect;
++const reportItem = { ...itemSnapshot, variantId: true, variant: { select: { productId: true,
++  product: { select: { department: { select: { id: true, name: true } } } },
++} } } satisfies Prisma.OrderItemSelect;
++const reportingSummary = {
++  ...workspaceSummary, deliveryMinor: true,
++  items: { ...workspaceSummary.items, select: reportItem },
++  bangladeshShipment: { select: { ...workspaceSummary.bangladeshShipment.select, statusUpdatedAt: true,
++    events: { select: { status: true, recordedAt: true } },
++  } },
++  events: { where: { type: "STATUS_CHANGED" }, select: { status: true, createdAt: true } },
++  cases: { where: currentReturnCases, select: {
++    status: true, returnReceivedAt: true, refundConfirmedAt: true, refundAmountMinor: true, createdAt: true,
++    returnLines: { select: { quantity: true, orderItem: { select: reportItem } } },
++  } },
++} satisfies Prisma.OrderSelect;
+
+ type Cursor = { createdAt: Date; id: string };
+ const workspace = z.object({
+   view: z.literal("workspace"), q: z.string().trim().max(100).optional(), sku: z.string().trim().max(100).optional(),
+   from: z.iso.date().optional(), to: z.iso.date().optional(), creator: z.enum(["USER", "GUEST"]).optional(),
+ }).strict().refine(value => !value.from || !value.to || value.from <= value.to);
++const reporting = z.object({
++  view: z.literal("reporting"), from: z.iso.date().optional(), to: z.iso.date().optional(), active: z.literal("1").optional(),
++}).strict().refine(value => !value.from || !value.to || value.from <= value.to);
+ type OrderQuery = { kind: "detail"; id: string } | { kind: "list"; limit: number; search: string; after?: Cursor } |
+-  { kind: "workspace"; filters: z.infer<typeof workspace> };
++  { kind: "workspace"; filters: z.infer<typeof workspace> } | { kind: "reporting"; filters: z.infer<typeof reporting> };
+ const workspaceLimit = 10_000;
+
+ function decodeCursor(value: string): Cursor | undefined {
+@@ -84,6 +104,10 @@ export function readDevAdminOrderQuery(params: URLSearchParams): OrderQuery | nu
+     const parsed = workspace.safeParse(Object.fromEntries(params));
+     return parsed.success ? { kind: "workspace", filters: parsed.data } : null;
+   }
++  if (params.get("view") === "reporting") {
++    const parsed = reporting.safeParse(Object.fromEntries(params));
++    return parsed.success ? { kind: "reporting", filters: parsed.data } : null;
++  }
+   const allowed = ["id", "limit", "search", "after"];
+   if (provided.some(key => !allowed.includes(key))) return null;
+   const id = params.get("id");
+@@ -125,6 +149,27 @@ export async function readDevAdminOrders(db: DbReader, query: OrderQuery) {
+     return { workspaceOrders: orders.length > workspaceLimit ? [] : orders.map(orderSummary), tooMany: orders.length > workspaceLimit };
+   }
+
++  if (query.kind === "reporting") {
++    const { from, to, active } = query.filters;
++    const range = { ...(from && { gte: new Date(from + "T00:00:00.000+06:00") }),
++      ...(to && { lte: new Date(to + "T23:59:59.999+06:00") }) };
++    const dated: Prisma.OrderWhereInput[] = from || to ? [
++      { createdAt: range },
++      { events: { some: { type: "STATUS_CHANGED", status: { in: ["SHIPPED", "DELIVERED"] }, createdAt: range } } },
++      { bangladeshShipment: { events: { some: { status: { in: ["IN_TRANSIT", "DELIVERED"] }, recordedAt: range } } } },
++      { bangladeshRefusedParcelReceipt: { receivedAt: range } },
++      { cases: { some: { kind: "RETURN", OR: [{ returnReceivedAt: range }, { refundConfirmedAt: range }] } } },
++    ] : [];
++    const current: Prisma.OrderWhereInput[] = active ? [
++      { status: "PLACED", fulfillmentStatus: { not: "DELIVERED" } },
++      { cases: { some: { kind: "RETURN", status: { in: ["OPEN", "IN_REVIEW", "RETURN_APPROVED"] } } } },
++    ] : [];
++    const matched = [...dated, ...current];
++    const rows = await db.order.findMany({ where: { ...devAdminOrderScope, ...(matched.length && { OR: matched }) },
++      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: workspaceLimit + 1, select: reportingSummary });
++    return { reportOrders: rows.length > workspaceLimit ? [] : rows.map(orderSummary), tooMany: rows.length > workspaceLimit };
++  }
++
+   const { limit, search, after } = query;
+   const rows = await db.order.findMany({
+     where: { ...devAdminOrderScope, ...(search && { reference: { startsWith: search, mode: "insensitive" } }),
