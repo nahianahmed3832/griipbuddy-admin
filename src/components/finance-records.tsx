@@ -9,13 +9,14 @@ import { expenseAttachmentPath } from '@/lib/finance-attachment';
 import { purchasePage } from '@/lib/purchases';
 import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
-import { FinanceDialog, FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
+import { FinanceDialog, FinanceListFilters, FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
 import { Badge, Table } from './tables';
 import '@/app/purchases.css';
 import styles from './production-finance.module.css';
 
 const reference = (value: unknown) => str(obj(value)._id) || str(value);
 const name = (value: unknown) => str(obj(value).name) || str(obj(value).title);
+const actorName = (value: unknown) => name(value) || str(obj(obj(value)._id).full_name);
 const coins = (amount: unknown) => printable(amount, 'money', 'BDT');
 const validId = (value: string) => mongoId(value) ? value : undefined;
 const flag = (value: string | undefined) => ['true', 'false'].find(option => option === value);
@@ -103,6 +104,7 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
   if (production) {
     const currency = new Intl.NumberFormat('en-BD', { maximumFractionDigits: 2 });
     const numeric = (value: unknown) => currency.format(Number(value) || 0);
+    const paymentSources = arr(meta.payment_source_breakdown).map(obj);
     const group = (title: string, source: unknown, keys: string[]) => <section className={styles.card}><h2>{title}</h2>
       <dl className={styles.breakdown}>{keys.map(key => {
         const record = obj(obj(source)[key]);
@@ -144,6 +146,11 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
           {group('By Payment Method', meta.payment_method_breakdown, paymentMethods)}
           {group('By Approval', meta.approval_breakdown, ['true', 'false'])}
         </div>
+        {paymentSources.length > 0 && <section className={styles.card}><h2>By Payment Source</h2>
+          <dl className={styles.paymentSources}>{paymentSources.map(row => <div key={str(row.paymentSourceId) || str(row.name)}>
+            <dt>{str(row.name)}</dt><dd>{numeric(row.amount)} <span>({numeric(row.count)})</span></dd>
+          </div>)}</dl>
+        </section>}
         <section className={styles.card + ' ' + styles.records}>
           <table><thead><tr><th>Category / Subcategory</th><th>Transactions</th><th>Avg</th><th>Total</th></tr></thead>
             <tbody>{reportRows.length ? reportRows.map(row => <tr key={row.id}><td>{row.title}</td><td>{numeric(row.transactions)}</td>
@@ -198,6 +205,8 @@ function ProductionFinanceRecords({ view, records, total, search, filters, optio
 }) {
   const copy = financeTableLabels[view];
   const expenses = view === 'expenses';
+  const searchLabel = expenses ? 'Search by title, ID or voucher' : view === 'expense-categories' || view === 'expense-subcategories'
+    ? 'Search by title or SKU' : 'Search by name';
   const date = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
     ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka' }).format(new Date(value)) : '—';
   const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -213,14 +222,14 @@ function ProductionFinanceRecords({ view, records, total, search, filters, optio
         </FinanceDialog>)}
     </header>
     <div className={styles.report}>
-      {(expenses || view === 'channels' || view === 'sources') && <form className={styles.filters} action={adminPath(productionFinancePath(view))}>
-        {expenses ? <>
+      <FinanceListFilters path={productionFinancePath(view)}>
+        <label><input type="search" name="q" defaultValue={search} maxLength={80} placeholder={searchLabel + '...'} aria-label={searchLabel}/></label>
+        {expenses && <>
           {filter('status', 'All statuses', label(expenseStatuses))}
           {filter('payment_method', 'All methods', label(paymentMethods))}
           {filter('is_approved', 'All approvals', [{ id: 'true', name: 'Approved' }, { id: 'false', name: 'Unapproved' }])}
-        </> : <label><input type="search" name="q" defaultValue={search} maxLength={80} placeholder="Search by name..." aria-label="Search by name"/></label>}
-        <button className="button secondary">Apply</button>
-      </form>}
+        </>}
+      </FinanceListFilters>
       <section className={styles.card + ' ' + styles.records}>
         <table><thead><tr>{copy.columns.map(column => <th key={column}>{column}</th>)}</tr></thead><tbody>
           {!records.length && <tr><td className={styles.empty} colSpan={copy.columns.length}>{copy.none}</td></tr>}
@@ -250,8 +259,11 @@ function ProductionFinanceRecords({ view, records, total, search, filters, optio
                       ['Amount', number.format(Number(row.amount) || 0)], ['Status', published],
                       ['Approval', row.is_approved === true ? 'Approved' : 'Unapproved'], ['Date', date(row.expense_date)],
                       ['Category', name(row.category)], ['Subcategory', name(row.subcategory)],
-                      ['Payment Method', str(row.payment_method)], ['Payment Source', name(row.payment_source)],
+                      ...(row.sales_channel ? [['Sales Channel', name(row.sales_channel)]] : []),
+                      ...(row.payment_source ? [['Payment Source', name(row.payment_source)]] : []),
+                      ['Payment Method', str(row.payment_method)],
                       ['Voucher No', str(row.voucher_no)], ['Account Details', str(row.account_details)],
+                      ['Created By', actorName(row.created_by)], ['Approved By', actorName(row.approved_by)],
                     ].map(([term, value]) => <div key={term}><dt>{term}</dt><dd>{value || '—'}</dd></div>)}</dl>
                     {!!str(row.description) && <p>{str(row.description)}</p>}
                     {arr(row.attachments).map(str).filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value)).map((item, index) =>
@@ -327,6 +339,7 @@ export async function FinanceRecordsPage({ auth, region, q, view, id, production
       ['Category', name(record.category)], ['Subcategory', name(record.subcategory)], ['Payment source', name(record.payment_source)],
       ['Payment method', expenseLabel(str(record.payment_method))], ['Sales channel', name(record.sales_channel)],
       ['Voucher number', str(record.voucher_no)], ['Account details', str(record.account_details)], ['Approval', record.is_approved === true ? 'Approved' : 'Unapproved'],
+      ['Created by', actorName(record.created_by)], ['Approved by', actorName(record.approved_by)],
     ] : [['Reference', str(record.sku) || str(record.slug)], ['Type', expenseLabel(str(record.type))], ['Category', name(record.category)]].filter(([, value]) => value);
     const attachments = arr(record.attachments).map(str).filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value));
     return <><PageHeading eyebrow="PAYMENTS" title={str(record[config.name])} description={config.title}>

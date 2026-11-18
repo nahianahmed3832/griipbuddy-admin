@@ -12,6 +12,26 @@ import productionStyles from './production-finance.module.css';
 
 const FinanceDialogClose = createContext<(() => void) | undefined>(undefined);
 
+export function FinanceListFilters({ path, children }: { path: string; children: ReactNode }) {
+  const router = useRouter();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  function apply(form: HTMLFormElement, delay = 0) {
+    clearTimeout(timer.current);
+    const query = new URLSearchParams();
+    for (const [key, value] of new FormData(form)) if (typeof value === 'string' && value.trim()) query.set(key, value.trim());
+    const destination = query.size ? path + '?' + query : path;
+    const navigate = () => router.replace(destination, { scroll: false });
+    if (delay) timer.current = setTimeout(navigate, delay);
+    else navigate();
+  }
+  return <form className={productionStyles.filters} action={adminPath(path)}
+    onChange={event => apply(event.currentTarget, event.target instanceof HTMLInputElement ? 300 : 0)}
+    onSubmit={event => { event.preventDefault(); apply(event.currentTarget); }}>
+    {children}
+  </form>;
+}
+
 async function write(view: ExpenseView, id: string | undefined, action: string, payload?: Record<string, unknown>) {
   const query = new URLSearchParams({ view, region: 'BD', action });
   if (id) query.set('id', id);
@@ -50,7 +70,7 @@ export function FinanceRecordForm({ view, id, initial, choices, production = fal
   const [attachments, setAttachments] = useState(() => (initial.attachments ?? '').split(/\r?\n/).filter(Boolean));
   const ads = choices.category.find(value => value.id === category)?.type === 'ADs' || choices.subcategory.find(value => value.id === subcategory)?.type === 'ADs';
   const config = expenseViews[view];
-  const list = financePath(view) + '?region=BD';
+  const list = production ? productionFinancePath(view) : financePath(view) + '?region=BD';
   useEffect(() => { setReady(true); }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,8 +81,8 @@ export function FinanceRecordForm({ view, id, initial, choices, production = fal
     try {
       const result = await write(view, id, 'save', Object.fromEntries(new FormData(event.currentTarget)));
       if (!result.id) throw new Error('The finance service did not confirm the record ID.');
-      closeDialog?.();
-      router.replace(production ? productionFinancePath(view) : financePath(view) + '/' + result.id + '?region=BD&saved=1');
+      if (closeDialog) closeDialog();
+      else router.replace(production ? list : financePath(view) + '/' + result.id + '?region=BD&saved=1');
       router.refresh();
     } catch (failure) {
       setError(failure instanceof TypeError ? 'The connection was interrupted. Check the record before retrying.' :
@@ -146,10 +166,13 @@ export function FinanceRecordForm({ view, id, initial, choices, production = fal
         <SelectOption label="Status" name="status" values={ledgerStatuses} initial={initial.status || 'active'}/>
         {(view === 'expense-categories' || view === 'expense-subcategories') && <SelectOption label="Expense type" name="type" values={expenseTypes} initial={initial.type || 'GENERAL'}/>}
         {view === 'expense-subcategories' && <SelectChoice label="Category" name="category" values={choices.category} required initial={initial.category}/>}
+        <label className="filter-label">Notes (optional)<textarea name="notes" rows={3} maxLength={1000} defaultValue={initial.notes}
+          placeholder={view === 'expense-categories' ? 'Any details about this category' : undefined}/></label>
       </>}
     </fieldset>
     {error && <p className="notice warn" role="alert">{error}</p>}
-    <div className="page-actions"><Link className="button secondary" href={list}>Cancel</Link>
+    <div className="page-actions">{closeDialog ? <button type="button" className="button secondary" onClick={closeDialog}>Cancel</button>
+      : <Link className="button secondary" href={list}>Cancel</Link>}
       <button className="button primary" disabled={busy || !ready}>{busy ? 'Saving…' : 'Save ' + config.label}</button></div>
   </form>;
 }
