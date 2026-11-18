@@ -53,8 +53,8 @@ export function useProductOptions<T>(endpoint: string, query: string, enabled: b
   };
 }
 
-function ProductionProductPicker({ multiple, value, update, products }: {
-  multiple: boolean; value: string; update: (value: string) => void; products: ContentProduct[];
+function ProductionProductPicker({ multiple, value, update, products, onSelect }: {
+  multiple: boolean; value: string; update: (value: string) => void; products: ContentProduct[]; onSelect?: (product: ContentProduct) => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -74,6 +74,7 @@ function ProductionProductPicker({ multiple, value, update, products }: {
           onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }}/></label>
         {message && <p role="status">{message}</p>}
         <ul>{options.map(item => <li key={item.id}><button type="button" disabled={ids.includes(item.id)} onClick={() => {
+          onSelect?.(item);
           setSelected(current => [...current.filter(product => product.id !== item.id), item]);
           update(multiple ? [...ids, item.id].join(', ') : item.id);
           setOpen(false);
@@ -90,10 +91,10 @@ function ProductionProductPicker({ multiple, value, update, products }: {
     </li>)}</ul>}
   </div>;
 }
-export function ContentProductPicker({ multiple, value, update, production = false, products = [] }: {
-  multiple: boolean; value: string; update: (value: string) => void; production?: boolean; products?: ContentProduct[];
+export function ContentProductPicker({ multiple, value, update, production = false, products = [], onSelect }: {
+  multiple: boolean; value: string; update: (value: string) => void; production?: boolean; products?: ContentProduct[]; onSelect?: (product: ContentProduct) => void;
 }) {
-  return production ? <ProductionProductPicker multiple={multiple} value={value} update={update} products={products}/>
+  return production ? <ProductionProductPicker multiple={multiple} value={value} update={update} products={products} onSelect={onSelect}/>
     : <GenericProductPicker multiple={multiple} value={value} update={update}/>;
 }
 
