@@ -1,14 +1,165 @@
+diff --git a/prisma/migrations/202611180024_hybrid_dispatch_warehouse/migration.sql b/prisma/migrations/202611180024_hybrid_dispatch_warehouse/migration.sql
+new file mode 100644
+index 0000000..855d25d
+--- /dev/null
++++ b/prisma/migrations/202611180024_hybrid_dispatch_warehouse/migration.sql
+@@ -0,0 +1,10 @@
++ALTER TABLE "Order"
++  ADD COLUMN "shippingWarehouseId" VARCHAR(24),
++  ADD COLUMN "shippingWarehouseName" VARCHAR(120),
++  ADD CONSTRAINT "Order_shippingWarehouse_snapshot_check" CHECK (
++    ("shippingWarehouseId" IS NULL AND "shippingWarehouseName" IS NULL) OR
++    ("shippingWarehouseId" IS NOT NULL AND "shippingWarehouseName" IS NOT NULL
++      AND "shippingWarehouseId" ~ '^[a-f0-9]{24}$' AND length(trim("shippingWarehouseName")) > 0)
++  );
++
++CREATE INDEX "Order_shippingWarehouseId_createdAt_idx" ON "Order" ("shippingWarehouseId", "createdAt");
+diff --git a/prisma/migrations/202611180025_hybrid_return_cost/migration.sql b/prisma/migrations/202611180025_hybrid_return_cost/migration.sql
+new file mode 100644
+index 0000000..bfb309d
+--- /dev/null
++++ b/prisma/migrations/202611180025_hybrid_return_cost/migration.sql
+@@ -0,0 +1,21 @@
++CREATE TABLE "HybridReturnCost" (
++    "id" UUID NOT NULL,
++    "caseId" UUID,
++    "refusedOrderId" UUID,
++    "amountMinor" INTEGER NOT NULL,
++    "evidenceReference" VARCHAR(120) NOT NULL,
++    "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++
++    CONSTRAINT "HybridReturnCost_pkey" PRIMARY KEY ("id"),
++    CONSTRAINT "HybridReturnCost_one_receipt_check" CHECK (num_nonnulls("caseId", "refusedOrderId") = 1),
++    CONSTRAINT "HybridReturnCost_nonnegative_check" CHECK ("amountMinor" >= 0),
++    CONSTRAINT "HybridReturnCost_evidence_check" CHECK (char_length(btrim("evidenceReference")) >= 3)
++);
++
++CREATE UNIQUE INDEX "HybridReturnCost_caseId_key" ON "HybridReturnCost"("caseId");
++CREATE UNIQUE INDEX "HybridReturnCost_refusedOrderId_key" ON "HybridReturnCost"("refusedOrderId");
++
++ALTER TABLE "HybridReturnCost" ADD CONSTRAINT "HybridReturnCost_caseId_fkey"
++    FOREIGN KEY ("caseId") REFERENCES "OrderCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
++ALTER TABLE "HybridReturnCost" ADD CONSTRAINT "HybridReturnCost_refusedOrderId_fkey"
++    FOREIGN KEY ("refusedOrderId") REFERENCES "BangladeshRefusedParcelReceipt"("orderId") ON DELETE RESTRICT ON UPDATE CASCADE;
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index cc3f78e..854a1e5 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -392,6 +392,8 @@ model Order {
+   returnTerms       Json?
+   carrier           String?
+   trackingReference String?
++  shippingWarehouseId   String? @db.VarChar(24)
++  shippingWarehouseName String? @db.VarChar(120)
+   cancelledAt       DateTime?
+   // Null identifies historical rows whose test/live classification is unknown.
+   measurementTest   Boolean?
+@@ -420,6 +422,7 @@ model Order {
+   @@index([status, fulfillmentStatus, createdAt])
+   @@index([shopperId, createdAt])
+   @@index([couponCode])
++  @@index([shippingWarehouseId, createdAt])
+ }
+
+ enum MeasurementKind {
+@@ -1017,6 +1020,7 @@ model OrderCase {
+   returnReceivedById String?
+   returnReceivedBy User? @relation("ReturnCaseReceiver", fields: [returnReceivedById], references: [id], onDelete: SetNull)
+   returnDisposition BangladeshReturnDisposition?
++  returnCost HybridReturnCost?
+
+   @@index([orderId, updatedAt])
+   @@index([status, updatedAt])
+@@ -1043,6 +1047,18 @@ model BangladeshRefusedParcelReceipt {
+   disposition   BangladeshReturnDisposition
+   restockedUnits Int
+   note          String                     @db.VarChar(500)
++  returnCost    HybridReturnCost?
++}
++
++model HybridReturnCost {
++  id                String                        @id @default(uuid()) @db.Uuid
++  caseId            String?                       @unique @db.Uuid
++  orderCase         OrderCase?                    @relation(fields: [caseId], references: [id], onDelete: Restrict)
++  refusedOrderId    String?                       @unique @db.Uuid
++  refusedReceipt    BangladeshRefusedParcelReceipt? @relation(fields: [refusedOrderId], references: [orderId], onDelete: Restrict)
++  amountMinor       Int
++  evidenceReference String                        @db.VarChar(120)
++  recordedAt        DateTime                      @default(now())
+ }
+
+ model OrderCaseReturnLine {
+diff --git a/src/app/api/internal/dev-admin-orders/route.ts b/src/app/api/internal/dev-admin-orders/route.ts
+index 497f7d0..c456c00 100644
+--- a/src/app/api/internal/dev-admin-orders/route.ts
++++ b/src/app/api/internal/dev-admin-orders/route.ts
+@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db/client";
+ import { privateHeaders } from "@/lib/db/http";
+ import { canReadDevAdminOrders, readDevAdminOrderQuery, readDevAdminOrders } from "@/lib/staff/dev-admin-orders";
+ import { readDevAdminOrderProof } from "@/lib/staff/dev-admin-order-proof";
++import { recordHybridReturnCost } from "@/lib/staff/hybrid-return-cost";
+ import { receiveBangladeshRefusedParcel } from "@/lib/commerce/bangladesh-returns";
+ import { advanceFulfillment, cancelOrder, collectCash, OperationError, recordBangladeshTracking, reviewManualPayment } from "@/lib/staff/operations";
+
+@@ -45,6 +46,7 @@ export async function POST(request: Request) {
+   const { id, operator, command } = proof;
+   try {
+     switch (command.action) {
++      case "record-return-cost": await recordHybridReturnCost(operator, id, command); break;
+       case "advance": await advanceFulfillment(operator, id, command); break;
+       case "track": await recordBangladeshTracking(operator, id, command); break;
+       case "receive": await receiveBangladeshRefusedParcel(operator, id, command); break;
+diff --git a/src/lib/staff/dev-admin-order-proof.ts b/src/lib/staff/dev-admin-order-proof.ts
+index e46db3c..f2a75b2 100644
+--- a/src/lib/staff/dev-admin-order-proof.ts
++++ b/src/lib/staff/dev-admin-order-proof.ts
+@@ -6,17 +6,32 @@ const maxProofAge = 30;
+ const clockSkew = 5;
+ const id = z.uuid();
+
++const warehouseId = z.string().regex(/^[a-f0-9]{24}$/);
++export const devAdminWarehouse = z.object({
++  id: warehouseId,
++  name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f]+$/u),
++}).strict();
++
+ const operator = z.object({
+   id: z.string().regex(/^[a-f0-9]{24}$/),
+   name: z.string().trim().min(1).max(120).regex(/^[^\u0000-\u001f\u007f]+$/u),
+   canReturn: z.boolean(),
++  assignedWarehouseId: warehouseId.optional(),
++  canRecordReturnCost: z.boolean().optional(),
+ }).strict();
+
+ const text = z.string().trim().min(1).max(500);
++export const returnCostCommand = z.object({
++  action: z.literal("record-return-cost"), caseId: z.uuid().optional(),
++  amountMinor: z.number().int().min(0).max(2147483647),
++  evidence: z.string().trim().min(3).max(120).regex(/^[^\u0000-\u001f\u007f]+$/u),
++}).strict();
+ const tracking = z.enum(["OUT_FOR_DELIVERY", "DELIVERED", "REFUSED"]);
+ const command = z.discriminatedUnion("action", [
++  returnCostCommand,
+   z.object({ action: z.literal("advance"), next: z.enum(["PACKING", "READY_TO_SHIP", "SHIPPED", "DELIVERED"]),
+-    carrier: text.optional(), trackingReference: text.optional(), simulate: z.boolean().optional() }).strict(),
++    carrier: text.optional(), trackingReference: text.optional(), simulate: z.boolean().optional(),
++    warehouse: devAdminWarehouse.optional() }).strict(),
+   z.object({ action: z.literal("track"), status: tracking, evidence: text.optional() }).strict(),
+   z.object({ action: z.literal("receive"), disposition: z.enum(["RESTOCK", "HOLD"]), note: text }).strict(),
+   z.object({ action: z.literal("collect"), confirm: z.literal(true) }).strict(),
 diff --git a/src/lib/staff/dev-admin-orders.ts b/src/lib/staff/dev-admin-orders.ts
-index a56b0c1..a338626 100644
+index a56b0c1..bd37c9a 100644
 --- a/src/lib/staff/dev-admin-orders.ts
 +++ b/src/lib/staff/dev-admin-orders.ts
-@@ -37,11 +37,13 @@ const itemSnapshot = {
+@@ -37,11 +37,14 @@ const itemSnapshot = {
    productName: true, variantName: true, sku: true, quantity: true,
    unitPriceMinor: true, unitDiscountMinor: true, lineTotalMinor: true,
  } satisfies Prisma.OrderItemSelect;
 +const currentReturnCases = { kind: "RETURN", OR: [{ status: { in: ["OPEN", "IN_REVIEW", "RETURN_APPROVED"] } }, { returnReceivedAt: { not: null } }] } satisfies Prisma.OrderCaseWhereInput;
  const workspaceSummary = {
-   ...summary, payment: { select: { method: true, status: true, amountMinor: true, collectedAt: true } },
+-  ...summary, payment: { select: { method: true, status: true, amountMinor: true, collectedAt: true } },
++  ...summary, shippingWarehouseId: true, shippingWarehouseName: true,
++  payment: { select: { method: true, status: true, amountMinor: true, collectedAt: true } },
    bangladeshShipment: { select: { status: true, carrier: true, trackingReference: true } },
    bangladeshRefusedParcelReceipt: { select: { receivedAt: true, disposition: true, restockedUnits: true } },
    items: { orderBy: { id: "asc" }, select: itemSnapshot },
@@ -16,7 +167,7 @@ index a56b0c1..a338626 100644
  } satisfies Prisma.OrderSelect;
  const detail = {
    ...workspaceSummary, subtotalMinor: true, discountMinor: true, deliveryMinor: true, taxMinor: true,
-@@ -54,14 +56,32 @@ const detail = {
+@@ -54,14 +57,35 @@ const detail = {
      status: true, type: true, createdAt: true, actor: { select: { name: true } },
    } },
  } satisfies Prisma.OrderSelect;
@@ -37,36 +188,80 @@ index a56b0c1..a338626 100644
 +} satisfies Prisma.OrderSelect;
 
  type Cursor = { createdAt: Date; id: string };
++const warehouseIds = z.string().max(499).regex(/^[a-f0-9]{24}(,[a-f0-9]{24})*$/).transform(value => [...new Set(value.split(","))]);
  const workspace = z.object({
    view: z.literal("workspace"), q: z.string().trim().max(100).optional(), sku: z.string().trim().max(100).optional(),
++  locations: warehouseIds.optional(),
    from: z.iso.date().optional(), to: z.iso.date().optional(), creator: z.enum(["USER", "GUEST"]).optional(),
  }).strict().refine(value => !value.from || !value.to || value.from <= value.to);
-+const reporting = z.object({
-+  view: z.literal("reporting"), from: z.iso.date().optional(), to: z.iso.date().optional(), active: z.literal("1").optional(),
-+}).strict().refine(value => !value.from || !value.to || value.from <= value.to);
- type OrderQuery = { kind: "detail"; id: string } | { kind: "list"; limit: number; search: string; after?: Cursor } |
+-type OrderQuery = { kind: "detail"; id: string } | { kind: "list"; limit: number; search: string; after?: Cursor } |
 -  { kind: "workspace"; filters: z.infer<typeof workspace> };
++const reporting = z.object({
++  view: z.literal("reporting"), locations: warehouseIds.optional(), from: z.iso.date().optional(), to: z.iso.date().optional(),
++  active: z.literal("1").optional(), costs: z.literal("1").optional(),
++}).strict().refine(value => !value.from || !value.to || value.from <= value.to);
++type OrderQuery = { kind: "detail"; id: string; costs?: boolean } | { kind: "list"; limit: number; search: string; after?: Cursor } |
 +  { kind: "workspace"; filters: z.infer<typeof workspace> } | { kind: "reporting"; filters: z.infer<typeof reporting> };
  const workspaceLimit = 10_000;
 
  function decodeCursor(value: string): Cursor | undefined {
-@@ -84,6 +104,10 @@ export function readDevAdminOrderQuery(params: URLSearchParams): OrderQuery | nu
+@@ -84,10 +108,19 @@ export function readDevAdminOrderQuery(params: URLSearchParams): OrderQuery | nu
      const parsed = workspace.safeParse(Object.fromEntries(params));
      return parsed.success ? { kind: "workspace", filters: parsed.data } : null;
    }
+-  const allowed = ["id", "limit", "search", "after"];
 +  if (params.get("view") === "reporting") {
 +    const parsed = reporting.safeParse(Object.fromEntries(params));
 +    return parsed.success ? { kind: "reporting", filters: parsed.data } : null;
 +  }
-   const allowed = ["id", "limit", "search", "after"];
++  const allowed = ["id", "limit", "search", "after", "costs"];
    if (provided.some(key => !allowed.includes(key))) return null;
    const id = params.get("id");
-@@ -125,6 +149,27 @@ export async function readDevAdminOrders(db: DbReader, query: OrderQuery) {
+-  if (id !== null) return provided.length === 1 && idFormat.safeParse(id).success ? { kind: "detail", id } : null;
++  const costs = params.get("costs");
++  if (id !== null) {
++    return idFormat.safeParse(id).success && provided.every(key => key === "id" || key === "costs") && (costs === null || costs === "1")
++      ? { kind: "detail", id, ...(costs && { costs: true }) } : null;
++  }
++  if (costs !== null) return null;
+   const limit = params.get("limit") ?? "30";
+   const search = params.get("search")?.trim() ?? "";
+   const cursor = params.get("after");
+@@ -98,7 +131,12 @@ export function readDevAdminOrderQuery(params: URLSearchParams): OrderQuery | nu
+
+ export async function readDevAdminOrders(db: DbReader, query: OrderQuery) {
+   if (query.kind === "detail") {
+-    const row = await db.order.findFirst({ where: { ...devAdminOrderScope, id: query.id }, select: detail });
++    const readCost = query.costs === true;
++    const returnCost = readCost && { select: { amountMinor: true, evidenceReference: true } };
++    const row = await db.order.findFirst({ where: { ...devAdminOrderScope, id: query.id }, select: {
++      ...detail, bangladeshRefusedParcelReceipt: { select: { ...detail.bangladeshRefusedParcelReceipt.select, returnCost } },
++      cases: { ...detail.cases, select: { ...detail.cases.select, id: readCost, returnDisposition: readCost, returnCost } },
++    } });
+     if (!row) return null;
+     const { items, subtotalMinor, discountMinor, deliveryMinor, taxMinor, payment, ...summaryFields } = row;
+     const manualProof = payment?.manualProof;
+@@ -109,12 +147,13 @@ export async function readDevAdminOrders(db: DbReader, query: OrderQuery) {
+     return { ...order, subtotalMinor, discountMinor, deliveryMinor, taxMinor, items, manualPayment };
+   }
+   if (query.kind === "workspace") {
+-    const { q, sku, from, to, creator } = query.filters;
++    const { q, sku, from, to, creator, locations } = query.filters;
+     const contains = (value: string) => ({ contains: value.replace(/[\\%_]/g, "\\$&"), mode: "insensitive" as const });
+     const start = from && new Date(from + "T00:00:00.000+06:00");
+     const end = to && new Date(to + "T23:59:59.999+06:00");
+     const orders = await db.order.findMany({
+       where: { ...devAdminOrderScope,
++        ...(locations && { shippingWarehouseId: { in: locations } }),
+         ...(q && { reference: contains(q) }),
+         ...(sku && { items: { every: firstParty, some: { ...firstParty, sku: contains(sku) } } }),
+         ...((start || end) && { createdAt: { ...(start && { gte: start }), ...(end && { lte: end }) } }),
+@@ -125,6 +164,33 @@ export async function readDevAdminOrders(db: DbReader, query: OrderQuery) {
      return { workspaceOrders: orders.length > workspaceLimit ? [] : orders.map(orderSummary), tooMany: orders.length > workspaceLimit };
    }
 
 +  if (query.kind === "reporting") {
-+    const { from, to, active } = query.filters;
++    const { from, to, active, locations, costs } = query.filters;
 +    const range = { ...(from && { gte: new Date(from + "T00:00:00.000+06:00") }),
 +      ...(to && { lte: new Date(to + "T23:59:59.999+06:00") }) };
 +    const dated: Prisma.OrderWhereInput[] = from || to ? [
@@ -81,11 +276,254 @@ index a56b0c1..a338626 100644
 +      { cases: { some: { kind: "RETURN", status: { in: ["OPEN", "IN_REVIEW", "RETURN_APPROVED"] } } } },
 +    ] : [];
 +    const matched = [...dated, ...current];
-+    const rows = await db.order.findMany({ where: { ...devAdminOrderScope, ...(matched.length && { OR: matched }) },
-+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: workspaceLimit + 1, select: reportingSummary });
++    const returnCost = costs === "1" && { select: { amountMinor: true } };
++    const rows = await db.order.findMany({ where: { ...devAdminOrderScope,
++      ...(locations && { shippingWarehouseId: { in: locations } }), ...(matched.length && { OR: matched }) },
++      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: workspaceLimit + 1, select: {
++        ...reportingSummary,
++        bangladeshRefusedParcelReceipt: { select: { ...reportingSummary.bangladeshRefusedParcelReceipt.select, returnCost } },
++        cases: { ...reportingSummary.cases, select: { ...reportingSummary.cases.select, returnDisposition: true, returnCost } },
++      } });
 +    return { reportOrders: rows.length > workspaceLimit ? [] : rows.map(orderSummary), tooMany: rows.length > workspaceLimit };
 +  }
 +
    const { limit, search, after } = query;
    const rows = await db.order.findMany({
      where: { ...devAdminOrderScope, ...(search && { reference: { startsWith: search, mode: "insensitive" } }),
+diff --git a/src/lib/staff/hybrid-return-cost.ts b/src/lib/staff/hybrid-return-cost.ts
+new file mode 100644
+index 0000000..00260ac
+--- /dev/null
++++ b/src/lib/staff/hybrid-return-cost.ts
+@@ -0,0 +1,41 @@
++import { getDb } from "../db/client.ts";
++import { lockFulfillmentOrder, OperationError } from "./operations.ts";
++import { returnCostCommand, type DevAdminFulfillmentOperator } from "./dev-admin-order-proof.ts";
++
++export async function recordHybridReturnCost(actor: DevAdminFulfillmentOperator, orderId: string, input: unknown) {
++  if (!actor.canReturn || !actor.canRecordReturnCost) throw new OperationError("Access denied.", 403);
++  const parsed = returnCostCommand.safeParse(input);
++  if (!parsed.success) throw new OperationError("Enter the returned purchase cost and a purchase or lot reference.");
++  const { caseId, amountMinor, evidence } = parsed.data;
++
++  return getDb().$transaction(async tx => {
++    const { actorId } = await lockFulfillmentOrder(tx, actor, orderId, { returns: true, bangladeshOnly: true });
++    const receipt = caseId
++      ? await tx.orderCase.findFirst({
++          where: { id: caseId, orderId, kind: "RETURN", returnReceivedAt: { not: null },
++            returnDisposition: "RESTOCK", returnLines: { some: { quantity: { gt: 0 } } } },
++          select: { returnCost: true },
++        })
++      : await tx.bangladeshRefusedParcelReceipt.findFirst({
++          where: { orderId, disposition: "RESTOCK", restockedUnits: { gt: 0 } },
++          select: { returnCost: true },
++        });
++
++    if (!receipt) throw new OperationError("Return cost needs a recorded restock receipt.", 409);
++    if (receipt.returnCost) {
++      const saved = receipt.returnCost;
++      if (saved.amountMinor !== amountMinor || saved.evidenceReference !== evidence) {
++        throw new OperationError("This receipt already has a recorded purchase cost.", 409);
++      }
++      return;
++    }
++
++    await tx.hybridReturnCost.create({
++      data: { ...(caseId ? { caseId } : { refusedOrderId: orderId }), amountMinor, evidenceReference: evidence },
++    });
++    await tx.auditEvent.create({ data: {
++      actorId, action: "FULFILLMENT_CHANGED", target: orderId,
++      changes: { returnCostRecorded: true, caseId: caseId ?? null, amountMinor, evidenceReference: evidence },
++    } });
++  });
++}
+diff --git a/src/lib/staff/operations.ts b/src/lib/staff/operations.ts
+index 596fe81..f03ff2f 100644
+--- a/src/lib/staff/operations.ts
++++ b/src/lib/staff/operations.ts
+@@ -12,7 +12,7 @@ import { isManualPaymentMethod } from "../commerce/manual-payment-methods.ts";
+ import { notifyOrder } from "../commerce/order-notifications.ts";
+ import { hybridDemoMode, hybridStoreMode } from "../release-config.ts";
+ import { devAdminOrderScope } from "./dev-admin-orders.ts";
+-import type { DevAdminFulfillmentOperator } from "./dev-admin-order-proof.ts";
++import { devAdminWarehouse, type DevAdminFulfillmentOperator } from "./dev-admin-order-proof.ts";
+
+ export class OperationError extends Error {
+   constructor(message: string, readonly status = 409) { super(message); }
+@@ -102,6 +102,9 @@ export async function lockFulfillmentOrder(tx: Prisma.TransactionClient, actor:
+   }
+   if (process.env.COMMERCE_MODE !== "staging" || !hybridDemoMode() || returns && !actor.canReturn) deny();
+   const order = await lockedOrder(tx, orderId, devAdminOrderScope);
++  if (actor.assignedWarehouseId && order.shippingWarehouseId && order.shippingWarehouseId !== actor.assignedWarehouseId) {
++    throw new OperationError("Order not found.", 404);
++  }
+   // The service account has no credentials or staff access. It identifies the signed admin actor in audit records.
+   const actorId = `editable-admin:${actor.id}`;
+   const email = `${actor.id}@editable-admin.invalid`;
+@@ -115,6 +118,7 @@ const fulfillmentInput = z.object({
+   next: z.enum(["PACKING", "READY_TO_SHIP", "SHIPPED", "DELIVERED"]),
+   carrier: z.string().optional(), trackingReference: z.string().optional(),
+   simulate: z.boolean().optional(),
++  warehouse: devAdminWarehouse.optional(),
+ });
+
+ export async function advanceFulfillment(actor: FulfillmentActor, orderId: string, input: unknown) {
+@@ -135,7 +139,18 @@ export async function advanceFulfillment(actor: FulfillmentActor, orderId: strin
+     if (simulate && (next !== "SHIPPED" || !devShipmentAvailable(order))) throw new OperationError("The demo courier is available only for test orders.");
+     const tracking = shipment.safeParse(simulate ? demoHandoff() : parsed.data);
+     if (next === "SHIPPED" && !tracking.success) throw new OperationError("Enter a carrier and a tracking reference before shipping.");
+-    const fields = next === "SHIPPED" && tracking.success ? tracking.data : {};
++    const warehouse = parsed.data.warehouse;
++    if (typeof actor !== "string" && next === "SHIPPED" &&
++      (!warehouse || actor.assignedWarehouseId && warehouse.id !== actor.assignedWarehouseId)) {
++      throw new OperationError("Choose an available shipping warehouse.");
++    }
++    if (warehouse && (typeof actor === "string" || next !== "SHIPPED" || order.shippingWarehouseId)) {
++      throw new OperationError("Shipping warehouse is recorded once at dispatch.");
++    }
++    const fields = next === "SHIPPED" && tracking.success ? {
++      ...tracking.data,
++      ...(warehouse && { shippingWarehouseId: warehouse.id, shippingWarehouseName: warehouse.name }),
++    } : {};
+     await tx.order.update({ where: { id: orderId }, data: { fulfillmentStatus: next, ...fields } });
+     if (next === "SHIPPED" && tracking.success && order.marketId === "bd" && hybridStoreMode()) {
+       await tx.bangladeshShipment.create({
+diff --git a/tests/integration/hybrid-return-cost.test.ts b/tests/integration/hybrid-return-cost.test.ts
+new file mode 100644
+index 0000000..c5d8b57
+--- /dev/null
++++ b/tests/integration/hybrid-return-cost.test.ts
+@@ -0,0 +1,133 @@
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { after, test } from "node:test";
++import "../../scripts/load-env.ts";
++import { getDb } from "../../src/lib/db/client.ts";
++import { requireLocalDatabase } from "../../src/lib/db/local.ts";
++import { readDevAdminOrderQuery, readDevAdminOrders } from "../../src/lib/staff/dev-admin-orders.ts";
++import { recordHybridReturnCost } from "../../src/lib/staff/hybrid-return-cost.ts";
++
++requireLocalDatabase("griipbuddy_test");
++const db = getDb();
++after(() => db.$disconnect());
++
++test("Hybrid return cost is tied to each actual restock receipt, scoped, audited, and immutable on retry", async t => {
++  const fixture = randomUUID();
++  const date = new Date("2027-01-12T03:00:00.000Z");
++  const operator = { id: fixture.replaceAll("-", "").slice(0, 24), name: "Fixture Cost Operator", canReturn: true, canRecordReturnCost: true };
++  const actorId = "editable-admin:" + operator.id;
++  const orders: string[] = [];
++  const attempts: string[] = [];
++
++  t.after(async () => {
++    await db.hybridReturnCost.deleteMany({ where: {
++      OR: [{ orderCase: { orderId: { in: orders } } }, { refusedOrderId: { in: orders } }],
++    } });
++    await db.auditEvent.deleteMany({ where: { actorId, target: { in: orders } } });
++    await db.orderCase.deleteMany({ where: { orderId: { in: orders } } });
++    await db.bangladeshRefusedParcelReceipt.deleteMany({ where: { orderId: { in: orders } } });
++    await db.orderItem.deleteMany({ where: { orderId: { in: orders } } });
++    await db.payment.deleteMany({ where: { orderId: { in: orders } } });
++    await db.order.deleteMany({ where: { id: { in: orders } } });
++    await db.checkoutAttempt.deleteMany({ where: { id: { in: attempts } } });
++    await db.user.deleteMany({ where: { id: actorId } });
++    await db.inventory.deleteMany({ where: { variantId: fixture } });
++    await db.variant.deleteMany({ where: { id: fixture } });
++    await db.product.deleteMany({ where: { id: fixture } });
++    await db.department.deleteMany({ where: { id: fixture } });
++  });
++
++  await db.department.create({ data: {
++    id: fixture, slug: fixture, name: "Fixture", shortName: "Fixture", description: "Fixture",
++    imageSrc: "/fixture.png", imageAlt: "Fixture", position: 0,
++  } });
++  await db.product.create({ data: {
++    id: fixture, slug: fixture, departmentId: fixture, name: "Fixture", description: "Fixture",
++    specifications: {}, keywords: [], addedOn: date, position: 0,
++    variants: { create: { id: fixture, sku: fixture, label: "Fixture", options: {}, position: 0,
++      inventory: { create: { available: 7 } } } },
++  } });
++
++  async function createOrder(eligible = true) {
++    const attempt = await db.checkoutAttempt.create({ data: { id: randomUUID(), guestKey: randomUUID(), requestHash: "0".repeat(64) } });
++    attempts.push(attempt.id);
++    const order = await db.order.create({ data: {
++      attemptId: attempt.id, reference: "RETURN-COST-" + randomUUID(), marketId: "bd", currency: "BDT", measurementTest: eligible,
++      fulfillmentStatus: "DELIVERED", createdAt: date, customerName: "Synthetic", phone: "01000000001",
++      locality: "Fixture", district: "dhaka", districtLabel: "Dhaka", address: "Fixture",
++      deliveryMethod: "standard", deliveryLabel: "Standard", taxLabel: "Tax",
++      subtotalMinor: 30000, discountMinor: 0, deliveryMinor: 0, taxMinor: 0, totalMinor: 30000,
++      payment: { create: { method: "COD", status: "COLLECTED", amountMinor: 30000, currency: "BDT" } },
++      items: { create: { variantId: fixture, sku: fixture, productName: "Fixture", variantName: "Fixture",
++        quantity: 3, unitPriceMinor: 10000, unitDiscountMinor: 0, lineTotalMinor: 30000, currency: "BDT" } },
++    }, include: { items: true } });
++    orders.push(order.id);
++    return order;
++  }
++
++  const order = await createOrder();
++  const refused = await createOrder();
++  const live = await createOrder(false);
++  async function receive(disposition: "RESTOCK" | "HOLD") {
++    return db.orderCase.create({ data: {
++      orderId: order.id, kind: "RETURN", status: "RETURN_RECEIVED", returnReceivedAt: date, returnDisposition: disposition,
++      returnLines: { create: { orderItemId: order.items[0].id, quantity: 1 } },
++    } });
++  }
++  const first = await receive("RESTOCK");
++  const second = await receive("RESTOCK");
++  const held = await receive("HOLD");
++  await db.bangladeshRefusedParcelReceipt.create({ data: {
++    orderId: refused.id, receivedAt: date, disposition: "RESTOCK", restockedUnits: 3, note: "Fixture received parcel",
++  } });
++  const original = {
++    COMMERCE_MODE: process.env.COMMERCE_MODE, DATABASE_URL: process.env.DATABASE_URL,
++    GRIIP_MARKETPLACE_PREVIEW: process.env.GRIIP_MARKETPLACE_PREVIEW, GRIIP_HYBRID_STOREFRONT: process.env.GRIIP_HYBRID_STOREFRONT,
++    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
++  };
++  // The adapter was initialized against the loopback fixture. Only the signed actor's deployment predicate uses these placeholders.
++  Object.assign(process.env, {
++    COMMERCE_MODE: "staging", DATABASE_URL: "postgresql://griipbuddy_demo:fixture@db:5432/griipbuddy_hybrid_demo",
++    GRIIP_MARKETPLACE_PREVIEW: "1", GRIIP_HYBRID_STOREFRONT: "1", BETTER_AUTH_URL: "https://dev.griipbuddy.com",
++  });
++  try {
++    const output = (caseId: string | undefined, amountMinor: number, evidence: string) => ({
++      action: "record-return-cost", caseId, amountMinor, evidence,
++    });
++    const exact = output(first.id, 8750, "Lot A1 / invoice 42");
++    await assert.rejects(recordHybridReturnCost({ ...operator, canRecordReturnCost: false }, order.id, exact), /Access denied/);
++    await assert.rejects(recordHybridReturnCost({ ...operator, canReturn: false }, order.id, exact), /Access denied/);
++    await assert.rejects(recordHybridReturnCost(operator, live.id, exact), /Order not found/);
++    await assert.rejects(recordHybridReturnCost(operator, refused.id, exact), /recorded restock receipt/);
++    await assert.rejects(recordHybridReturnCost(operator, order.id, output(held.id, 50, "Lot held")), /recorded restock receipt/);
++
++    await Promise.all([recordHybridReturnCost(operator, order.id, exact), recordHybridReturnCost(operator, order.id, exact)]);
++    await recordHybridReturnCost(operator, order.id, output(second.id, 6200, "Lot B1 / invoice 60"));
++    await recordHybridReturnCost(operator, refused.id, output(undefined, 18550, "Lots C1 and C2"));
++    await assert.rejects(recordHybridReturnCost(operator, order.id, output(first.id, 8751, exact.evidence)), /already has a recorded purchase cost/);
++    assert.equal(await db.auditEvent.count({ where: { actorId, target: { in: [order.id, refused.id] } } }), 3);
++    assert.equal(await db.hybridReturnCost.count({ where: { caseId: { in: [first.id, second.id] } } }), 2);
++    assert.equal((await db.inventory.findUniqueOrThrow({ where: { variantId: fixture } })).available, 7);
++
++    const read = async (params: Record<string, string>) => {
++      const parsed = readDevAdminOrderQuery(new URLSearchParams(params));
++      assert.ok(parsed);
++      return readDevAdminOrders(db, parsed);
++    };
++    assert.doesNotMatch(JSON.stringify(await read({ id: order.id })), /amountMinor":8750|Lot A1/);
++    const detail = JSON.stringify(await read({ id: order.id, costs: "1" }));
++    assert.match(detail, /amountMinor":8750,.*Lot A1/);
++    assert.match(detail, /amountMinor":6200,.*Lot B1/);
++    const reports = { view: "reporting", from: "2027-01-12", to: "2027-01-12" };
++    assert.doesNotMatch(JSON.stringify(await read(reports)), /amountMinor":8750|amountMinor":18550/);
++    const report = JSON.stringify(await read({ ...reports, costs: "1" }));
++    assert.match(report, /amountMinor":8750/);
++    assert.match(report, /amountMinor":18550/);
++    assert.doesNotMatch(report, /Lot A1|Lots C1 and C2/);
++  } finally {
++    for (const [key, value] of Object.entries(original)) {
++      if (value == null) delete process.env[key];
++      else process.env[key] = value;
++    }
++  }
++});
