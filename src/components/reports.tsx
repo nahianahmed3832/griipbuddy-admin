@@ -251,7 +251,8 @@ export async function Reports({ auth, id, q, region, production = false }: {
   const page = param(q,'page');
   const limit = production ? param(q,'limit') : undefined;
   const refresh = param(q,'refresh') === '1' ? '1' : undefined;
-  const data = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh}),auth.token));
+  const native = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh}),auth.token));
+  const data = id === 'sales-summary' ? await salesReportWithHybrid(native, auth, region, scope.locations) : native;
   const report = obj(data.report);
   const meta = obj(data.meta);
   const domain = reportDomain(report.domain);
@@ -297,6 +298,9 @@ export async function Reports({ auth, id, q, region, production = false }: {
     ? 'Purchase price and profit figures are hidden for your role.'
     : restricted.includes('cost') ? 'Purchase price figures are hidden for your role.' : 'Profit and margin figures are hidden for your role.';
   const quality = arr(data.quality).map(obj);
+  if (['sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts'].includes(id) && canReadHybridReports(auth, region, scope.locations)) {
+    quality.push({ code: 'HYBRID_CHECKOUT_SCOPE', message: 'This report uses legacy records. All Orders includes Hybrid checkout.' });
+  }
   return <div className={'report-workspace overview-' + domain.color + (production ? ' production-report-page' : '')}>
     <header className="report-header">
       <div className="report-header-copy">
@@ -342,3 +346,5 @@ export async function Reports({ auth, id, q, region, production = false }: {
         <> ({String(flag.affected)} of {String(flag.total)})</>}</p></div>)}
   </div>;
 }
+import { canReadHybridReports } from '@/lib/hybrid-orders';
+import { salesReportWithHybrid } from '@/lib/hybrid-reporting';

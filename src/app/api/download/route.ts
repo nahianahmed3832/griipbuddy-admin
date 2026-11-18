@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
-import { ApiError, getRegion, requestApi, session, url } from '@/lib/api';
+import { api, ApiError, getRegion, obj, requestApi, session, url } from '@/lib/api';
 import { reportIds, reportQuery } from '@/lib/data';
+import { canReadHybridReports } from '@/lib/hybrid-orders';
+import { salesReportWithHybrid } from '@/lib/hybrid-reporting';
+import { hybridSalesDownload } from '@/lib/hybrid-sales-export';
 
 export async function GET(req: NextRequest) {
   const auth = await session();
@@ -8,7 +11,13 @@ export async function GET(req: NextRequest) {
   const query = Object.fromEntries(req.nextUrl.searchParams);
   if (!reportIds.includes(query.id) || !['csv','xlsx'].includes(query.format)) return new Response('Unknown report', { status: 404 });
   try {
-    const scope = reportQuery(query, getRegion(query.region, auth.staff));
+    const region = getRegion(query.region, auth.staff);
+    const scope = reportQuery(query, region);
+    if (query.id === 'sales-summary' && canReadHybridReports(auth, region, scope.locations)) {
+      const native = obj(await api(url('/analytics/reports/sales-summary', { ...scope, ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
+      const combined = await salesReportWithHybrid(native, auth, region, scope.locations);
+      if (combined !== native) return hybridSalesDownload(combined, query.format as 'csv' | 'xlsx');
+    }
     const response = await requestApi(url('/analytics/reports/' + query.id + '/export', { ...scope, ...(query.order === 'desc' && {order:'desc'}), format: query.format }), auth.token);
     if (!response.ok) return new Response('Export is unavailable for this account or report', { status: response.status });
     const mime = query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';

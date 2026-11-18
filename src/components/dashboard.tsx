@@ -6,6 +6,8 @@ import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, t
 import { loadLocations } from '@/lib/advanced';
 import { param, printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
+import { loadHybridReportOrders } from '@/lib/hybrid-orders';
+import { comparisonStart, mergeHybridOverview } from '@/lib/hybrid-reporting';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
@@ -147,6 +149,17 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
       .then(result => result ? obj(result) : null, () => null)) : [];
   const loadStoreLocations = authorized && grant('business_locations.view') ? loadLocations(auth, region).catch(() => []) : [];
   if (production && authorized) {
+    const current = loadHybridReportOrders(auth, region, { locations: scope.locations });
+    const dated = loadHybridReportOrders(auth, region, {
+      locations: scope.locations, from: comparisonStart(scope.from, scope.to, scope.compare !== 'none'), to: scope.to,
+    });
+    const combined = names.map(async (section, index) => {
+      const data = await requests[index];
+      if (!data) return data;
+      if (section === 'actions' || section === 'finance') return mergeHybridOverview(section, data, await current);
+      if (section === 'sales' || section === 'fulfilment') return mergeHybridOverview(section, data, await dated);
+      return data;
+    });
     const sales = requests[names.indexOf('sales')];
     const locations = await loadStoreLocations;
     const scopeKey = JSON.stringify(scope);
@@ -154,7 +167,7 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
       const common = { auth, region, query, section };
       return <Suspense key={[section, scopeKey, refresh, retry === section ? param(q, 'attempt') : undefined].join(':')}
         fallback={<OverviewPanelState {...common}/>}>
-        <LoadedOverviewSection {...common} request={requests[index]} sales={sales}/>
+        <LoadedOverviewSection {...common} request={combined[index]} sales={sales}/>
       </Suspense>;
     });
     return renderDashboard({ auth, region, query, locations, production, sections, sales });
@@ -435,6 +448,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
         })}</div>
         {warnings.length > 0 && <div className="notice warn"><CircleAlert size={17}/><p><b>Data health</b> · {warnings.join(' · ')}. Stock and cost figures may be affected.
           {link('data-health','data_health','See the records') && <> <Link className="table-link" href={link('data-health','data_health','See the records')!.href}>See the records</Link></>}</p></div>}
+        {production && <Quality data={actions.quality}/>}
       </Panel>}
       {sales && <Panel title="Sales" production={production}
         detail={production ? 'Orders placed (demand) and orders delivered (revenue) are counted separately.' : 'Bookings track orders placed. Delivered sales track product value on delivered orders.'}
@@ -545,6 +559,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
           </div> : null}
         </div>
         {production && <OverviewRestriction values={finance.restricted}/>}
+        {production && <Quality data={finance.quality}/>}
       </Panel>}
       {preorders && <Panel title="Pre-orders" production={production}
         detail={production ? 'Customer requests sourced from China. Advances are deposits until the pre-order is delivered.' : 'Requests sourced from China. Advances remain deposits until delivery.'} tone="preorders"

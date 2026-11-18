@@ -4,6 +4,8 @@ import { loadLocations } from '@/lib/advanced';
 import { param, type Query } from '@/lib/data';
 import { posDay, posRanges, posRangeDates } from '@/lib/pos';
 import { has, superAdmin, type Region } from '@/lib/sections';
+import { loadHybridReportOrders } from '@/lib/hybrid-orders';
+import { mergeHybridClassic } from '@/lib/hybrid-reporting';
 import { ClassicOverviewFilters, ClassicOverviewTrend } from './production-classic-overview-controls';
 import styles from './production-classic-overview.module.css';
 
@@ -26,7 +28,12 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   const scopedLocations = assigned ? locations.filter(row => row.value === assigned) : locations;
   if (assigned && !scopedLocations.length) scopedLocations.push({ value: assigned, label: 'Assigned location' });
 
-  const report = obj(await api(url('/report/business-report', { region, businessLocationId: location, startDate: from || '1970-01-01', endDate: to || today }), auth.token));
+  const period = { from: from || '1970-01-01', to: to || today };
+  const [legacy, hybrid] = await Promise.all([
+    api(url('/report/business-report', { region, businessLocationId: location, startDate: period.from, endDate: period.to }), auth.token),
+    loadHybridReportOrders(auth, region, { locations: location, ...period }),
+  ]);
+  const { report, note } = mergeHybridClassic(obj(legacy), hybrid);
   const orderMoney = (value: unknown) => region === 'BD' ? money(value) : whole(value) + '\u00a0USD';
   const totals = obj(report.totals);
   const sales = obj(totals.orders);
@@ -74,6 +81,7 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
           <article key={label}><div><span><Icon size={23}/></span><div><p>{label}</p><strong>{value}</strong></div></div></article>
         ))}</div>
         {kind === 'orders' && daily.length > 0 && <ClassicOverviewTrend data={daily}/>}
+        {kind === 'orders' && note && <p className="muted">{note}</p>}
       </section>
     ))}
   </div>;

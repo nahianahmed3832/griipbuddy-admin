@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHmac } from 'node:crypto';
 import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, str, url, type Session } from './api';
-import { has, type Region } from './sections';
+import { has, superAdmin, type Region } from './sections';
 import { hybridStatusLabels, type HybridFulfillment, type HybridShipment } from './hybrid-fulfillment';
 import type { Listing, Order, OrderDetail, OrderFilters } from './website-orders';
 
@@ -34,10 +34,10 @@ function checkoutConnection(auth: Session, region: Region) {
   return { token, port };
 }
 
-async function checkoutRead<T>({ token, port }: NonNullable<ReturnType<typeof checkoutConnection>>, params: Record<string, string | undefined>) {
+async function checkoutRead<T>({ token, port }: NonNullable<ReturnType<typeof checkoutConnection>>, params: Record<string, string | undefined>, timeout = 8000) {
   const response = await fetch(url('http://127.0.0.1:' + port + '/api/internal/dev-admin-orders', params), {
     headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }, cache: 'no-store', redirect: 'error',
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(timeout),
   }).catch(() => { throw new ApiError(503, 'Checkout orders are temporarily unavailable.'); });
   if (!response.ok) throw new ApiError(response.status);
   return await response.json() as T;
@@ -88,6 +88,51 @@ function visibleStatus(order: HybridOrder) {
   if (order.fulfillmentStatus === 'PACKING') return 'PROCESSING';
   if (order.payment?.status === 'AWAITING_VERIFICATION') return 'INCOMPLETE';
   return 'PLACED';
+}
+
+export function canReadHybridReports(auth: Session, region: Region, locations?: string) {
+  return !locations && (!auth.staff.assignedLocation || superAdmin(auth.staff)) && !!checkoutConnection(auth, region);
+}
+
+export type HybridReportOrder = {
+  status: string; placedAt: number; totalMinor: number; productMinor: number; discountMinor: number; units: number;
+  awaitingPayment: boolean; claimedMinor: number; inTransit: boolean; uncollectedCodMinor: number; dispatched: boolean;
+};
+export type HybridReportData = { orders: HybridReportOrder[]; issue?: string };
+
+export async function loadHybridReportOrders(auth: Session, region: Region, scope: { locations?: string; from?: string; to?: string }): Promise<HybridReportData | null> {
+  if (!canReadHybridReports(auth, region, scope.locations)) return null;
+  const connection = checkoutConnection(auth, region)!;
+  const validNumber = (value: number) => Number.isSafeInteger(value) && value >= 0;
+  try {
+    const listing = await checkoutRead<{ workspaceOrders: HybridOrder[]; tooMany: boolean }>(
+      connection, { view: 'workspace', from: scope.from, to: scope.to }, 3500);
+    if (listing.tooMany) return { orders: [], issue: 'Hybrid checkout exceeds the reporting feed limit. These figures cover legacy orders.' };
+    const seen = new Set<string>();
+    const orders = listing.workspaceOrders.map(order => {
+      const placedAt = Date.parse(order.createdAt);
+      if (seen.has(order.id) || order.currency !== 'BDT' || !Number.isFinite(placedAt) || !validNumber(order.totalMinor)
+        || !order.items.length || order.items.some(item => !validNumber(item.quantity) || item.quantity === 0 || !validNumber(item.lineTotalMinor)
+          || !validNumber(item.unitPriceMinor) || item.lineTotalMinor > item.unitPriceMinor * item.quantity)
+        || (order.payment && !validNumber(order.payment.amountMinor))) throw new Error('Invalid Hybrid report data');
+      seen.add(order.id);
+      const inTransit = ['IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(order.bangladeshShipment?.status ?? '');
+      const awaitingPayment = order.payment?.status === 'AWAITING_VERIFICATION' && order.status === 'PLACED';
+      return {
+        status: visibleStatus(order), placedAt, totalMinor: order.totalMinor, inTransit, awaitingPayment,
+        dispatched: !!order.bangladeshShipment || ['SHIPPED', 'DELIVERED'].includes(order.fulfillmentStatus),
+        productMinor: order.items.reduce((sum, item) => sum + item.lineTotalMinor, 0),
+        discountMinor: order.items.reduce((sum, item) => sum + item.unitPriceMinor * item.quantity - item.lineTotalMinor, 0),
+        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        claimedMinor: awaitingPayment ? order.payment!.amountMinor : 0,
+        uncollectedCodMinor: inTransit && order.payment?.method === 'COD' && order.payment.status === 'AWAITING_COLLECTION'
+          ? order.payment.amountMinor : 0,
+      };
+    });
+    return { orders };
+  } catch {
+    return { orders: [], issue: 'Hybrid checkout figures are unavailable. These figures cover legacy orders.' };
+  }
 }
 
 const amount = (minor?: number) => typeof minor === 'number' ? minor / 100 : undefined;
