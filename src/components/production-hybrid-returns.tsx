@@ -59,6 +59,8 @@ function ReturnCase({ entry, items, canReturn, paid, submit, disabled }: {
   entry: HybridReturnCase; items: Operations['items']; canReturn: boolean; paid: boolean;
 } & Pick<Commands, 'submit' | 'disabled'>) {
   const { id: caseId, revision } = entry;
+  const approved = entry.status === 'REFUND_APPROVED' && entry.refundAmountMinor != null
+    ? (entry.refundAmountMinor / 100).toFixed(2) : undefined;
   const next = reviewTransitions[entry.status] ?? (entry.status === 'RETURN_APPROVED' && !entry.returnLines.length ? ['RESOLVED'] as const : []);
   const byId = new Map(items.map(item => [item.id, item]));
   return <article className={styles.shipmentOperations}>
@@ -98,12 +100,15 @@ function ReturnCase({ entry, items, canReturn, paid, submit, disabled }: {
       <button type="submit" className={styles.operationButton} disabled={disabled}>Receive return</button>
     </form>}
     {canReturn && paid && entry.returnReceivedAt && !entry.refundConfirmedAt && entry.returnLines.length > 0 &&
-      ['RETURN_RECEIVED', 'RESOLVED'].includes(entry.status) && <form key={'refund:' + revision} method="post" className={styles.operationForm}
+      (['RETURN_RECEIVED', 'RESOLVED'].includes(entry.status) || approved != null) && <form key={'refund:' + revision} method="post" className={styles.operationForm}
         onSubmit={event => void submit(event, data => ({ action: 'confirm-return-refund', caseId, revision,
           amountMinor: Math.round(Number(field(data, 'amount')) * 100), method: field(data, 'method'),
           reference: field(data, 'reference'), confirmed: confirmed(data),
         }))}>
-        <label>Refund amount (BDT)<input name="amount" type="number" min="0.01" max="21474836.47" step="0.01" required disabled={disabled}/></label>
+        <label>{approved == null ? 'Refund amount (BDT)' : 'Approved refund amount (BDT)'}
+          <input name="amount" type="number" min="0.01" max="21474836.47" step="0.01" required
+            defaultValue={approved} readOnly={approved != null} disabled={disabled}/>
+        </label>
         <label>Refund method<input name="method" minLength={2} maxLength={60} required disabled={disabled}/></label>
         <label>Payout reference<input name="reference" minLength={2} maxLength={80} required disabled={disabled}/></label>
         <label className={styles.hybridChoice}><input type="checkbox" name="confirm" value="yes" required disabled={disabled}/>Confirm the payout was completed.</label>
@@ -126,7 +131,7 @@ export function ProductionHybridReturns({ orderId, state }: { orderId: string; s
   }
   const eligible = items.map(item => ({ ...item, quantity: item.quantity - (received.get(item.id) ?? 0) })).filter(item => item.quantity > 0);
   const canOpen = canReturn && state.step === 'DELIVERED' && state.status === 'PLACED' && eligible.length > 0 &&
-    !cases.some(entry => ['OPEN', 'IN_REVIEW', 'RETURN_APPROVED', 'RETURN_RECEIVED'].includes(entry.status)
+    !cases.some(entry => ['OPEN', 'IN_REVIEW', 'RETURN_APPROVED', 'RETURN_RECEIVED', 'REFUND_APPROVED', 'REFUND_FAILED'].includes(entry.status)
       || entry.status === 'RESOLVED' && !entry.returnLines.length);
   if (!canOpen && !cases.length) return null;
   return <section className={styles.card} aria-label="Customer Returns">
