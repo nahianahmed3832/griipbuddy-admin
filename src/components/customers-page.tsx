@@ -6,6 +6,10 @@ import { customerDate, customerFilters, customerStatus, customerStatuses, custom
 import { param, printable, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { has, superAdmin, type Region } from '@/lib/sections';
+import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
+import { ProductionCustomers, productionCustomersPath } from './production-customers';
+import { ProductionCreateCustomer } from './production-create-customer';
+import productionStyles from './production-customers.module.css';
 import { CustomerPassword } from './customer-password';
 import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
@@ -45,13 +49,18 @@ function Pager({ listing, href, label }: { listing: Page; href: (page: number) =
   </nav>;
 }
 
-export async function CustomersPage({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
+export async function CustomersPage({ auth, q, region, production = false }: { auth: Session; q: Query; region: Region; production?: boolean }) {
   if (!has(auth.staff, 'user.view')) throw new ApiError(403);
   const filter = filters(q);
   const list = await api(url(apiRoot, { ...filter, region, page: param(q, 'page') }), auth.token) as Listing;
   const { summary } = list;
   const directory = { ...filter, region };
   const canViewOrders = has(auth.staff, 'order.view');
+  if (production) return <ProductionCustomers rows={list.rows} total={list.total} page={list.page} size={list.size}
+    query={filter.q} region={region} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
+    canChangePassword={canWrite(auth.staff) && superAdmin(auth.staff) && has(auth.staff, 'user.update')}>
+    <Pager listing={list} label="Customer pages" href={page => url(productionCustomersPath, { ...directory, page: String(page) })}/>
+  </ProductionCustomers>;
   const metricCards = [
     { label: 'Total accounts', value: summary.all, subtitle: 'Customer directory', Icon: UsersRound, tone: 'purple', filter: {} },
     { label: 'Active', value: summary.active, subtitle: 'Active account status', Icon: BadgeCheck, tone: 'green', filter: { status: 'ACTIVE' } },
@@ -124,7 +133,7 @@ export async function CustomersPage({ auth, q, region }: { auth: Session; q: Que
 
 const activityLabels = { password: 'Password changed', created: 'Customer created', edited: 'Profile updated', note: 'Staff note', status: 'Account status changed' };
 
-export async function CustomerProfilePage({ auth, id, q, region }: { auth: Session; id: string; q: Query; region: Region }) {
+export async function CustomerProfilePage({ auth, id, q, region, production = false }: { auth: Session; id: string; q: Query; region: Region; production?: boolean }) {
   if (!has(auth.staff, 'user.view')) throw new ApiError(403);
   if (!mongoId(id)) throw new ApiError(404);
   const canEdit = canWrite(auth.staff) && has(auth.staff, 'user.update');
@@ -138,6 +147,12 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
   const canResetPassword = canEdit && superAdmin(auth.staff) && customer.status === 'ACTIVE' && customer.is_verified_number === true;
   if (param(q, 'action') === 'password') {
     if (!canResetPassword) throw new ApiError(403);
+    if (production) {
+      const back = url(productionCustomersPath, { region, q: param(q, 'q'), page: param(q, 'page') });
+      return <section className={productionStyles.form}><h1>Change Password</h1>
+        <CustomerPassword id={id} revision={customer.updatedAt ?? null} back={back} production/>
+      </section>;
+    }
     const back = url(customersPath + '/' + id, { region });
     return <>
       <PageHeading eyebrow="COMMERCE / CUSTOMER ACCESS" title="Change customer password"
@@ -208,8 +223,9 @@ export async function CustomerProfilePage({ auth, id, q, region }: { auth: Sessi
   </>;
 }
 
-export function CustomerCreatePage({ auth, region }: { auth: Session; region: Region }) {
+export function CustomerCreatePage({ auth, region, production = false }: { auth: Session; region: Region; production?: boolean }) {
   if (!canCreateCustomer(auth)) throw new ApiError(403);
+  if (production) return <ProductionCreateCustomer region={region} allowPhoto={pinnedAdminGatewayConfigured()}/>;
   return <>
     <div><Link className="button subtle crm-back" href={url(customersPath, { region })}><ArrowLeft size={15}/> Customer directory</Link></div>
     <PageHeading eyebrow="COMMERCE / CUSTOMER MANAGEMENT" title="Create customer"

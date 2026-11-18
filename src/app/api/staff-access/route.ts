@@ -1,8 +1,25 @@
-import { ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str } from '@/lib/api';
+import { api, ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str } from '@/lib/api';
 import { endpoint } from '@/lib/staff-access';
-import { has } from '@/lib/sections';
+import { has, superAdmin } from '@/lib/sections';
 
 const send = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+
+export async function GET(req: Request) {
+  const auth = await session();
+  if (!auth) return send({ message: 'Sign in to continue.' }, 401);
+  if (!superAdmin(auth.staff)) return send({ message: 'Access denied.' }, 403);
+  const id = new URL(req.url).searchParams.get('id') ?? '';
+  if (!mongoId(id)) return send({ message: 'Invalid account ID.' }, 400);
+  try {
+    const [staff, editor] = await Promise.all([
+      api(endpoint + '/directory/' + id, auth.token).then(obj),
+      api(endpoint + '/role-editor', auth.token).then(obj),
+    ]);
+    return send({ permissions: staff.permissions, catalog: editor.catalog });
+  } catch (error) {
+    return send({ message: 'Could not load staff permissions.' }, error instanceof ApiError ? error.status : 503);
+  }
+}
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return send({ message: 'Origin denied.' }, 403);
@@ -41,6 +58,26 @@ export async function POST(req: Request) {
       if (!response.ok) return send({ message: response.status < 500 && str(result.message) || 'The staff API could not save the account.' }, response.status);
       return result.success === true ? send({ success: true }, response.status) : send({ message: 'The staff API returned an unexpected response.' }, 502);
     }
+    if (action === 'staff-permissions' || action === 'staff-delete') {
+      const auth = await session();
+      if (!auth) return send({ message: 'Sign in to continue.' }, 401);
+      const remove = action === 'staff-delete';
+      if (!canWrite(auth.staff) || !superAdmin(auth.staff) || !has(auth.staff, remove ? 'user.delete' : 'manage-permissions') ||
+          !id || id === auth.staff.id) return send({ message: 'Staff action is restricted.' }, 403);
+      // Only staff directory IDs can reach the guarded soft-delete route.
+      const target = obj(await api(endpoint + '/directory/' + id, auth.token));
+      if (target.protected === true) return send({ message: 'This staff account is protected.' }, 403);
+      const response = await requestApi(remove ? '/user/delete/' + id : '/permissions', auth.token, {
+        method: remove ? 'DELETE' : 'PATCH',
+        ...(!remove && { body: JSON.stringify({ id, permissions: obj(body.values).permissions }) }),
+      });
+      const result = obj(await response.json());
+      if (!response.ok || result.success !== true) {
+        return send({ message: response.status < 500 && str(result.message) || 'The staff API could not complete this action.' },
+          response.ok ? 502 : response.status);
+      }
+      return send({ success: true });
+    }
     const targets: Record<string, [string, string, boolean]> = {
       accept: ['POST', '/accept', false],
       invite: ['POST', '/directory', false],
@@ -68,6 +105,7 @@ export async function POST(req: Request) {
     return send(payload.data, result.status);
   } catch (error) {
     if (error instanceof SyntaxError) return send({ message: 'Invalid request.' }, 400);
+    if (error instanceof ApiError && error.status < 500) return send({ message: error.message }, error.status);
     return send({ message: 'The staff API is unavailable. Try again.' }, error instanceof ApiError && error.status >= 500 ? error.status : 503);
   }
 }

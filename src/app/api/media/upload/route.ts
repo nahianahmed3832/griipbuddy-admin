@@ -21,6 +21,9 @@ export async function POST(request: NextRequest) {
       if (!canEditProduct('create', auth) && !canEditProduct('edit', auth)) return fail('Upload access denied.', 403);
     } else if (scope === 'category') {
       if (!canChangeCategories(auth, 'product.create') && !canChangeCategories(auth, 'product.update')) return fail('Upload access denied.', 403);
+    } else if (scope === 'customer') {
+      requireWrite(auth, 'user.view', 'user.create');
+      if (request.nextUrl.searchParams.get('kind') !== 'image') return fail('Choose a customer photo.', 400);
     } else requireWrite(auth, 'cms.view', 'cms.update');
     const kind = request.nextUrl.searchParams.get('kind');
     if (kind !== 'video' && kind !== 'image') return fail('Choose an image or video.', 400);

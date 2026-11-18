@@ -1,11 +1,11 @@
 import Link from 'next/link';
-import { Ellipsis } from 'lucide-react';
+import { ProductionAccessActions } from './production-access-actions';
 import type { RoleRecord, StaffRecord } from '@/lib/staff-access';
 import type { ReactNode } from 'react';
 import styles from './production-staff-directory.module.css';
 
-export function ProductionStaffDirectory({ rows, self, create, children }: {
-  rows: StaffRecord[]; self: string; create: boolean; children?: ReactNode;
+export function ProductionStaffDirectory({ rows, self, create, canUpdate, canPermissions, canDelete, children }: {
+  rows: StaffRecord[]; self: string; create: boolean; canUpdate: boolean; canPermissions: boolean; canDelete: boolean; children?: ReactNode;
 }) {
   return <Directory title="All Staffs" create={create && { name: 'Add New Staff', path: '/dashboard/add-new-staff' }}
     columns={['Name', 'Phone Number', 'Role', 'Status', 'Actions']} pages={children}>
@@ -14,13 +14,15 @@ export function ProductionStaffDirectory({ rows, self, create, children }: {
       <td>{row.phone}</td>
       <td><span className={styles.role} data-protected={row.protected}>{row.role.replaceAll('_', ' ')}</span></td>
       <td>{row.status}</td>
-      <td><Actions label={row.name} path={'/dashboard/update-staff/' + row.id} edit={!row.protected && row.id !== self}/></td>
+      <td><ProductionAccessActions kind="staff" id={row.id} name={row.name} path={'/dashboard/update-staff/' + row.id}
+        edit={canUpdate && !row.protected && row.id !== self} permissions={canPermissions && !row.protected && row.id !== self}
+        remove={canDelete && !row.protected && row.id !== self}/></td>
     </tr>)}
   </Directory>;
 }
 
-export function ProductionRoleDirectory({ rows, create, children }: {
-  rows: RoleRecord[]; create: boolean; children?: ReactNode;
+export function ProductionRoleDirectory({ rows, create, canEdit, canDelete, children }: {
+  rows: RoleRecord[]; create: boolean; canEdit: boolean; canDelete: boolean; children?: ReactNode;
 }) {
   return <Directory title="All Roles" create={create && { name: 'Add New Role', path: '/dashboard/add-new-role' }}
     columns={['Role', 'Total Permission', 'Permissions List', 'Actions']} pages={children}>
@@ -37,7 +39,8 @@ export function ProductionRoleDirectory({ rows, create, children }: {
             </span>}
           </div> : <em>{role.count ? 'Open role to view permissions' : 'No permissions'}</em>}
         </td>
-        <td><Actions label={role.name} path={'/dashboard/update-role/' + role.id} edit={!role.protected}/></td>
+        <td><ProductionAccessActions kind="role" id={role.id} name={role.name} path={'/dashboard/update-role/' + role.id}
+          edit={canEdit && !role.protected} remove={canDelete && !role.protected && !role.builtIn}/></td>
       </tr>;
     })}
   </Directory>;
@@ -58,11 +61,4 @@ function Directory({ title, create, columns, children, pages }: {
       {pages}
     </div>
   </section>;
-}
-
-function Actions({ label, path, edit }: { label: string; path: string; edit: boolean }) {
-  return <details className={styles.actions}>
-    <summary aria-label={'Actions for ' + label}><Ellipsis size={16} aria-hidden="true"/></summary>
-    <div><Link href={path}>{edit ? 'Edit' : 'View'}</Link></div>
-  </details>;
 }

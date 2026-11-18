@@ -217,9 +217,9 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1], production: Boolean(production)});
     else if (sectionId === 'inventory' && active === 'warehouses') content = await LocationsPage({ auth, region, q, id: view[1] });
     else if (sectionId === 'customers' && active === 'customers') content = view[1]
-      ? await CustomerProfilePage({ auth, id: view[1], q, region })
-      : await CustomersPage({ auth, q, region });
-    else if (sectionId === 'customers' && active === 'create' && view.length === 1) content = CustomerCreatePage({ auth, region });
+      ? await CustomerProfilePage({ auth, id: view[1], q, region, production: Boolean(production) })
+      : await CustomersPage({ auth, q, region, production: Boolean(production) });
+    else if (sectionId === 'customers' && active === 'create' && view.length === 1) content = CustomerCreatePage({ auth, region, production: Boolean(production) });
     else if (sectionId === 'staff' && active && superAdmin(auth.staff)) content = await StaffWorkspace({ auth, view: active, id: view[1], q, production: Boolean(production) });
     else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
       : await ResourcePage({section,view:active!,resource,auth,q,region});

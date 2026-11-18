@@ -6,7 +6,7 @@ export const customerTypes = [['REGISTERED', 'Registered'], ['POS', 'Point of sa
 export type Customer = {
   _id: string; full_name?: string; phone_number?: string; email?: string;
   status?: string; userType?: string; is_verified_number?: boolean;
-  createdAt?: string; updatedAt?: string; workspace_tags?: string[]; orderCount?: number;
+  createdAt?: string; updatedAt?: string; workspace_tags?: string[]; orderCount?: number; completedOrders?: number; cancelledOrders?: number;
 };
 export type CustomerActivity = {
   _id: string; actorName?: string; kind: 'created' | 'edited' | 'note' | 'status' | 'password'; detail: string; createdAt: string;

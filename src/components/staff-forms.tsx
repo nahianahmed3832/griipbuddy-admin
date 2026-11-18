@@ -3,7 +3,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Copy, Search, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Eye, EyeOff, Search, ShieldAlert } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
 import { dateLabel, permissionInfo, roleDirectory, templates, type Options, type RoleRecord, type SetupLink, type StaffRecord } from '@/lib/staff-access';
 import styles from './production-staff-editor.module.css';
@@ -34,8 +34,23 @@ function SetupReceipt({ receipt, href }: { receipt: SetupLink; href: string }) {
   </section>;
 }
 
+function StaffPasswordField({ label, name, required, placeholder, change }: {
+  label: string; name: string; required?: boolean; placeholder: string; change?: (value: string) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  return <label>{label}
+    <span className={styles.password}>
+      <input name={name} type={visible ? 'text' : 'password'} autoComplete="new-password" minLength={15} maxLength={128}
+        required={required} placeholder={placeholder} onChange={event => change?.(event.target.value)}/>
+      <button type="button" className="icon-button" aria-label={(visible ? 'Hide ' : 'Show ') + label.toLowerCase()}
+        onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
+    </span>
+  </label>;
+}
+
 export function StaffForm({ row, options, back, production = false }: { row?: StaffRecord; options: Options; back: string; production?: boolean }) {
   const router = useRouter();
+  const [passwordSet, setPasswordSet] = useState(false);
   const [roleId, setRoleId] = useState(row?.roleId ?? '');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -79,14 +94,20 @@ export function StaffForm({ row, options, back, production = false }: { row?: St
         {row && !options.roles.some(option => option.id === row.roleId) && <option value={row.roleId}>{row.role}</option>}
         {options.roles.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select></label>
-      <label>Password<input name="password" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
-      <label>Confirm Password<input name="confirmation" type="password" autoComplete="new-password" minLength={15} maxLength={256} required={!row}/></label>
+      {!row && <>
+        <StaffPasswordField label="Password" name="password" required placeholder="Enter password"/>
+        <StaffPasswordField label="Confirm Password" name="confirmation" required placeholder="Enter confirm password"/>
+      </>}
       <label>Gender<select name="gender" aria-label="Gender" defaultValue={row?.gender === 'FEMALE' ? 'FEMALE' : 'MALE'}><option>MALE</option><option>FEMALE</option></select></label>
       <label>Access Outlet<select name="location" aria-label="Access Outlet" defaultValue={row?.locationId ?? ''}>
         <option value="">Select outlet</option>
         {row?.locationId && !options.locations.some(option => option.id === row.locationId) && <option value={row.locationId}>{row.location}</option>}
         {options.locations.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
       </select></label>
+      {row && <>
+        <StaffPasswordField label="Set Password" name="password" placeholder="Enter new password" change={value => setPasswordSet(Boolean(value))}/>
+        {passwordSet && <StaffPasswordField label="Confirm Password" name="confirmation" required placeholder="Enter confirm password"/>}
+      </>}
     </fieldset>
     {error && <p className="notice warn" role="alert">{error}</p>}
     <div className={styles.actions}><button className="button primary" type="submit" disabled={pending || !roleId}>

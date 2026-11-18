@@ -88,7 +88,8 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
   }
   if (view === 'roles') {
     const result = await api(url(endpoint + '/roles', { page, q: search }), auth.token) as Paged<RoleRecord>;
-    if (production) return <ProductionRoleDirectory rows={result.rows} create={write && has(auth.staff, 'role.create')}>
+    if (production) return <ProductionRoleDirectory rows={result.rows} create={write && has(auth.staff, 'role.create')}
+      canEdit={write && has(auth.staff, 'role.update')} canDelete={write && has(auth.staff, 'role.delete')}>
       <Pages path="/dashboard/role" result={result} filters={{ q: search }}/>
     </ProductionRoleDirectory>;
     return <><PageHeading eyebrow={title} title="Roles and permissions" description="See who uses each role and review what it allows.">
@@ -131,7 +132,8 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
     </>;
   }
   const result = await api(url(endpoint + '/directory', { page, q: search, status }), auth.token) as Paged<StaffRecord>;
-  if (production) return <ProductionStaffDirectory rows={result.rows} self={auth.staff.id} create={canInvite}>
+  if (production) return <ProductionStaffDirectory rows={result.rows} self={auth.staff.id} create={canInvite}
+    canUpdate={write && has(auth.staff, 'user.update')} canPermissions={write && superAdmin(auth.staff)} canDelete={write && has(auth.staff, 'user.delete')}>
     <Pages path="/dashboard/staffs" result={result} filters={{ q: search, status }}/>
   </ProductionStaffDirectory>;
   return <><PageHeading eyebrow={title} title="Staff directory" description="Review team access across all business locations.">

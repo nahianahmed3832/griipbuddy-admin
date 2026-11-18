@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
     if (!auth) return reject('Sign in required.', 401);
     if (!['user.view', 'manage-permissions'].every(key => has(auth.staff, key))) return reject('Export permission required.', 403);
     const query = Object.fromEntries(customerFilters.map(key => [key, request.nextUrl.searchParams.get(key)?.slice(0, 100)]));
-    const response = await requestApi(url(root + '/export', query), auth.token);
+    const production = request.nextUrl.searchParams.get('view') === 'production';
+    const response = await requestApi(url(root + '/export', {
+      ...query, ...(production && { view: 'production', region: request.nextUrl.searchParams.get('region') ?? 'BD' }),
+    }), auth.token);
     if (!response.ok) {
       return reject(response.status === 422 ? 'Narrow the filters to export up to 10,000 accounts.' : 'Customer export is unavailable.', response.status);
     }

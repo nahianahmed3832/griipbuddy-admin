@@ -2,9 +2,10 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { adminPath } from '@/lib/paths';
 
-export function CustomerPassword({ id, revision, back }: { id: string; revision: string | null; back: string }) {
+export function CustomerPassword({ id, revision, back, production = false }: { id: string; revision: string | null; back: string; production?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -29,16 +30,17 @@ export function CustomerPassword({ id, revision, back }: { id: string; revision:
     } catch { setFeedback('The service did not confirm the change. Refresh the profile before retrying.'); }
     finally { setBusy(false); }
   }
-  return <form className="panel padded stack-form" onSubmit={change}>
+  return <form className={production ? 'stack-form' : 'panel padded stack-form'} onSubmit={change}>
     <fieldset className="editor-fieldset" disabled={busy}>
-      <legend>Set a new customer password</legend>
+      {!production && <legend>Set a new customer password</legend>}
       <div className="editor-grid">
         <label>New password<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
         <label>Confirm password<input name="confirmation" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
         <label>Reason<textarea name="reason" minLength={8} maxLength={400} rows={3} placeholder="Record why the reset was requested. Leave the password out of this field." required/></label>
       </div>
     </fieldset>
-    <div className="page-actions"><button className="button primary" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button></div>
+    <div className="page-actions">{production && <Link className="button secondary" href={back}>Cancel</Link>}
+      <button className="button primary" disabled={busy}>{busy ? 'Saving…' : production ? 'Change Password' : 'Change password'}</button></div>
     {feedback && <p role="alert" className="notice warn">{feedback}</p>}
   </form>;
 }
