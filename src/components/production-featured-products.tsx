@@ -1,9 +1,11 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import * as Popover from '@radix-ui/react-popover';
+import { Search, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { adminPath } from '@/lib/paths';
-import { productionCmsPreview } from '@/lib/production-cms-media';
+import { contentProductImage } from '@/lib/content-products';
+import { useProductOptions } from './content-product-picker';
 import styles from './production-content.module.css';
 
 export type FeaturedVariant = { product: string; variant: string; name: string; sku: string; image?: string };
@@ -11,25 +13,19 @@ export type FeaturedVariant = { product: string; variant: string; name: string; 
 export function ProductionFeaturedProducts({ initial, canAdd, canRemove }: { initial: FeaturedVariant[]; canAdd: boolean; canRemove: boolean }) {
   const [rows, setRows] = useState(initial);
   const [chosen, setChosen] = useState<FeaturedVariant>();
-  const [searching, setSearching] = useState(false);
   const [term, setTerm] = useState('');
-  const [options, setOptions] = useState<FeaturedVariant[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSearching(true);
-    setMessage('');
-    try {
-      const response = await fetch(adminPath('/api/featured-variants?q=' + encodeURIComponent(term.trim())));
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message);
-      setOptions(result);
-      if (!result.length) setMessage('No matching products.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not search product variants.'); }
-    finally { setSearching(false); }
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [removing, setRemoving] = useState<FeaturedVariant>();
+  const { options, message: searchMessage, clear } = useProductOptions<FeaturedVariant>('/api/featured-variants', term, open);
+  const grouped = new Map<string, FeaturedVariant[]>();
+  for (const row of options) {
+    const variants = grouped.get(row.product) ?? [];
+    variants.push(row);
+    grouped.set(row.product, variants);
   }
 
   async function save(remove?: string) {
@@ -46,6 +42,7 @@ export function ProductionFeaturedProducts({ initial, canAdd, canRemove }: { ini
       if (!response.ok) throw new Error(result.message);
       setRows(result);
       setChosen(undefined);
+      if (remove) { dialog.current?.close(); setRemoving(undefined); }
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not change the featured products.'); }
     finally { setBusy(false); }
   }
@@ -54,24 +51,42 @@ export function ProductionFeaturedProducts({ initial, canAdd, canRemove }: { ini
     <header className={styles.heading}><div><h1>Featured Products</h1></div></header>
     {canAdd && <section className={styles.bannerCard}>
       <h2>Add New Featured Product</h2>
-      <button type="button" className="button secondary" aria-expanded={open} onClick={() => setOpen(!open)}>{chosen ? chosen.name + ' · ' + chosen.sku : 'Select product...'}</button>
-      {open && <form className={styles.bannerCard} onSubmit={search}>
-        <label>Search products<input type="search" maxLength={100} value={term} onChange={event => setTerm(event.target.value)}/></label>
-        <button className="button secondary" disabled={searching || term.trim().length < 2}>Search</button>
-        {options.map(row => <button type="button" className="button subtle" key={row.variant}
-          onClick={() => { setChosen(row); setOpen(false); }}>{row.name} · {row.sku}</button>)}
-      </form>}
+      <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (!next) { clear(); setTerm(''); } }}>
+        <Popover.Trigger type="button" className={styles.productTrigger}>{chosen ? chosen.name + ' · ' + chosen.sku : 'Select product...'}</Popover.Trigger>
+        <Popover.Content className={styles.productPopover} sideOffset={4} align="start" aria-label="Product variants">
+          <label><Search size={16} aria-hidden="true"/><input type="search" aria-label="Search products" placeholder="Search products..."
+            maxLength={100} value={term} onChange={event => { clear(); setTerm(event.target.value); }}/></label>
+          {searchMessage && <p role="status">{searchMessage}</p>}
+          <ul>{Array.from(grouped, ([product, variants]) => <li key={product}>
+            <strong>{variants[0].name}</strong>
+            <ul>{variants.map(row => <li key={row.variant}><button type="button" disabled={rows.some(item => item.variant === row.variant)}
+              onClick={() => { setChosen(row); setOpen(false); clear(); setTerm(''); }}>{row.sku}</button></li>)}</ul>
+          </li>)}</ul>
+        </Popover.Content>
+      </Popover.Root>
       <button type="button" className="button primary" disabled={!chosen || busy || rows.length >= 3} onClick={() => void save()}>Make Featured Product</button>
     </section>}
-    {message && <p role="status">{message}</p>}
+    {message && !removing && <p role="alert" className="notice warn">{message}</p>}
     {rows.length > 0 && <div className={styles.bannerRows}>{rows.map(row => <article className={styles.bannerCard} key={row.variant}>
-      {row.image && (
+      {contentProductImage(row.image) && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className={styles.bannerImage} src={productionCmsPreview(row.image)} alt="" referrerPolicy="no-referrer"/>
+        <img className={styles.bannerImage} src={contentProductImage(row.image)} alt="" referrerPolicy="no-referrer"/>
       )}
       <h2>{row.name}</h2><p>{row.sku}</p>
       {canRemove && <button type="button" className="button subtle" aria-label={'Remove ' + row.name} disabled={busy}
-        onClick={() => { if (window.confirm('Remove this featured product?')) void save(row.variant); }}><Trash2 size={16}/></button>}
+        onClick={() => { setMessage(''); setRemoving(row); dialog.current?.showModal(); }}><Trash2 size={16}/></button>}
     </article>)}</div>}
+    <dialog ref={dialog} className={styles.dialog} aria-labelledby="delete-featured-title"
+      onCancel={event => { if (busy) event.preventDefault(); }} onClose={() => setRemoving(undefined)}>
+      <h2 id="delete-featured-title">Remove Featured Product</h2>
+      <p>Remove {removing?.name} · {removing?.sku} from the featured products?</p>
+      {message && <p role="alert" className="notice warn">{message}</p>}
+      <div className="page-actions">
+        <button type="button" className="button secondary" disabled={busy} onClick={() => dialog.current?.close()}>Cancel</button>
+        <button type="button" className="button primary" disabled={busy || !removing} onClick={() => removing && void save(removing.variant)}>
+          {busy ? 'Removing…' : 'Remove'}
+        </button>
+      </div>
+    </dialog>
   </section>;
 }

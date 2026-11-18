@@ -33,8 +33,11 @@ const config = {
     })), ...['/desk/content/:path*', '/dashboard/hero-section', '/dashboard/banner-update', '/dashboard/homepage/:path*',
       '/dashboard/featured-products', '/dashboard/offer-page'].map(source => ({
       source,
-      headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https:;") }],
+      headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https: blob:; media-src 'self' https: blob:;") }],
     })), {
+      source: '/dashboard/create-customer',
+      headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: blob:;") }],
+    }, {
       source: '/dashboard/update-product/:path*',
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https: blob:;") }],
     }];

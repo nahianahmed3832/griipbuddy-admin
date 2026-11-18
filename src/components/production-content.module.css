@@ -14,7 +14,7 @@
 .form .upload { display: grid; justify-items: center; padding: 18px 12px; border: 2px dashed #dedee3; border-radius: 8px; color: #55555f; cursor: pointer; }
 .upload input { max-width: 100%; }
 @media (max-width: 600px) { .form fieldset { padding: 16px; } }
-.heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .form fieldset > h2 { margin: 0 0 16px; font-size: 16px; font-weight: 600; }
 .form .upload { min-height: 70px; }
 .tips { padding: 16px; border: 1px solid #cfe3ff; border-radius: 8px; background: #eff6ff; color: #1555a8; }
@@ -28,3 +28,38 @@
 .bannerUpload small { display: block; color: #71717f; }
 .bannerRows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 12px; }
 .bannerImage { max-width: 100%; height: auto; max-height: 300px; object-fit: contain; justify-self: center; }
+.productTrigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 36px; padding: 6px 12px; color: inherit; background: white; border: 1px solid #dedee3; border-radius: 8px; text-align: left; cursor: pointer; }
+.productPopover { z-index: 40; width: max(var(--radix-popover-trigger-width), min(240px, 90vw)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 4px; border: 1px solid #dedee3; border-radius: 8px; background: white; box-shadow: 0 4px 12px #0002; color: #111114; }
+.productPopover label { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid #dedee3; }
+.productPopover label input { flex: 1; min-width: 0; width: 100%; border: 0; min-height: 36px; font: inherit; }
+.productPopover :is(ul,p), .selectedProducts { margin: 0; padding: 4px; list-style: none; }
+.productPopover ul { max-height: 260px; overflow: auto; }
+.productPopover li > button { display: block; width: 100%; border: 0; background: transparent; border-radius: 6px; text-align: left; cursor: pointer; }
+.productPopover li > button:is(:hover,:focus-visible) { background: #e6f4ee; }
+.productPopover li > button:disabled { opacity: .55; cursor: default; }
+.productReference { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 34px; color: inherit; }
+.productReference > :is(img,svg) { flex: none; width: 29px; height: 29px; border-radius: 5px; object-fit: cover; color: #71717f; }
+.productReference > span { overflow-wrap: anywhere; }
+.productReference > button { margin-left: auto; }
+.selectedProducts { display: grid; gap: 4px; }
+.selectedProducts li { padding: 2px 6px; border: 1px solid #e9e9ed; border-radius: 7px; }
+.bannerCard h2 { margin: 0; font-size: 16px; }
+.bannerCard p { margin: 0; color: #71717f; }
+.dialog { width: min(640px, calc(100% - 24px)); max-height: 90vh; padding: 24px; border: 1px solid #dedee3; border-radius: 14px; background: white; color: #111114; box-shadow: 0 12px 36px #0003; }
+.dialog::backdrop { background: #0006; }
+.dialog h2 { margin: 0; font-size: 18px; }
+.dialog p { margin: 0; }
+.dialog > p { margin: 12px 0; }
+.dialog :global(.page-actions) { justify-content: flex-end; }
+.dialogFields { display: grid; gap: 10px; border: 0; margin: 0; padding: 0; }
+.addGroup { display: grid; place-items: center; align-content: center; gap: 8px; min-height: 160px; padding: 16px; border: 2px dashed #dedee3; border-radius: 14px; background: white; color: inherit; cursor: pointer; }
+.addGroup svg { color: #009b68; }
+.addGroup span { color: #71717f; font-size: 14px; }
+.heroGrid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); align-items: flex-start; }
+.heroGrid .upload { min-height: 96px; }
+.heroGrid :global(.editor-grid) { grid-template-columns: minmax(0, 1fr); }
+.heroGrid > :is(:global(.page-actions), p) { grid-column: 1 / -1; }
+.selectItem { display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 5px; outline: none; cursor: pointer; }
+.selectItem[data-highlighted] { background: #e6f4ee; }
+.groupPreview { display: flex; flex-wrap: wrap; gap: 8px; }
+.groupPreview > :is(img,span) { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #e3e3e6; border-radius: 8px; background: #f4f4f5; object-fit: cover; color: #71717f; }

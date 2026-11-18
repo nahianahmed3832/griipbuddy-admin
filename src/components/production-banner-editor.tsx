@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import { productionCmsPreview } from '@/lib/production-cms-media';
-import { ContentProductPicker } from './content-product-picker';
+import type { ContentProduct } from '@/lib/content-products';
+import { ContentProductPicker, ProductReferences } from './content-product-picker';
 import styles from './production-content.module.css';
 
 type Banner = { _id?: string; banner_url: string; products_id: string[] };
@@ -18,15 +19,15 @@ const groups: { id: Kind; title: string; add: string }[] = [
   { id: 'mobile_banners', title: 'Mobile Banners', add: 'Add Mobile Banner' },
 ];
 
-export function ProductionBannerEditor({ doc, writable, allowUploads, allowProducts }: {
-  doc: Document; writable: boolean; allowUploads: boolean; allowProducts: boolean;
+export function ProductionBannerEditor({ doc, writable, allowUploads, allowProducts, products }: {
+  doc: Document; writable: boolean; allowUploads: boolean; allowProducts: boolean; products: ContentProduct[];
 }) {
   return <div className={styles.page}>{groups.map(group => <BannerGroup key={group.id + (doc.updatedAt || '')}
-    {...group} rows={doc[group.id] || []} doc={doc} writable={writable} allowUploads={allowUploads} allowProducts={allowProducts}/>)}</div>;
+    {...group} rows={doc[group.id] || []} doc={doc} writable={writable} allowUploads={allowUploads} allowProducts={allowProducts} productOptions={products}/>)}</div>;
 }
 
-function BannerGroup({ id, title, add, rows, doc, writable, allowUploads, allowProducts }: {
-  id: Kind; title: string; add: string; rows: Banner[]; doc: Document; writable: boolean; allowUploads: boolean; allowProducts: boolean;
+function BannerGroup({ id, title, add, rows, doc, writable, allowUploads, allowProducts, productOptions }: {
+  id: Kind; title: string; add: string; rows: Banner[]; doc: Document; writable: boolean; allowUploads: boolean; allowProducts: boolean; productOptions: ContentProduct[];
 }) {
   const router = useRouter();
   const [source, setSource] = useState('');
@@ -80,8 +81,8 @@ function BannerGroup({ id, title, add, rows, doc, writable, allowUploads, allowP
     <h1>{title}</h1>
     {writable && <form className={styles.bannerCard} onSubmit={addBanner}>
       {allowUploads ? <label className={styles.bannerUpload}><Plus size={22}/><span>{source ? 'Replace image' : 'Click to upload'}
-        <small>Supported: .webp (preferred), .png, .jpg, .jpeg (max: 5MB)</small></span>
-        <input type="file" hidden accept="image/webp,image/png,image/jpeg,image/avif" disabled={busy} onChange={event => {
+        <small>Supported: .webp (preferred), .png, .jpg, .jpeg, .svg, .ico (max: 5MB)</small></span>
+        <input type="file" hidden accept="image/webp,image/png,image/jpeg,image/avif,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico" disabled={busy} onChange={event => {
           const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file);
         }}/>
       </label> : <label>Image URL<input type="url" value={source} onChange={event => setSource(event.currentTarget.value)}/></label>}
@@ -92,7 +93,7 @@ function BannerGroup({ id, title, add, rows, doc, writable, allowUploads, allowP
     {error && <p className="notice warn" role="alert">{error}</p>}
     {rows.length > 0 && <div className={styles.bannerRows}>{rows.map((banner, index) => <article className={styles.bannerCard} key={banner._id || banner.banner_url + index}>
       <BannerImage source={banner.banner_url}/>
-      {banner.products_id.length > 0 && <span>{banner.products_id.length} linked {banner.products_id.length === 1 ? 'product' : 'products'}</span>}
+      {allowProducts && banner.products_id?.length > 0 && <ProductReferences ids={banner.products_id} products={productOptions}/>}
       {writable && <button type="button" className="button subtle" aria-label={'Delete banner ' + (index + 1)} disabled={busy}
         onClick={() => { if (window.confirm('Delete this banner?')) void mutate(rows.filter((_, position) => position !== index)); }}><Trash2 size={16}/></button>}
     </article>)}</div>}

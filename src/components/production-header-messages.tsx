@@ -1,6 +1,6 @@
 'use client';
 
-import { Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
@@ -84,7 +84,9 @@ export function HeaderMessages({ messages, create, edit, remove }: {
           </form> : <>
             <span className={styles.position}>{index + 1}</span>
             <div className={styles.messageBody}><strong>{message.message}</strong><small>{message.enabled ? 'Enabled' : 'Disabled'}</small></div>
-            <Toggle label={'Show on website: ' + message.message} checked={message.enabled} disabled={!edit || locked} onChange={() => void submit('toggle', message.id)}/>
+            <button className={styles.icon} type="button" title={message.enabled ? 'Disable' : 'Enable'}
+              aria-label={(message.enabled ? 'Disable ' : 'Enable ') + message.message} disabled={!edit || locked}
+              onClick={() => void submit('toggle', message.id)}>{message.enabled ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
             <button className={styles.icon} type="button" title="Edit" aria-label="Edit" disabled={!edit || locked} onClick={() => setEditing(message)}><Pencil size={16}/></button>
             <button className={`${styles.icon} ${styles.error}`} type="button" title="Delete" aria-label="Delete" disabled={!remove || locked}
               onClick={() => void submit('delete', message.id)}><Trash2 size={16}/></button>

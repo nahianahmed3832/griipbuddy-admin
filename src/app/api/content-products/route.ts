@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { api, ApiError, arr, mongoId, obj, session, str, url } from '@/lib/api';
+import { api, ApiError, arr, mongoId, obj, session, url } from '@/lib/api';
+import { contentProduct } from '@/lib/content-products';
 import { has } from '@/lib/sections';
 
 const headers = { 'Cache-Control': 'private, no-store' };
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const result = obj(await api(url('/product/admin/all', {
       region:'BD', searchQuery:search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), page:'1', limit:'20',
     }), auth.token));
-    return Response.json(arr(result.data).map(obj).map(row => ({ id:str(row._id), name:str(row.name) || str(row.sku) }))
+    return Response.json(arr(result.data).map(contentProduct)
       .filter(row => mongoId(row.id) && row.name), { headers });
   } catch (error) {
     return new Response('Products are unavailable.', { status: error instanceof ApiError ? error.status : 503, headers });

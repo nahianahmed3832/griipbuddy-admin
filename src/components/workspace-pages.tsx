@@ -6,6 +6,8 @@ import { has, type Region } from '@/lib/sections';
 import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
 import { ContentEditor } from './content-editor';
 import { ProductionFeaturedProducts, type FeaturedVariant } from './production-featured-products';
+import { ProductionNewArrivals } from './production-new-arrivals';
+import { contentProduct, productReferences } from '@/lib/content-products';
 import { ProductionBannerEditor } from './production-banner-editor';
 import { PageHeading } from './dashboard';
 import { PosEditor, type SaleDraft } from './pos-editor';
@@ -71,10 +73,21 @@ export async function ContentWorkspace({ auth, section, region, production = fal
   const carouselEnabled = !production && process.env.GRIIP_ADMIN_TARGET === 'integration';
   const allowUploads = production ? pinnedAdminGatewayConfigured() : carouselEnabled && Boolean(process.env.GRIIP_ADMIN_CAMPAIGN_MEDIA_DIR);
   const writable = advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'cms.update');
+  const allowProducts = has(auth.staff, 'product.view');
+  const references = production && allowProducts ? [...new Set(
+    section === 'banners'
+      ? [doc.banners, doc.mobile_banners, doc.featured_products].flatMap(productReferences)
+      : section?.startsWith('homepage.') ? productReferences(obj(doc.homepage)[section.split('.')[1]]) : [],
+  )] : [];
+  const products = (await Promise.all(Array.from({ length: Math.ceil(references.length / 100) }, (_, chunk) =>
+    api(url('/cms/admin/workspace-products', { ids: references.slice(chunk * 100, chunk * 100 + 100).join(',') }), auth.token)
+      .then(arr).catch(() => [])))).flat().map(contentProduct);
+  if (production && section === 'homepage.new_arrivals') return <ProductionNewArrivals key={str(doc.updatedAt)}
+    doc={doc} products={products} writable={writable} allowProducts={allowProducts}/>;
   if (production && section === 'banners') return <ProductionBannerEditor doc={doc}
-    writable={writable} allowUploads={allowUploads} allowProducts={has(auth.staff, 'product.view')}/>;
+    writable={writable} allowUploads={allowUploads} allowProducts={allowProducts} products={products}/>;
   if (production) return <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories}
-    carouselEnabled={false} production allowProductSearch={has(auth.staff, 'product.view')} allowUploads={allowUploads} writable={writable}/>;
+    carouselEnabled={false} production allowProductSearch={allowProducts} allowUploads={allowUploads} writable={writable} productOptions={products}/>;
   return <>
     <PageHeading eyebrow="STOREFRONT / CONTENT" title={section ? ({hero_section:carouselEnabled ? 'Homepage carousel' : 'Hero section', 'homepage.shop_by_category':'Shop by category', 'homepage.best_selling':'Best selling', 'homepage.new_arrivals':'New arrivals', 'homepage.leather_section':'Leather section', banners:'Banners', featured_products:'Featured products'}[section] ?? 'Storefront content') : 'Content and SEO'}
       description="Edit store content and homepage merchandising.">
