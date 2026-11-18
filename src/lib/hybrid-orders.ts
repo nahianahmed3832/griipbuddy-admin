@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, str, url, type Session } from './api';
 import { has, superAdmin, type Region } from './sections';
 import { hybridStatusLabels, type HybridFulfillment, type HybridShipment } from './hybrid-fulfillment';
-import type { Listing, Order, OrderDetail, OrderFilters } from './website-orders';
+import type { Listing, Order, OrderDetail, OrderFilters, OrderLocation } from './website-orders';
 
 const orderIdPrefix = 'hybrid-';
 const uuid = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
@@ -18,6 +18,7 @@ type HybridOrder = {
   id: string; reference: string; createdAt: string; status: string; fulfillmentStatus: string; currency: 'BDT';
   districtLabel: string; totalMinor: number; subtotalMinor?: number; discountMinor?: number; deliveryMinor?: number; taxMinor?: number;
   items: HybridItem[];
+  shippingWarehouseId?: string | null; shippingWarehouseName?: string | null;
   payment: { method: string; status: string; amountMinor: number; collectedAt?: string | null } | null;
   bangladeshShipment: (HybridShipment & { statusUpdatedAt?: string }) | null;
   bangladeshRefusedParcelReceipt?: HybridFulfillment['receipt'];
@@ -67,8 +68,17 @@ export async function saveHybridFulfillment(id: string, auth: Session, region: R
   if ((command.action === 'receive' || command.action === 'track' && command.status === 'REFUSED') && !connection.canReturn) {
     throw new ApiError(403, 'Access denied.');
   }
+  const assignedWarehouseId = assignedHybridWarehouse(auth);
+  const { warehouseId: requestedWarehouse, ...signedCommand } = command;
+  const warehouseId = str(requestedWarehouse);
+  if (command.action === 'advance' && command.next === 'SHIPPED') {
+    if (!mongoId(warehouseId)) throw new ApiError(400, 'Choose a shipping warehouse.');
+    const [warehouse] = await loadHybridWarehouses(auth, region, warehouseId);
+    if (!warehouse || warehouse.value !== warehouseId.toLowerCase()) throw new ApiError(403, 'Choose an available shipping warehouse.');
+    signedCommand.warehouse = { id: warehouse.value, name: warehouse.label };
+  }
   const name = auth.staff.name.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120) || 'Admin operator';
-  const body = JSON.stringify({ id, operator: { id: auth.staff.id.toLowerCase(), name, canReturn: connection.canReturn }, command });
+  const body = JSON.stringify({ id, operator: { id: auth.staff.id.toLowerCase(), name, canReturn: connection.canReturn, assignedWarehouseId }, command: signedCommand });
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = createHmac('sha256', Buffer.from(connection.secret, 'hex'))
     .update('griipbuddy/hybrid-fulfillment/v1\n' + timestamp + '\n' + body).digest('hex');
@@ -102,14 +112,34 @@ function visibleStatus(order: HybridOrder) {
   return 'PLACED';
 }
 
-export function canReadHybridReports(auth: Session, region: Region, locations?: string) {
-  return !locations && (!auth.staff.assignedLocation || superAdmin(auth.staff)) && !!checkoutConnection(auth, region);
+export function canReadHybridReports(auth: Session, region: Region) {
+  return !!checkoutConnection(auth, region);
+}
+
+function assignedHybridWarehouse(auth: Session) {
+  const value = auth.staff.assignedLocation;
+  return !superAdmin(auth.staff) && value && mongoId(value) ? value.toLowerCase() : undefined;
+}
+
+export function hybridReportLocations(auth: Session, locations?: string) {
+  const assigned = assignedHybridWarehouse(auth);
+  const requested = locations?.split(',').map(value => value.toLowerCase());
+  if (requested?.some(value => !mongoId(value)) || (requested?.length ?? 0) > 20) {
+    throw new ApiError(400, 'Choose valid warehouse locations.');
+  }
+  if (assigned && requested?.some(value => value !== assigned)) throw new ApiError(403, 'Choose your assigned location.');
+  return assigned ?? requested?.join(',');
+}
+
+async function loadHybridWarehouses(auth: Session, region: Region, location?: string) {
+  if (!has(auth.staff, 'business_locations.view')) throw new ApiError(403, 'Warehouse access is required.');
+  return await api(url('/order/workspace/warehouses', { region, location }), auth.token) as OrderLocation[];
 }
 
 export type HybridReportOrder = {
   status: string; placedAt: number; totalMinor: number; productMinor: number; discountMinor: number; units: number;
   awaitingPayment: boolean; claimedMinor: number; inTransit: boolean; uncollectedCodMinor: number; dispatched: boolean;
-  id: string; reference: string; district: string; statusAt: number; dispatchedAt?: number; deliveredAt?: number; deliveryMinor: number;
+  id: string; reference: string; district: string; warehouse?: string; statusAt: number; dispatchedAt?: number; deliveredAt?: number; deliveryMinor: number;
   wasDelivered: boolean; lines: HybridReportLine[]; returns: HybridReportReturn[];
 };
 export type HybridReportLine = { id: string; sku: string; name: string; productId?: string;
@@ -132,15 +162,18 @@ function returnLine(item: HybridItem, quantity: number): HybridReportLine {
 export async function loadHybridReportOrders(auth: Session, region: Region, scope: {
   locations?: string; from?: string; to?: string; active?: boolean; milestones?: boolean;
 }): Promise<HybridReportData | null> {
-  if (!canReadHybridReports(auth, region, scope.locations)) return null;
+  if (!canReadHybridReports(auth, region)) return null;
+  const locations = hybridReportLocations(auth, scope.locations);
   const connection = checkoutConnection(auth, region)!;
   const validNumber = (value: number) => Number.isSafeInteger(value) && value >= 0;
   try {
     const listing = await checkoutRead<{ workspaceOrders?: HybridOrder[]; reportOrders?: HybridOrder[]; tooMany: boolean }>(
-      connection, { view: scope.milestones ? 'reporting' : 'workspace', from: scope.from, to: scope.to, active: scope.active ? '1' : undefined }, 5000);
+      connection, { view: scope.milestones ? 'reporting' : 'workspace', from: scope.from, to: scope.to, locations, active: scope.active ? '1' : undefined }, 5000);
     if (listing.tooMany) return { orders: [], issue: 'Hybrid checkout exceeds the reporting feed limit. These figures cover legacy orders.' };
     const seen = new Set<string>();
-    const orders = (scope.milestones ? listing.reportOrders! : listing.workspaceOrders!).map(order => {
+    const selected = locations?.split(',');
+    const orders = (scope.milestones ? listing.reportOrders! : listing.workspaceOrders!)
+      .filter(order => !selected || order.shippingWarehouseId && selected.includes(order.shippingWarehouseId)).map(order => {
       const placedAt = Date.parse(order.createdAt);
       if (seen.has(order.id) || order.currency !== 'BDT' || !Number.isFinite(placedAt) || !validNumber(order.totalMinor)
         || !order.items.length || order.items.some(item => !validNumber(item.quantity) || item.quantity === 0 || !validNumber(item.lineTotalMinor)
@@ -172,7 +205,7 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
       });
       return {
         status, placedAt, totalMinor: order.totalMinor, inTransit, awaitingPayment,
-        id: orderIdPrefix + order.id, reference: order.reference, district: order.districtLabel,
+        id: orderIdPrefix + order.id, reference: order.reference, district: order.districtLabel, warehouse: order.shippingWarehouseName ?? undefined,
         dispatchedAt, deliveredAt, deliveryMinor: order.deliveryMinor ?? 0,
         wasDelivered: deliveredAt != null || order.fulfillmentStatus === 'DELIVERED' || order.bangladeshShipment?.status === 'DELIVERED',
         statusAt: (status === 'RETURN_REQUESTED' ? openReturnAt : undefined) ?? eventTime(order.bangladeshShipment?.statusUpdatedAt) ??
@@ -203,6 +236,9 @@ function orderRow(order: HybridOrder): Order {
     status: visibleStatus(order), currency: 'BDT', total_amount: amount(order.totalMinor),
     ...(paid && { paid_amount: amount(order.payment?.amountMinor) }), ...(due && { COD: amount(order.payment?.amountMinor) }),
     order_by: 'Online checkout', delivery_address: { district: order.districtLabel },
+    ...(order.shippingWarehouseId && order.shippingWarehouseName && {
+      assigned_business_location: { _id: order.shippingWarehouseId, name: order.shippingWarehouseName },
+    }),
     products: order.items.map(item => ({ name: item.productName, sku: item.sku, quantity: item.quantity, unitPrice: amount(item.unitPriceMinor),
       amount: amount(item.lineTotalMinor), attributes: item.variantName ? [item.variantName] : [] })),
     checkoutProjection: true, tracking_code: order.bangladeshShipment?.trackingReference,
@@ -214,7 +250,11 @@ export async function getHybridOrder(id: string, auth: Session, region: Region):
   if (!connection || !uuid.test(id)) throw new ApiError(404);
   const order = await checkoutRead<HybridOrder>(connection, { id });
   if (order.id !== id || order.currency !== 'BDT' || !Array.isArray(order.items)) throw new ApiError(502);
+  const assigned = assignedHybridWarehouse(auth);
+  if (assigned && order.shippingWarehouseId && assigned !== order.shippingWarehouseId) throw new ApiError(404, 'Order not found.');
   const editable = checkoutFulfillmentConnection(auth, region);
+  const warehouseChoices = editable && order.status === 'PLACED' && order.fulfillmentStatus === 'READY_TO_SHIP'
+    ? await loadHybridWarehouses(auth, region).catch(() => []) : [];
   const activity = (order.events ?? []).map(event => ({ by: event.actor?.name ?? 'Online checkout', at: event.createdAt,
     text: event.type === 'ORDER_PLACED' ? 'Order placed' : event.type === 'ORDER_CANCELLED' ? 'Cancelled' : hybridStatusLabels[event.status] ?? event.status }));
   return {
@@ -224,7 +264,8 @@ export async function getHybridOrder(id: string, auth: Session, region: Region):
       notes: [], activity, statusHistory: [], discounts: [] },
     fulfillment: { status: order.status, step: order.fulfillmentStatus, payment: order.payment, shipment: order.bangladeshShipment,
       receipt: order.bangladeshRefusedParcelReceipt ?? null, manualPayment: editable ? order.manualPayment ?? null : null,
-      editable: !!editable, canReturn: editable?.canReturn ?? false },
+      editable: !!editable, canReturn: editable?.canReturn ?? false, warehouseChoices,
+      shippingWarehouse: order.shippingWarehouseName ?? undefined },
   };
 }
 
@@ -235,11 +276,13 @@ export async function loadWebsiteOrders(auth: Session, region: Region, filters: 
   const native = (ahead?: number) => api(url('/order/workspace/orders', { region, ...filters, page, limit,
     includeAhead: ahead ? String(ahead) : undefined }), auth.token) as Promise<Listing & { start?: number }>;
   const connection = checkoutConnection(auth, region);
-  if (!connection || filters.location || filters.called === 'true' || (filters.creator && !['USER', 'GUEST'].includes(filters.creator))) {
+  if (!connection || filters.called === 'true' || (filters.creator && !['USER', 'GUEST'].includes(filters.creator))) {
     return exportOrders ? null : native();
   }
+  const locations = hybridReportLocations(auth, filters.location);
   const projected = await checkoutRead<{ workspaceOrders: HybridOrder[]; tooMany: boolean }>(connection, {
     view: 'workspace', q: filters.q, sku: filters.sku, from: filters.from, to: filters.to, creator: filters.creator,
+    locations,
   }).catch(reason => {
     if (reason instanceof ApiError && reason.status === 400) throw reason;
     if (exportOrders) throw new ApiError(503, 'Checkout orders are temporarily unavailable.');
@@ -247,7 +290,7 @@ export async function loadWebsiteOrders(auth: Session, region: Region, filters: 
   });
   if (projected === null) return { ...await native(), hybridUnavailable: true };
   if (projected.tooMany) throw new ApiError(422);
-  const orders = projected.workspaceOrders.map(orderRow);
+  const orders = projected.workspaceOrders.filter(order => !locations || order.shippingWarehouseId === locations).map(orderRow);
   if (!orders.length) return exportOrders ? null : native();
 
   const statuses = new Set(filters.filter?.split(',').filter(Boolean));

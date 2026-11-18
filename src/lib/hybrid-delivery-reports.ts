@@ -8,8 +8,8 @@ import type { Region } from './sections';
 
 const mergedReports = ['sales-summary', 'sales-by-product', 'order-status', 'pending-fulfilment', 'returns-rts'];
 
-export function canMergeHybridReport(id: string, auth: Session, region: Region, locations?: string) {
-  return mergedReports.includes(id) && canReadHybridReports(auth, region, locations);
+export function canMergeHybridReport(id: string, auth: Session, region: Region) {
+  return mergedReports.includes(id) && canReadHybridReports(auth, region);
 }
 
 const array = (input: unknown) => arr(input).map(obj);
@@ -221,7 +221,7 @@ function pendingFulfilment(data: RecordData, orders: HybridReportOrder[]) {
     const waitingHours = hoursSince(Number(at), now);
     return [{ type, typeLabel, order: order.reference, placedAt: new Date(order.placedAt).toISOString(),
       status: statusLabels[order.status] ?? order.status, value: order.totalMinor / 100, cod: order.uncollectedCodMinor / 100,
-      waitingHours, district: order.district, _links: { order: '/dashboard/order-details/' + order.id },
+      waitingHours, district: order.district, location: order.warehouse ?? '', _links: { order: '/dashboard/order-details/' + order.id },
       _tones: { typeLabel: tone, waitingHours: waitingHours > 48 ? 'danger' : waitingHours > 24 ? 'warning' : undefined },
     }];
   });
@@ -259,7 +259,7 @@ function finalize(id: string, data: RecordData, exporting: boolean) {
 }
 
 export async function reportWithHybrid(id: string, data: RecordData, auth: Session, region: Region, locations?: string, exporting = false): Promise<RecordData> {
-  if (!canMergeHybridReport(id, auth, region, locations)) return data;
+  if (!canMergeHybridReport(id, auth, region)) return data;
   const meta = obj(data.meta);
   const range = periodOf(meta);
   const hybrid = await loadHybridReportOrders(auth, region, {

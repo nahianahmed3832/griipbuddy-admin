@@ -17,6 +17,7 @@ import { ProductionReportFilters } from './production-report-filters';
 import { ProductionReportChart, type ReportPoint } from './production-report-chart';
 import { productionReportPeriodRange } from '@/lib/production-report-period';
 import { hybridOrderId } from '@/lib/hybrid-orders';
+import { hybridReportLocations } from '@/lib/hybrid-orders';
 import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
 import './production-reports.css';
 
@@ -257,7 +258,8 @@ export async function Reports({ auth, id, q, region, production = false }: {
   const page = param(q,'page');
   const limit = production ? param(q,'limit') : undefined;
   const refresh = param(q,'refresh') === '1' ? '1' : undefined;
-  const hybridMerge = canMergeHybridReport(id, auth, region, scope.locations) ? '1' : undefined;
+  const hybridMerge = canMergeHybridReport(id, auth, region) ? '1' : undefined;
+  if (hybridMerge) scope.locations = hybridReportLocations(auth, scope.locations);
   const native = obj(await api(url('/analytics/reports/' + id,{...scope,page,limit,refresh,hybridMerge}),auth.token));
   const data = hybridMerge ? await reportWithHybrid(id, native, auth, region, scope.locations) : native;
   const report = obj(data.report);

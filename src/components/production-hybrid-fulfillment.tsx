@@ -20,7 +20,7 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ error: boolean; message: string }>();
   const [simulatedHandoff, setSimulatedHandoff] = useState(true);
-  const { step, shipment, receipt, payment } = state;
+  const { step, shipment, receipt, payment, warehouseChoices = [] } = state;
   const actions = hybridFulfillmentActions(state);
   const next = actions.next;
   const simulated = shipment?.source === 'DEV_SIMULATOR';
@@ -55,6 +55,7 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
     <h2 className={styles.cardHeading}>Fulfillment</h2>
     <div className={`${styles.shipmentOperations} ${styles.hybridFulfillment}`}>
       <p>Status: <strong>{state.status === 'CANCELLED' ? 'Cancelled' : hybridStatusLabels[shipment?.status ?? step] ?? step}</strong></p>
+      {state.shippingWarehouse && <dl><div><dt>Shipping warehouse</dt><dd>{state.shippingWarehouse}</dd></div></dl>}
       {shipment && <>
         <dl><div><dt>Carrier</dt><dd>{shipment.carrier}</dd></div><div><dt>Tracking reference</dt><dd>{shipment.trackingReference}</dd></div></dl>
         {!!shipment.events?.length && <ol aria-label="Tracking history">{shipment.events.map(event => <li key={event.status}>
@@ -68,9 +69,14 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
       {receipt?.note && <p className={styles.hybridEvidence}>Warehouse note: {receipt.note}</p>}
       {notice && <p role={notice.error ? 'alert' : 'status'} className="notice">{notice.message}</p>}
       {next && <form method="post" className={styles.operationForm} key={next} onSubmit={event => void submit(event, fields => ({ action: 'advance', next,
-        ...(next === 'SHIPPED' && (simulatedHandoff ? { simulate: true }
-          : { carrier: field(fields, 'carrier'), trackingReference: field(fields, 'trackingReference') })) }))}>
+        ...(next === 'SHIPPED' && { warehouseId: field(fields, 'warehouseId'), ...(simulatedHandoff ? { simulate: true }
+          : { carrier: field(fields, 'carrier'), trackingReference: field(fields, 'trackingReference') }) }) }))}>
         {next === 'SHIPPED' && <>
+          <label>Shipping warehouse<select name="warehouseId" required disabled={!ready || busy || !warehouseChoices.length} defaultValue="">
+            <option value="" disabled>Select warehouse</option>
+            {warehouseChoices.map(warehouse => <option key={warehouse.value} value={warehouse.value}>{warehouse.label}</option>)}
+          </select></label>
+          {!warehouseChoices.length && <p role="status">No active shipping warehouses are available for this account.</p>}
           <label className={styles.hybridChoice}><input type="checkbox" checked={simulatedHandoff} disabled={!ready || busy}
             onChange={event => setSimulatedHandoff(event.target.checked)}/> Use demo courier</label>
           {!simulatedHandoff && <>
@@ -78,7 +84,7 @@ export function ProductionHybridFulfillment({ orderId, state }: { orderId: strin
             <label>Tracking reference<input name="trackingReference" maxLength={80} required disabled={!ready || busy}/></label>
           </>}
         </>}
-        <button type="submit" className={styles.operationButton} disabled={!ready || busy}>Mark {hybridStatusLabels[next].toLowerCase()}</button>
+        <button type="submit" className={styles.operationButton} disabled={!ready || busy || next === 'SHIPPED' && !warehouseChoices.length}>Mark {hybridStatusLabels[next].toLowerCase()}</button>
       </form>}
       {actions.track.length > 0 && <form method="post" className={styles.operationForm} key={shipment?.status} onSubmit={event => void submit(event, fields => ({ action: 'track',
         status: field(fields, 'status') as HybridTrackingStep, ...(!simulated && { evidence: field(fields, 'evidence') }) }))}>

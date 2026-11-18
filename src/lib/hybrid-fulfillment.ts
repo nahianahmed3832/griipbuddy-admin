@@ -18,10 +18,12 @@ export type HybridFulfillment = {
   manualPayment: { transaction: string | null } | null;
   editable: boolean;
   canReturn: boolean;
+  shippingWarehouse?: string;
+  warehouseChoices?: { value: string; label: string }[];
 };
 
 export type HybridCommand =
-  | { action: 'advance'; next: HybridFulfillmentStep; carrier?: string; trackingReference?: string; simulate?: boolean }
+  | { action: 'advance'; next: HybridFulfillmentStep; carrier?: string; trackingReference?: string; simulate?: boolean; warehouseId?: string }
   | { action: 'track'; status: HybridTrackingStep; evidence?: string }
   | { action: 'receive'; disposition: 'RESTOCK' | 'HOLD'; note: string }
   | { action: 'collect' | 'cancel'; confirm: boolean }

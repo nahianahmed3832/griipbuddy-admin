@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { api, ApiError, getRegion, obj, requestApi, session, url } from '@/lib/api';
 import { reportIds, reportQuery } from '@/lib/data';
+import { hybridReportLocations } from '@/lib/hybrid-orders';
 import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
 import { hybridReportDownload } from '@/lib/hybrid-report-export';
 
@@ -12,7 +13,8 @@ export async function GET(req: NextRequest) {
   try {
     const region = getRegion(query.region, auth.staff);
     const scope = reportQuery(query, region);
-    if (canMergeHybridReport(query.id, auth, region, scope.locations)) {
+    if (canMergeHybridReport(query.id, auth, region)) {
+      scope.locations = hybridReportLocations(auth, scope.locations);
       const native = obj(await api(url('/analytics/reports/' + query.id, { ...scope, hybridMerge: '1', ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
       const combined = await reportWithHybrid(query.id, native, auth, region, scope.locations, true);
       if (combined !== native) return hybridReportDownload(query.id, combined, query.format as 'csv' | 'xlsx');

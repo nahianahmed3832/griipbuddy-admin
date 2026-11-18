@@ -6,7 +6,7 @@ import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, t
 import { loadLocations } from '@/lib/advanced';
 import { param, printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
-import { canReadHybridReports, loadHybridReportOrders } from '@/lib/hybrid-orders';
+import { canReadHybridReports, hybridReportLocations, loadHybridReportOrders } from '@/lib/hybrid-orders';
 import { appendQuality, comparisonStart, mergeHybridOverview, trailingStart } from '@/lib/hybrid-reporting';
 import { has, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
@@ -144,10 +144,11 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
   const names: OverviewSection[] = ['actions', 'sales', 'fulfilment', 'inventory', 'finance'];
   if (region === 'BD' && grant('pre_order.view')) names.push('preorders');
   const retry = production ? param(q, 'retry') : undefined;
-  const hybridScope = production && authorized && canReadHybridReports(auth, region, scope.locations);
+  const hybridScope = production && authorized && canReadHybridReports(auth, region);
+  if (hybridScope) scope.locations = hybridReportLocations(auth, scope.locations);
   const requests = authorized ? names.map(section =>
     api(url('/analytics/overview/' + section, { ...scope, refresh: retry === section ? '1' : refresh,
-      hybridMerge: hybridScope && section === 'fulfilment' ? '1' : undefined }), auth.token)
+      hybridMerge: hybridScope ? '1' : undefined }), auth.token)
       .then(result => result ? obj(result) : null, () => null)) : [];
   const loadStoreLocations = authorized && grant('business_locations.view') ? loadLocations(auth, region).catch(() => []) : [];
   if (production && authorized) {

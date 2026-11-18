@@ -4,7 +4,7 @@ import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, url, 
 import { param, type Query } from '@/lib/data';
 import { canOperate } from '@/lib/operations';
 import { canManage } from '@/lib/managed';
-import { getHybridOrder, hybridOrderId, loadWebsiteOrders } from '@/lib/hybrid-orders';
+import { canReadHybridReports, getHybridOrder, hybridOrderId, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { has, superAdmin, type Region } from '@/lib/sections';
 import { orderActions, orderFilterKeys, orderListQuery, ordersApi, ordersPath, statuses, type Listing, type OrderAccess, type OrderDetail, type OrderFilters,
   type OrderLocation, type ProductListing, type WebsiteOrderDraft } from '@/lib/website-orders';
@@ -47,6 +47,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
 }) {
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
   const filters = selectedFilters(q);
+  if (productionLayout && !executive && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
   const listPath = executive ? '/desk/orders/sales-executive' : ordersPath;
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
   if (executive && !Object.hasOwn(q, 'from') && !Object.hasOwn(q, 'to')) {

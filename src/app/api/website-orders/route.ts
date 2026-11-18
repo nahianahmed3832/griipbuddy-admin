@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import * as XLSX from 'xlsx';
 import { ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
 import { canManage } from '@/lib/managed';
-import { loadWebsiteOrders } from '@/lib/hybrid-orders';
+import { canReadHybridReports, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { canEditManagedOrderContact, managedOrderContext } from '@/lib/order-managed-server';
 import { has } from '@/lib/sections';
 import { addressLabel, orderFilterKeys, type Listing } from '@/lib/website-orders';
@@ -80,6 +80,7 @@ export async function GET(request: NextRequest) {
     if (!has(auth.staff, 'order.view')) return reject('Access denied.', 403);
     if (action === 'export') {
       const filters = Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)]));
+      if (q.get('checkout') === '1' && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
       const listing = q.get('checkout') === '1' ? await loadWebsiteOrders(auth, region, filters, undefined, 'all', { exportOrders: true }) : null;
       return listing ? workbook(listing) : await forward(url('/export', { region, ...filters }), auth.token, undefined, 'xlsx');
     }

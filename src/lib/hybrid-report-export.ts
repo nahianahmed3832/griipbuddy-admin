@@ -37,10 +37,11 @@ export function hybridReportDownload(reportId: string, result: RecordData, forma
     const option = arr(filter.options).map(obj).find(option => option.value === value);
     return value ? [[str(filter.label), str(option?.label) || value]] : [];
   });
+  const locations = arr(meta.locationNames).length ? arr(meta.locationNames) : arr(meta.locations);
   const overview: Cell[][] = [
     ['Report', title], ...(from && to ? [['Period', from + ' to ' + to + ' (' + timezone + ')']] : []),
     ['Date basis', str(report.dateBasis)], ['Region', 'BD (BDT)'],
-    ...(report.usesLocations ? [['Locations', 'All']] : []), ...filters,
+    ...(report.usesLocations ? [['Locations', locations.map(str).join(', ') || 'All']] : []), ...filters,
     ...(Number.isFinite(asOf) ? [['Generated', time.format(asOf) + ' (' + timezone + ')']] : []),
     ...arr(result.quality).map(flag => ['Note', str(obj(flag).message)]),
   ];
