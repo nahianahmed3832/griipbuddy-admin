@@ -62,9 +62,20 @@
 .receipt { display: none; }
 @media (max-width: 960px) { .create, .edit { grid-template-columns: 1fr; } .items { min-height: 420px; } }
 @media print {
-  body:has(.receipt) * { visibility: hidden; }
-  body:has(.receipt) .receipt, body:has(.receipt) .receipt * { visibility: visible; }
-  .receipt { display: block; position: absolute; top: 0; left: 0; width: 100%; max-width: 76mm; font: 12px/1.4 sans-serif; color: #111; }
+  body:has(.receipt) { margin: 0; background: white; }
+  body:has(.receipt) :not(.receipt, .receipt *, :has(.receipt)) { display: none !important; }
+  body:has(.receipt) :has(.receipt) {
+    display: block;
+    position: static;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+  }
+  .receipt { display: block; width: 100%; max-width: 76mm; font: 12px/1.4 sans-serif; color: #111; }
   .receipt header { display: grid; justify-items: center; gap: 4px; text-align: center; margin-bottom: 16px; }
   .receipt header img { object-fit: contain; }
   .receipt header strong, .receipt h2 { font-size: 16px; font-weight: 500; }
