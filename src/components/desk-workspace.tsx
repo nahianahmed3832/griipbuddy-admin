@@ -216,7 +216,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'inventory' && active === 'rates' && view.length < 2) content = await DefaultRatePage({ auth, region, q, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'rates' && view[1] === 'new') content = await DefaultRateCreatePage({ auth, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'suppliers') content = await SuppliersPage({auth, region, q, id: view[1], production: Boolean(production)});
-    else if (sectionId === 'inventory' && active === 'warehouses') content = await LocationsPage({ auth, region, q, id: view[1] });
+    else if (sectionId === 'inventory' && active === 'warehouses') content = await LocationsPage({ auth, region, q, id: view[1], production: Boolean(production) });
     else if (sectionId === 'customers' && active === 'customers') content = view[1]
       ? await CustomerProfilePage({ auth, id: view[1], q, region, production: Boolean(production) })
       : await CustomersPage({ auth, q, region, production: Boolean(production) });

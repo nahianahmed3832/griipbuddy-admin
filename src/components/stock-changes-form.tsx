@@ -33,6 +33,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<StockChangeProduct[] | null>(null);
   const [items, setItems] = useState<Line[]>([]);
+  const [outletVariants, setOutletVariants] = useState<StockChangeProduct[]>([]);
   const [expenses, setExpenses] = useState<ExpenseLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; error: boolean }>();
@@ -48,6 +49,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
     setFrom(location);
     if (location === to) setTo('');
     setItems([]);
+    setOutletVariants([]);
     setResults(null);
     setFeedback(undefined);
   }
@@ -68,6 +70,28 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
   }
   function pick(product: StockChangeProduct) {
     setItems(current => current.some(row => row.variant === product.variant) ? current : [...current, { ...product, quantity: '1', note: '' }]);
+    if (!transfer && product.regularPrice === undefined) {
+      void fetch(endpoint(mode, region, { location: from, product: product.product }), { cache: 'no-store' }).then(async response => {
+        if (!response.ok) return;
+        const variants = await response.json() as StockChangeProduct[];
+        const regularPrice = variants.find(row => row.variant === product.variant)?.regularPrice;
+        if (regularPrice !== undefined) setItems(rows => rows.map(row => row.variant === product.variant ? { ...row, regularPrice } : row));
+      }).catch(() => undefined);
+    }
+  }
+  async function selectOutletProduct(product: StockChangeProduct) {
+    if (searching) return;
+    setSearching(true); setFeedback(undefined);
+    try {
+      const response = await fetch(endpoint(mode, region, { location: from, product: product.product }), { cache: 'no-store' });
+      if (!response.ok) throw new Error((await response.text()).slice(0, 400));
+      setOutletVariants(await response.json() as StockChangeProduct[]);
+      setQuery(product.name);
+      setResults(null);
+      setItems([]);
+    } catch (error) {
+      setFeedback({ message: error instanceof Error ? error.message : 'Could not load variants.', error: true });
+    } finally { setSearching(false); }
   }
   function editItem(variant: string, values: Partial<Pick<Line, 'quantity' | 'note'>>) {
     setItems(current => current.map(item => item.variant === variant ? { ...item, ...values } : item));
@@ -96,6 +120,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
       const saved = await response.json() as { id?: string };
       if (!saved.id) throw new Error('The inventory service did not confirm this change. Check the history.');
       setItems([]);
+      setOutletVariants([]);
       setExpenses([]);
       setResults(null);
       setReason('');
@@ -110,6 +135,7 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
     }
   }
   const maximum = (row: Line) => transfer || action === 'DEDUCTION' ? Math.max(0, row.available) : 100_000;
+  const searchResults = productionOutlet && results ? [...new Map(results.map(row => [row.product, row])).values()] : results;
   return <form className={styles.form} onSubmit={submit}>
     <fieldset className="panel padded" disabled={saving || !ready}>
       <legend>{transfer ? 'Locations' : 'Location and adjustment'}</legend>
@@ -144,22 +170,39 @@ export function StockChangesForm({ locations, region, mode, productionOutlet = f
           {searching ? 'Searching…' : 'Find products'}</button>
       </div>
       {results?.length === 0 && <p>No products match at this location.</p>}
-      {!!results?.length && <ul className={styles.results} aria-label="Matching products">{results.map((product, index) => <li key={product.variant + index}>
-        <span>{product.name} · <strong>{product.sku}</strong> · {product.available} on hand</span>
-        <button type="button" className="button secondary" disabled={items.length >= 50 || items.some(row => row.variant === product.variant)}
-          onClick={() => pick(product)}>Add {product.sku}</button>
+      {!!searchResults?.length && <ul className={styles.results} aria-label="Matching products">{searchResults.map((product, index) => <li key={product.variant + index}>
+        <span>{product.name}{!productionOutlet && <> · <strong>{product.sku}</strong> · {product.available} on hand</>}</span>
+        <button type="button" className="button secondary" disabled={searching || !productionOutlet && (items.length >= 50 || items.some(row => row.variant === product.variant))}
+          onClick={() => productionOutlet ? void selectOutletProduct(product) : pick(product)}>{productionOutlet ? 'Select ' + product.name : 'Add ' + product.sku}</button>
       </li>)}</ul>}
-      {!!items.length && <div className="table-scroll" role="region" aria-label="Products to update" tabIndex={0}>
+      {productionOutlet && outletVariants.length > 0 && <div className="table-scroll" role="region" aria-label="Product variants" tabIndex={0}>
+        <table><thead><tr><th scope="col">Select</th><th scope="col">Product Variant</th><th scope="col">In Warehouse</th><th scope="col">Quantity to Transfer</th></tr></thead>
+          <tbody>{outletVariants.map(row => {
+            const selected = items.find(item => item.variant === row.variant);
+            return <tr key={row.variant}>
+              <td><input type="checkbox" checked={Boolean(selected)} aria-label={'Select ' + row.sku}
+                disabled={!selected && (row.available < 1 || items.length >= 50)} onChange={event => {
+                  if (event.target.checked) pick(row);
+                  else setItems(rows => rows.filter(item => item.variant !== row.variant));
+                }}/></td>
+              <td>{row.sku}</td><td>{row.available}</td>
+              <td><input type="number" aria-label={'Quantity for ' + row.sku} min="1" max={row.available} step="1" value={selected?.quantity ?? ''}
+                disabled={!selected} required={Boolean(selected)} onChange={event => editItem(row.variant, { quantity: event.target.value })}/></td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
+      {!productionOutlet && !!items.length && <div className="table-scroll" role="region" aria-label="Products to update" tabIndex={0}>
         <table>
           <thead><tr><th scope="col">Product</th><th scope="col">{productionOutlet ? 'In Warehouse' : 'On hand'}</th>
             <th scope="col">{productionOutlet ? 'Quantity to Transfer' : 'Quantity'}</th>
-            {!transfer && <th scope="col">Line note</th>}<th scope="col">Remove</th></tr></thead>
+            {!transfer && <><th scope="col">Regular Price</th><th scope="col">Line note</th></>}<th scope="col">Remove</th></tr></thead>
           <tbody>{items.map(row => <tr key={row.variant}>
             <td>{row.name}<br />{row.sku}</td><td>{row.available}</td>
             <td><input aria-label={'Quantity for ' + row.sku} type="number" value={row.quantity} min="1" max={maximum(row)} step="1"
               onChange={event => editItem(row.variant, { quantity: event.target.value })} required /></td>
-            {!transfer && <td><input aria-label={'Note for ' + row.sku} value={row.note} maxLength={500}
-              onChange={event => editItem(row.variant, { note: event.target.value })} /></td>}
+            {!transfer && <><td>{row.regularPrice !== undefined ? (region === 'BD' ? '৳' : '') + row.regularPrice.toLocaleString('en') : '—'}</td>
+              <td><input aria-label={'Note for ' + row.sku} value={row.note} maxLength={500} onChange={event => editItem(row.variant, { note: event.target.value })} /></td></>}
             <td><button className="button subtle" type="button" onClick={() => setItems(current => current.filter(item => item.variant !== row.variant))}>Remove {row.sku}</button></td>
           </tr>)}</tbody>
         </table>

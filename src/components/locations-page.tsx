@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronRight, MapPin, Package, Pencil, Plus, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, MapPin, Package, Pencil, Plus, Search } from 'lucide-react';
 import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { locationsEndpoint, locationsPath, locationTypes, marketLabel, type LocationRecord } from '@/lib/locations';
@@ -8,7 +8,10 @@ import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { LocationForm } from './location-form';
 import { ProductThumbnail } from './product-thumbnail';
+import { BarcodeImage } from './barcode-labels';
+import { ProductionLocationDirectory, ProductionLocationManagement, type DirectoryLocation } from './production-locations';
 import styles from './warehouse-inventory.module.css';
+import editor from './production-product-editor.module.css';
 
 function record(raw: unknown): LocationRecord {
   const row = obj(raw);
@@ -115,7 +118,7 @@ async function Directory({ auth, region, q, allowCreate }: { auth: Session; regi
   </>;
 }
 
-export async function LocationsPage({ auth, region, q, id }: { auth: Session; region: Region; q: Query; id?: string }) {
+export async function LocationsPage({ auth, region, q, id, production = false }: { auth: Session; region: Region; q: Query; id?: string; production?: boolean }) {
   if (!has(auth.staff, 'business_locations.view')) throw new ApiError(403);
   const inventory = param(q, 'inventoryView');
   if (!id && (inventory === 'warehouse' || inventory === 'outlet')) {
@@ -123,6 +126,21 @@ export async function LocationsPage({ auth, region, q, id }: { auth: Session; re
   }
   const allowCreate = canWrite(auth.staff) && has(auth.staff, 'business_locations.create');
   const allowEdit = canWrite(auth.staff) && has(auth.staff, 'business_locations.update');
+  if (!id && production) {
+    const management = param(q, 'locationView') === 'management';
+    const requested = param(q, 'limit') ?? '';
+    const limit = management ? 'all' : ['20','40','60','80','100','all'].includes(requested) ? requested : '20';
+    const page = limit === 'all' ? 1 : Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
+    const payload = obj(await api(url('/business-location', { region, page: String(page), limit: limit === 'all' ? '10000' : limit }), auth.token));
+    const rows: DirectoryLocation[] = arr(payload.businessLocations).map(raw => {
+      const original = obj(raw);
+      const geo = obj(original.location);
+      return { ...record(raw), created: str(original.createdAt), latitude: coordinate(geo.latitude), longitude: coordinate(geo.longitude) };
+    }).filter(row => mongoId(row.id));
+    if (management) return <ProductionLocationManagement rows={rows}/>;
+    return <ProductionLocationDirectory rows={rows} region={region} limit={limit} page={page} total={Number(obj(payload.meta).total) || 0}
+      canEdit={allowEdit} canDelete={canWrite(auth.staff) && has(auth.staff, 'business_locations.delete')}/>;
+  }
   if (!id) return Directory({ auth, region, q, allowCreate });
 
   const listHref = url(locationsPath, { region });
@@ -132,6 +150,14 @@ export async function LocationsPage({ auth, region, q, id }: { auth: Session; re
   if (!creating && !mongoId(id)) throw new ApiError(404);
   const location = creating ? undefined : record(await api(url(locationsEndpoint + '/' + id, { region }), auth.token));
   const detailHref = url(locationsPath + '/' + id, { region });
+  if (production && (creating || editing)) {
+    const back = url('/dashboard/business-location/all', { region: region === 'INTERNATIONAL' ? region : undefined });
+    return <section className={editor.editor}>
+      <header className={editor.pageHeading}><Link className={editor.back} href={back} aria-label="Back to business locations"><ChevronLeft size={16}/></Link>
+        <h1 className={editor.heading}>{editing ? 'Edit Business Location' : 'Create Business Location'}</h1></header>
+      <LocationForm key={id} location={location} region={region} cancelHref={back} production/>
+    </section>;
+  }
   if (creating || editing) return <>
     <Link className="location-back" href={editing ? detailHref : listHref}><ArrowLeft size={15} aria-hidden="true"/>
       {editing ? 'Back to location' : 'All locations'}</Link>
@@ -171,6 +197,29 @@ export async function LocationsPage({ auth, region, q, id }: { auth: Session; re
   </>;
 }
 
+const coordinate = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+function InventoryBarcode({ code }: { code: string }) {
+  return code && /^[\x20-\x7e]{1,80}$/.test(code)
+    ? <span className={styles.barcode}><BarcodeImage code={code}/><small>{code}</small></span> : <span>{code || '—'}</span>;
+}
+
+function outletGroups(payload: Record<string, unknown>) {
+  const inventory = arr(payload.inventory).map(obj);
+  if (inventory.length) return inventory.map(row => ({ product: obj(row.product), variants: arr(row.variants).map(obj) }));
+  const groups = new Map<string, { product: Record<string, unknown>; variants: Record<string, unknown>[] }>();
+  for (const raw of arr(payload.data)) {
+    const row = obj(raw);
+    const product = obj(row.product);
+    const id = str(product._id);
+    if (!mongoId(id)) continue;
+    const group = groups.get(id) ?? { product, variants: [] };
+    group.variants.push({ ...row, ...obj(row.variant) });
+    groups.set(id, group);
+  }
+  return [...groups.values()];
+}
+
 async function LocationInventory({ auth, region, q, type }: { auth: Session; region: Region; q: Query; type: 'warehouse' | 'outlet' }) {
   if (!has(auth.staff, 'stock.view')) throw new ApiError(403);
   const path = '/dashboard/inventory/view/' + type;
@@ -187,18 +236,32 @@ async function LocationInventory({ auth, region, q, type }: { auth: Session; reg
     locations.push(bookmarked);
     location = bookmarked;
   }
-  const limitOptions = ['20', '40', '60', '80', '100'];
+  const warehouseRows = type === 'warehouse';
+  const limitOptions = ['20', '40', '60', '80', '100', ...(warehouseRows ? ['all'] : [])];
   const requested = param(q, 'limit') ?? '20';
   const size = limitOptions.includes(requested) ? requested : '20';
-  const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const warehouseRows = type === 'warehouse';
-  const payload = location ? obj(await api(url(warehouseRows ? '/stocks/workspace/warehouse-inventory/records' : '/business-location/stock/all', {
-    region, [warehouseRows ? 'warehouse' : 'businessLocationIds']: location.id, page: String(page), limit: size,
+  const page = size === 'all' ? 1 : Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
+  const loadPage = async (number: number) => location ? obj(await api(url(warehouseRows ? '/stocks/workspace/warehouse-inventory/records' : '/business-location/inventories/' + location.id, {
+    region, ...(warehouseRows && { warehouse: location.id }), page: String(number), limit: warehouseRows ? size === 'all' ? '100' : size : '10000',
   }), auth.token)) : {};
-  const rows = arr(warehouseRows ? payload.rows : payload.data).map(obj);
-  const total = Number(warehouseRows ? payload.total : obj(payload.meta).total) || 0;
+  const payload = await loadPage(warehouseRows ? page : 1);
+  const rows = arr(payload.rows).map(obj);
+  const outlets = outletGroups(payload);
+  const total = warehouseRows ? Number(payload.total) || 0 : outlets.length;
+  if (size === 'all' && total > rows.length) {
+    for (let number = 2; number <= Math.ceil(total / 100); number += 8) {
+      const rest = await Promise.all(Array.from({ length: Math.min(8, Math.ceil(total / 100) - number + 1) }, (_, index) => loadPage(number + index)));
+      rows.push(...rest.flatMap(result => arr(result.rows).map(obj)));
+    }
+  }
   const link = (number: number) => url(path, { region, [key]: selected, limit: size, page: String(number) });
   const amount = (value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('en').format(value) : '—';
+  const currency = (value: number) => (region === 'BD' ? '৳' : '') + amount(value);
+  const range = (variants: Record<string, unknown>[], field: string) => {
+    const values = variants.map(variant => typeof variant[field] === 'number' ? Number(variant[field]) : 0);
+    const minimum = Math.min(...values), maximum = Math.max(...values);
+    return values.length > 0 ? minimum === maximum ? currency(minimum) : currency(minimum) + ' - ' + currency(maximum) : currency(0);
+  };
   return <section className={warehouseRows ? styles.page : 'panel padded'}>
     <h1>{warehouseRows && location ? location.name : label} Inventory</h1>
     <form className="location-filters" action={adminPath(path)}>
@@ -207,10 +270,10 @@ async function LocationInventory({ auth, region, q, type }: { auth: Session; reg
         <option value="">Select {label}</option>
         {locations.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
       </select></label>
-      <label>Items per page<select name="limit" defaultValue={size}>{limitOptions.map(value => <option key={value}>{value}</option>)}</select></label>
+      <label>Items per page<select name="limit" defaultValue={size}>{limitOptions.map(value => <option key={value} value={value}>{value === 'all' ? 'All' : value}</option>)}</select></label>
       <button className="button secondary" type="submit">View inventory</button>
     </form>
-    {!location ? <p>Please select a {label}.</p> : !rows.length ? <p>No inventory found for this {type}.</p> :
+    {!location ? <p>Please select a {label}.</p> : !(warehouseRows ? rows.length : outlets.length) ? <p>No inventory found for this {type}.</p> :
       warehouseRows ? <div className={styles.recordList}>{rows.map(row => {
         const variants = arr(row.variants).map(obj);
         const units = variants.reduce((sum, variant) => sum + (typeof variant.quantity === 'number' ? variant.quantity : 0), 0);
@@ -222,23 +285,24 @@ async function LocationInventory({ auth, region, q, type }: { auth: Session; reg
               <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{variants.map((variant, index) => <tr key={str(variant.sku) + index}>
                 <td>{str(row.name)}{Object.keys(obj(variant.attribute_values)).length > 0 && ' (' + Object.values(obj(variant.attribute_values)).map(str).join(' - ') + ')'}</td>
                 <td>{str(variant.sku)}</td><td>{region === 'BD' ? '৳' : ''}{amount(variant.regular_price)}</td>
-                <td>{region === 'BD' ? '৳' : ''}{amount(variant.sale_price)}</td><td>{amount(variant.quantity)}</td><td>{str(variant.barcode) || '—'}</td>
+                <td>{region === 'BD' ? '৳' : ''}{amount(variant.sale_price)}</td><td>{amount(variant.quantity)}</td><td><InventoryBarcode code={str(variant.barcode)}/></td>
               </tr>)}</tbody></table>
           </div>
         </details>;
       })}</div> : <div className="table-scroll" role="region" aria-label={label + ' stock'} tabIndex={0}>
         <table><thead><tr>{['Image', 'Product Name', 'Variants', 'Total Qty', 'Regular Price', 'Sale Price'].map(column =>
           <th scope="col" key={column}>{column}</th>)}</tr></thead>
-          <tbody>{rows.map(row => {
-            const product = obj(row.product);
-            const attributes = Object.values(obj(row.attribute_values)).map(str).filter(Boolean).join(' · ');
-            return <tr key={str(row._id)}><td><ProductThumbnail source={product.thumbnail} size={42}/></td>
-              <td>{str(product.name)}</td><td>{attributes || str(row.sku)}</td><td>{amount(row.available_quantity)}</td>
-              <td>{amount(row.regular_price)}</td><td>{amount(row.sale_price)}</td></tr>;
+          <tbody>{outlets.slice((page - 1) * Number(size), page * Number(size)).map(({ product, variants }) => {
+            const quantity = variants.reduce((sum, variant) => sum + (coordinate(variant.available_quantity ?? variant.quantity) ?? 0), 0);
+            return <tr key={str(product._id)}><td><ProductThumbnail source={product.thumbnail} size={80}/></td>
+              <td>{str(product.name)}</td><td><ul className={styles.outletVariants}>{variants.map((variant, index) =>
+                <li key={str(variant._id) + index}><strong>{str(variant.sku)}</strong><span>Stock: {amount(variant.available_quantity ?? variant.quantity)}</span>
+                  {Boolean(variant.barcode) && <InventoryBarcode code={str(variant.barcode)}/>}</li>)}</ul></td>
+              <td><strong>{quantity}</strong> units</td><td>{range(variants, 'regular_price')}</td><td>{range(variants, 'sale_price')}</td></tr>;
           })}</tbody>
         </table>
       </div>}
-    {total > Number(size) && <nav className="pagination" aria-label={label + ' inventory pages'}>
+    {size !== 'all' && total > Number(size) && <nav className="pagination" aria-label={label + ' inventory pages'}>
       {page > 1 && <Link href={link(page - 1)}>Previous</Link>}
       {page * Number(size) < total && <Link href={link(page + 1)}>Next</Link>}
     </nav>}

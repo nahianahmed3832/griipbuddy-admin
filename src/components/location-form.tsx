@@ -7,9 +7,11 @@ import { Building2, MapPin, Phone, Plus, Trash2 } from 'lucide-react';
 import { locationsPath, locationTypes, marketLabel, type LocationFields, type LocationRecord } from '@/lib/locations';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
+import { ProductEditorPanel } from './production-product-editor-fields';
+import styles from './production-product-editor.module.css';
 
-export function LocationForm({ location, region, cancelHref }: {
-  location?: LocationRecord; region: Region; cancelHref: string;
+export function LocationForm({ location, region, cancelHref, production = false }: {
+  location?: LocationRecord; region: Region; cancelHref: string; production?: boolean;
 }) {
   const router = useRouter();
   const [phones, setPhones] = useState(() => (location?.contact_numbers.length ? location.contact_numbers : [''])
@@ -49,7 +51,8 @@ export function LocationForm({ location, region, cancelHref }: {
       });
       if (!result.ok) throw new Error((await result.text()) || 'The location could not be saved.');
       const saved: { id: string } = await result.json();
-      router.replace(locationsPath + '/' + saved.id + '?' + new URLSearchParams({ region, saved: id ? 'updated' : 'created' }));
+      router.replace(production ? cancelHref : locationsPath + '/' + saved.id + '?' + new URLSearchParams({ region, saved: id ? 'updated' : 'created' }));
+      if (production) router.refresh();
     } catch (failure) {
       setError(failure instanceof Error && !(failure instanceof TypeError) ? failure.message
         : 'The connection was interrupted. Check the directory before trying again.');
@@ -58,6 +61,45 @@ export function LocationForm({ location, region, cancelHref }: {
       setSaving(false);
     }
   }
+
+  if (production) return <form className={styles.form} onSubmit={save} aria-busy={saving}>
+    <ProductEditorPanel>
+      {error && <div className="notice warn" tabIndex={-1} ref={errorSummary} role="alert">{error}</div>}
+      <div className={styles.pairedFields}>
+        <label className={styles.field}>Location Name<input name="name" defaultValue={location?.name} maxLength={120} required placeholder="Enter location name"/></label>
+        <label className={styles.field}>Location Type<select name="type" required defaultValue={type}>
+          <option value="" disabled>Select location type</option>
+          {type && !Object.hasOwn(locationTypes, type) && <option value={type}>{type}</option>}
+          {Object.entries(locationTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select></label>
+        <label className={styles.field}>Division<input name="division" defaultValue={address?.division} maxLength={100} placeholder="Enter division"/></label>
+        <label className={styles.field}>District<input name="district" defaultValue={address?.district} maxLength={100} placeholder="Enter district"/></label>
+        <label className={styles.field}>Thana<input name="thana" defaultValue={address?.thana} maxLength={100} placeholder="Enter thana"/></label>
+        <label className={styles.field}>Local Address<input name="street" defaultValue={address?.local_address} maxLength={500} required placeholder="Enter local address"/></label>
+        <label className={styles.field}>Manager Name<input name="manager" defaultValue={location?.manager_name} maxLength={120} placeholder="Enter manager name"/></label>
+      </div>
+      <input type="hidden" name="zip" value={address?.zip_code ?? ''}/>
+      <div className="location-phone-fields"><strong>Contact Numbers</strong>
+        {phones.map(({ key, value }, index) => <div className="location-phone-row" key={key}>
+          <label className={styles.field}><input id={'location-phone-' + key} value={value} type="tel" maxLength={80} aria-label={'Contact number ' + (index + 1)}
+            onChange={event => {
+              const next = event.currentTarget.value;
+              setPhones(rows => rows.map(row => row.key === key ? { key, value: next } : row));
+            }}/></label>
+          <button type="button" className={styles.secondary} aria-label={'Remove contact number ' + (index + 1)}
+            onClick={() => setPhones(rows => rows.filter(row => row.key !== key))}>Remove</button>
+        </div>)}
+        <button type="button" className={styles.secondary} disabled={phones.length >= 25} onClick={() => {
+          const key = nextPhoneKey.current++;
+          setPhones(rows => [...rows, { key, value: '' }]);
+          requestAnimationFrame(() => document.getElementById('location-phone-' + key)?.focus());
+        }}>+ Add Contact</button>
+      </div>
+    </ProductEditorPanel>
+    <div className={styles.saveActions}><button type="submit" className={styles.primary} disabled={saving}>
+      {saving ? 'Saving…' : id ? 'Update Business Location' : 'Create Business Location'}
+    </button></div>
+  </form>;
 
   return <form className="panel location-editor" onSubmit={save} aria-busy={saving}>
     <div className="location-editor-context">

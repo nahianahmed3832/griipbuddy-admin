@@ -4,7 +4,7 @@ import { has } from './sections';
 export const stockChangeModes = ['transfer', 'adjustment', 'outlet-update', 'warehouse-update'] as const;
 export type StockChangeMode = typeof stockChangeModes[number];
 export type StockChangeLocation = { id: string; name: string; type: string };
-export type StockChangeProduct = { product: string; variant: string; sku: string; name: string; available: number };
+export type StockChangeProduct = { product: string; variant: string; sku: string; name: string; available: number; regularPrice?: number };
 export type StockExpense = { type: string; amount: number; note?: string };
 export const stockChangeApi = '/stocks/workspace/changes';
 export const isStockTransfer = (mode: StockChangeMode) => mode === 'transfer' || mode === 'outlet-update';

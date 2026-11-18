@@ -23,3 +23,9 @@
 .productSummary strong { flex: 1; }
 .productSummary span { padding: 4px 8px; border: 1px solid #e0e0e4; border-radius: 999px; font-size: 12px; white-space: nowrap; }
 .recordList details[open] .table { margin-top: 16px; }
+.barcode { display: inline-grid; justify-items: center; gap: 4px; }
+.barcode :global(.barcode-image) { width: auto; height: 28px; }
+.barcode small { font-variant-numeric: tabular-nums; color: #52525b; white-space: nowrap; }
+.outletVariants { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; min-width: 230px; margin: 0; padding: 0; }
+.outletVariants li { display: grid; gap: 4px; min-width: 130px; padding: 8px; border: 1px solid #e0e0e4; border-radius: 8px; }
+.outletVariants li > span { font-size: 12px; }

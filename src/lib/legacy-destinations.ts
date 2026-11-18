@@ -53,7 +53,7 @@ add('inventory/view/outlet', '/desk/inventory/warehouses', { inventoryView: 'out
 add('inventory/view/warehouse', '/desk/inventory/warehouses', { inventoryView: 'warehouse' });
 add('inventory/outlet-update', '/desk/inventory/outlet-update');
 add('inventory/warehouse-update', '/desk/inventory/warehouse-update');
-add('outlets-and-warehouse', '/desk/inventory/warehouses');
+add('outlets-and-warehouse', '/desk/inventory/warehouses', { locationView: 'management' });
 add('business-location/all', '/desk/inventory/warehouses');
 add('business-location/create', '/desk/inventory/warehouses/create');
 add('business-location/edit/[id]', '/desk/inventory/warehouses/[id]', { edit: '1' });
