@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Barcode, Check, ClipboardList, ExternalLink, Fil
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
-import { addressLabel, currencyFor, manualStatuses, money, orderDate, orderNumber, orderRequest, ordersApi, ordersPath,
+import { addressLabel, currencyFor, money, orderDate, orderNumber, orderRequest, ordersApi, ordersPath, orderStatusChoices,
   statusLabel, type CustomerHistory, type Order, type OrderAction, type OrderLocation, type OrderMutation, type OrderNote } from '@/lib/website-orders';
 import { Badge } from './tables';
 import { OrderFraudResults } from './production-fraud';
@@ -19,24 +19,24 @@ const titles: Record<DialogState['kind'], string> = {
   actions: 'Order Actions', history: 'Customer Details', payment: 'Payment Information', status: 'Status Logs', tracking: 'Tracking Logs',
   calls: 'Call History', 'accept-stock': 'Accept Order', 'decline-stock': 'Decline Order', accept: 'Accept Order', delete: 'Delete Order',
   track: 'Track Order', fraud: 'Fraud Check', edit: 'Edit Order', 'update-status': 'Update Status', note: 'Update Note',
-  sms: 'Send SMS', delivered: 'Mark as Delivered', return: 'Return Order', 'pending-return': 'Mark as Pending Return',
+  sms: 'Send SMS', delivered: 'Mark as Delivered', return: 'Return Order', 'scan-return': 'Scan to Return', 'pending-return': 'Mark as Pending Return',
   cancel: 'Cancel Order', called: 'Record Customer Call', sync: 'Sync with Courier',
   dispatch: 'Send to Courier', handover: 'Mark as Handed Over', pick: 'Assign Barcodes',
 };
 const actionIcons: Record<OrderMutation, typeof Pencil> = {
   edit: Pencil, 'update-status': ClipboardList, note: FileText, sms: MessageSquare, dispatch: Truck, handover: Truck,
-  delivered: Check, return: RotateCcw, 'pending-return': Flag, cancel: X, called: Check, pick: Barcode, delete: Trash2, 'accept-stock': Check, 'decline-stock': X, accept: Check,
+  delivered: Check, return: RotateCcw, 'scan-return': Barcode, 'pending-return': Flag, cancel: X, called: Check, pick: Barcode, delete: Trash2, 'accept-stock': Check, 'decline-stock': X, accept: Check,
 };
 const buttonLabels: Partial<Record<DialogState['kind'], string>> = {
   note: 'Add note', 'update-status': 'Save status', edit: 'Save changes', sms: 'Send SMS', dispatch: 'Send to Steadfast',
   handover: 'Confirm handover', pick: 'Assign barcodes', cancel: 'Cancel order', delivered: 'Confirm delivery',
-  'pending-return': 'Confirm pending return', return: 'Confirm return', sync: 'Sync orders',
+  'pending-return': 'Confirm pending return', return: 'Confirm return', 'scan-return': 'Confirm return', sync: 'Sync orders',
   'accept-stock': 'Accept order', 'decline-stock': 'Decline order', accept: 'Accept order', delete: 'Delete order',
 };
 const readKinds = ['history', 'payment', 'status', 'tracking', 'calls'];
 const mutationMessage: Partial<Record<DialogState['kind'], string>> = {
   edit: 'Order details updated.', 'update-status': 'Order status updated.', note: 'Staff note added.', sms: 'SMS sent.',
-  delivered: 'Order marked as delivered.', return: 'Scanned items returned.', 'pending-return': 'Order marked as pending return.',
+  delivered: 'Order marked as delivered.', return: 'Scanned items returned.', 'scan-return': 'Scanned items returned.', 'pending-return': 'Order marked as pending return.',
   'accept-stock': 'Order accepted.', 'decline-stock': 'Order declined.', accept: 'Order accepted.', delete: 'Order deleted.',
   cancel: 'Order cancelled.', called: 'Customer call recorded.',
   dispatch: 'Order sent to Steadfast.', handover: 'Courier handover recorded.', pick: 'Barcodes assigned to the order.',
@@ -162,10 +162,10 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const order = 'order' in state ? state.order : undefined;
   const id = order?._id;
   const read = readKinds.includes(kind);
+  const scanReturn = kind === 'scan-return' || kind === 'return' && !!order?.scanReturn;
   const readAction = kind === 'note' ? 'notes' : kind === 'sms' ? 'sms-history' :
-    kind === 'return' && !order?.scanReturn ? 'return-items' : read ? kind : undefined;
-  const statusChoices = order?.status === 'AWAITING_STOCK'
-    ? ['PLACED', 'INCOMPLETE', 'NO_RESPONSE', 'CANCELLED', 'PRE_ORDER'] : manualStatuses;
+    kind === 'return' && !scanReturn ? 'return-items' : read ? kind : undefined;
+  const statusChoices = order ? orderStatusChoices(order) : [];
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
@@ -201,7 +201,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
           after = data.next;
         } while (after);
         saved(`Courier sync: ${synced} refreshed, ${failed} failed, ${skipped} no longer eligible.`);
-      } else if (kind === 'return' && !order?.scanReturn) {
+      } else if (kind === 'return' && !scanReturn) {
         const data = load?.data as ReturnItems | undefined;
         if (!data) return;
         const products = returnKind === 'PARTIAL' ? data.items.flatMap(item => {
@@ -212,7 +212,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
         if (products && !products.length) { setError('Select at least one returned item.'); return; }
         await orderRequest('return-untracked', region, { query: { id }, values: { status: returnKind, revision: data.revision, products } });
         saved(returnKind === 'PARTIAL' ? 'Partial return recorded.' : 'Order returned.');
-      } else if (kind === 'return' || kind === 'pick') {
+      } else if (scanReturn || kind === 'pick') {
         const response = await fetch(adminPath('/api/operations'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: kind === 'pick' ? 'order-pick' : 'order-return', recordId: id, region, values: { barcodes: fields.barcodes } }) });
         if (!response.ok) throw new Error((await response.text()).slice(0, 320));
@@ -316,7 +316,7 @@ export function OrderDialog({ state, region, locations = [], close, change, save
               <small>{sms.phone} · {sms.sent_by_name || 'Staff'} · {orderDate(sms.sent_at, region)}</small></li>)}</ul>
             : <p>No messages sent.</p> : <p role={readError ? 'alert' : 'status'}>{readError || 'Loading history…'}</p>}
         </section></>}
-      {kind === 'return' && (order?.scanReturn ? <><p>Scan only the returned items. Eligible units will be restored to stock.</p>
+      {(kind === 'return' || kind === 'scan-return') && (scanReturn ? <><p>Scan only the returned items. Eligible units will be restored to stock.</p>
         <label>Scanned barcodes<textarea name="barcodes" rows={4} maxLength={2000} required placeholder="One barcode per line"/></label></>
         : returnItems ? <>
           <label>Return Status<select value={returnKind} onChange={event => setReturnKind(event.currentTarget.value)}>
@@ -346,13 +346,13 @@ export function OrderDialog({ state, region, locations = [], close, change, save
       {kind === 'handover' && <p>Confirm that parcel {order?.consignment_id} physically left the warehouse with the courier.</p>}
       {kind === 'update-status' && <p>Current status: <Badge value={order?.status || 'Unknown'}/></p>}
       {kind === 'update-status' && <label>New status<select name="status" defaultValue="" required>
-        <option value="" disabled>Select status</option>{statusChoices.filter(status => status !== order?.status).map(status =>
+        <option value="" disabled>Select status</option>{statusChoices.map(status =>
           <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
       {error && <p role="alert" className="notice warn">{error}</p>}
       <div className="page-actions website-dialog-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={close}>Close</button>
         <button className={'button primary' + (['cancel', 'delete', 'decline-stock'].includes(kind) ? ' website-destructive' : '')}
-          disabled={busy || (kind === 'return' && !order?.scanReturn && !returnItems) || (kind === 'delete' && confirmation !== 'DELETE') || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>
+          disabled={busy || (kind === 'return' && !scanReturn && !returnItems) || (kind === 'delete' && confirmation !== 'DELETE') || (kind === 'dispatch' && !dispatchLocations.length)}>{busy ? 'Working…' : buttonLabels[kind] || 'Confirm'}</button>
       </div>
     </form>}
   </dialog>;

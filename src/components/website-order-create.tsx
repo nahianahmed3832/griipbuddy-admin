@@ -9,6 +9,7 @@ import { OrderThumbnail } from './website-orders-table';
 import productionStyles from './production-website-order-editor.module.css';
 
 type CartLine = WebsiteOrderDraft['products'][number];
+const minimumQuantity = (line: CartLine) => Math.max(1, line.pickedQuantity ?? 0);
 const lineGross = (line: CartLine) => Math.round(line.price * 100) * line.quantity;
 const discountMinor = (line: CartLine) => {
   const minor = Math.round((line.discountAmount || 0) * 100);
@@ -122,6 +123,7 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const browseAction = draft ? 'draft-products' : 'products';
+  const quantitiesLocked = Boolean(draft?.paymentLocked && draft.products.some(line => line.pickedQuantity));
 
   useEffect(() => () => {
     clearTimeout(searchTimer.current);
@@ -161,7 +163,7 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
     searchTimer.current = setTimeout(() => { void search(value.trim()); }, 300);
   }
   function add(variant: Variant) {
-    if (!(variant.price > 0)) return;
+    if (quantitiesLocked || !(variant.price > 0)) return;
     setCart(lines => {
       const existing = lines.find(line => line.id === variant.id);
       if (existing) return lines.map(line => line.id === variant.id ? { ...line, quantity: Math.min(999, line.quantity + 1) } : line);
@@ -170,7 +172,8 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
     });
   }
   function quantity(id: string, value: number) {
-    setCart(lines => lines.map(line => line.id === id ? { ...line, quantity: Math.min(999, Math.max(1, value || 1)) } : line));
+    if (quantitiesLocked) return;
+    setCart(lines => lines.map(line => line.id === id ? { ...line, quantity: Math.min(999, Math.max(minimumQuantity(line), value || 1)) } : line));
   }
   async function scan(value: string) {
     const code = value.trim();
@@ -270,7 +273,7 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
                 {!full && <small>Stock: {variant.stock}</small>}
               </div>
               <button type="button" className={styles.outline} aria-label={'Add ' + variant.sku}
-                disabled={!(variant.price > 0) || cart.length >= 50 && !cart.some(line => line.id === variant.id)} onClick={() => add(variant)}>
+                disabled={quantitiesLocked || !(variant.price > 0) || cart.length >= 50 && !cart.some(line => line.id === variant.id)} onClick={() => add(variant)}>
                 <Plus size={16}/>
               </button>
             </div>)}
@@ -288,17 +291,19 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
           {!!cart.length && <div className={styles.cartLines}>{cart.map(line => <article key={line.id}>
             <header><strong>{line.name} - {line.sku}</strong>
               <button className={full ? styles.danger : styles.plain} type="button" aria-label={'Remove ' + line.sku}
+                disabled={quantitiesLocked || !!line.pickedQuantity}
                 onClick={() => setCart(lines => lines.filter(item => item.id !== line.id))}><X size={16}/></button>
             </header>
             {!!line.attributes && <small>{attributes(line.attributes)}</small>}
             <div className={styles.quantities}>
               <button type="button" className={styles.outline} aria-label={'Decrease ' + line.sku}
-                onClick={() => quantity(line.id, line.quantity - 1)} disabled={line.quantity <= 1}><Minus size={16}/></button>
+                onClick={() => quantity(line.id, line.quantity - 1)} disabled={quantitiesLocked || line.quantity <= minimumQuantity(line)}><Minus size={16}/></button>
               <output aria-label={'Quantity for ' + line.sku}>{line.quantity}</output>
               <button type="button" className={styles.outline} aria-label={'Increase ' + line.sku}
-                onClick={() => quantity(line.id, line.quantity + 1)} disabled={line.quantity >= 999}><Plus size={16}/></button>
+                onClick={() => quantity(line.id, line.quantity + 1)} disabled={quantitiesLocked || line.quantity >= 999}><Plus size={16}/></button>
               <span>{((lineGross(line) - discountMinor(line)) / 100).toFixed(2)}</span>
             </div>
+            {!!line.pickedQuantity && <small>{line.pickedQuantity} scanned</small>}
             {full && <div className={styles.lineDiscount}>
               <label>Discount Type<select aria-label={'Discount type for ' + line.sku} value={line.discountType ?? ''}
                 onChange={event => {
@@ -402,7 +407,7 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
           <div><strong>{variant.name}</strong><small>{variant.sku}{variant.attributes && Object.values(variant.attributes).filter(Boolean).length > 0
             ? ' · ' + Object.values(variant.attributes).filter(Boolean).join(' / ') : ''}</small>
             <small>{variant.price > 0 ? money(variant.price, 'BDT') : 'Price unavailable'} · {variant.stock} available</small></div>
-          <button className="button secondary" type="button" disabled={!(variant.price > 0) || cart.length >= 50 && !cart.some(line => line.id === variant.id)}
+          <button className="button secondary" type="button" disabled={quantitiesLocked || !(variant.price > 0) || cart.length >= 50 && !cart.some(line => line.id === variant.id)}
             aria-label={'Add ' + variant.sku} onClick={() => add(variant)}><Plus size={17}/></button>
         </div>)}
       </div>
@@ -417,12 +422,13 @@ export function WebsiteOrderCreate({ initial, draft, productionLayout = false }:
             {line.stock < line.quantity && <small className="website-danger">{draft ? 'Check availability at save' : 'May await stock'}</small>}</div>
           <div className="website-quantity">
             <button type="button" className="button secondary" aria-label={'Decrease ' + line.sku} onClick={() => quantity(line.id, line.quantity - 1)}
-              disabled={line.quantity <= 1}><Minus size={14}/></button>
-            <input aria-label={'Quantity for ' + line.sku} type="number" min={1} max={999} value={line.quantity}
+              disabled={quantitiesLocked || line.quantity <= minimumQuantity(line)}><Minus size={14}/></button>
+            <input aria-label={'Quantity for ' + line.sku} type="number" min={minimumQuantity(line)} max={999} value={line.quantity} readOnly={quantitiesLocked}
               onChange={e => quantity(line.id, Math.floor(e.target.valueAsNumber))}/>
             <button type="button" className="button secondary" aria-label={'Increase ' + line.sku} onClick={() => quantity(line.id, line.quantity + 1)}
-              disabled={line.quantity >= 999}><Plus size={14}/></button>
+              disabled={quantitiesLocked || line.quantity >= 999}><Plus size={14}/></button>
             <button type="button" className="button secondary" aria-label={'Remove ' + line.sku}
+              disabled={quantitiesLocked || !!line.pickedQuantity}
               onClick={() => setCart(lines => lines.filter(item => item.id !== line.id))}><Trash2 size={14}/></button>
           </div>
         </div>)}

@@ -10,6 +10,7 @@ import { productionCmsPreview } from '@/lib/production-cms-media';
 import { ProductionCatalogActions } from './production-catalog-actions';
 import styles from './production-catalog.module.css';
 import design from './production-catalog-details.module.css';
+import editor from './production-product-editor.module.css';
 
 const rootList = '/dashboard/categories';
 const childList = '/dashboard/sub-categories';
@@ -22,6 +23,8 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
   const router = useRouter();
   const pending = useRef(false);
   const [error, setError] = useState('');
+  const [target, setTarget] = useState<CategoryNode>();
+  const [deleting, setDeleting] = useState(false);
   const branches = childrenFor(nodes);
   const roots = branches.get('') ?? [];
   const names = new Map(nodes.map(row => [row.id, categoryName(row)]));
@@ -41,17 +44,19 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
     : ['Position','Image','Name','Slug','Sub Categories','Status','Actions'];
 
   async function change(row: CategoryNode, action: 'delete' | 'publish') {
-    if (pending.current || action === 'delete' && !window.confirm('Delete ' + categoryName(row) + '?')) return;
+    if (pending.current) return;
     pending.current = true;
+    setDeleting(action === 'delete');
     setError('');
     try {
       const result = action === 'delete'
         ? await fetch(adminPath(endpoint) + '?' + new URLSearchParams({ id: row.id, depth: String(row.depth) }), { method: 'DELETE' })
         : await saveCategory({ id: row.id, depth: row.depth, revision: row.revision, is_published: !row.is_published }, true);
       if (result instanceof Response && !result.ok) throw new Error((await result.json()).error);
+      if (action === 'delete') setTarget(undefined);
       router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to update the category.'); }
-    finally { pending.current = false; }
+    finally { pending.current = false; setDeleting(false); }
   }
 
   return <section className={styles.page}>
@@ -59,7 +64,7 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
       <h1>{subcategory ? 'All Sub Categories' : 'All Main Categories'}</h1>
       {canCreate && <Link className={styles.primary} href={createUrl}>{subcategory ? 'Add new Sub Category' : 'Add new Category'}</Link>}
     </header>
-    {error && <p className={styles.error} role="alert">{error}</p>}
+    {error && !target && <p className={styles.error} role="alert">{error}</p>}
     <div className={styles.tableBorder + ' ' + design.scroll}>
       <table className={styles.table}>
         <thead><tr>{columns.map(heading => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
@@ -81,13 +86,23 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
             <td>{(canEdit || canDelete) && <ProductionCatalogActions label={'Actions for ' + categoryName(row)}>
               {close => <>
                 {canEdit && <Link onClick={close} href={editUrl + encodeURIComponent(row.id)}>Edit</Link>}
-                {canDelete && <button type="button" onClick={() => { close(); void change(row, 'delete'); }}>Delete</button>}
+                {canDelete && <button type="button" onClick={() => { close(); setError(''); setTarget(row); }}>Delete</button>}
               </>}
             </ProductionCatalogActions>}</td>
           </tr>;
         })}{!rows.length && <tr><td className={styles.empty} colSpan={columns.length}>No categories found.</td></tr>}</tbody>
       </table>
     </div>
+    {target && <dialog ref={node => { if (node && !node.open) node.showModal(); }} className={editor.editorDialog + ' ' + design.registryDelete}
+      aria-labelledby="category-delete-title" onCancel={event => { if (deleting) event.preventDefault(); }} onClose={() => setTarget(undefined)}>
+      <div className={editor.dialogHeading}><h3 id="category-delete-title">Delete {subcategory ? 'Sub Category' : 'Category'}</h3></div>
+      <p>This action cannot be undone. Are you sure you want to delete <strong>{categoryName(target)}</strong>?</p>
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      <div className={editor.saveActions}>
+        <button type="button" className={styles.outline} disabled={deleting} onClick={() => { setTarget(undefined); setError(''); }}>Cancel</button>
+        <button type="button" className={editor.danger} disabled={deleting} onClick={() => void change(target, 'delete')}>{deleting ? 'Deleting…' : 'Delete'}</button>
+      </div>
+    </dialog>}
   </section>;
 }
 

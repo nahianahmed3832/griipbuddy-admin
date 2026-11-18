@@ -12,6 +12,25 @@ export type HybridShipment = {
 export type HybridReturnCost = { amountMinor: number; evidenceReference?: string };
 export type HybridReturnCostReceipt = { caseId?: string; receivedAt: string; quantity: number; cost?: HybridReturnCost | null };
 
+export const hybridReturnReasons = {
+  DELIVERY: 'Delivery', DAMAGED: 'Damaged', WRONG_ITEM: 'Wrong item', CHANGED_MIND: 'Changed mind', PAYMENT: 'Payment', OTHER: 'Other',
+};
+export type HybridReturnStatus = 'IN_REVIEW' | 'RETURN_APPROVED' | 'DECLINED' | 'RESOLVED';
+export type HybridReturnDisposition = 'RESTOCK' | 'HOLD';
+export type HybridReturnLine = { orderItemId: string; quantity: number };
+export type HybridReturnCase = {
+  id: string; status: string; revision: number; reason?: string | null; createdAt: string;
+  returnReceivedAt?: string | null; returnDisposition?: HybridReturnDisposition | null;
+  refundAmountMinor?: number | null; refundConfirmedAt?: string | null;
+  returnLines: HybridReturnLine[];
+  events: { note?: string | null; refundConfirmed?: boolean; status: string; createdAt: string; actor: { name?: string | null } | null }[];
+};
+export type HybridOrderOperations = {
+  updatedAt: string;
+  items: { id: string; productName: string; variantName: string; sku: string; quantity: number }[];
+  cases: HybridReturnCase[];
+};
+
 export type HybridFulfillment = {
   status: string;
   step: string;
@@ -20,6 +39,7 @@ export type HybridFulfillment = {
   receipt: { receivedAt: string; disposition: 'RESTOCK' | 'HOLD'; restockedUnits: number; note?: string; returnCost?: HybridReturnCost | null } | null;
   manualPayment: { transaction: string | null } | null;
   editable: boolean;
+  operations?: HybridOrderOperations;
   canReturn: boolean;
   shippingWarehouse?: string;
   warehouseChoices?: { value: string; label: string }[];
@@ -28,6 +48,12 @@ export type HybridFulfillment = {
 };
 
 export type HybridCommand =
+  | { action: 'edit-contact'; name: string; phone: string; address: string; revision: string }
+  | { action: 'add-note'; note: string; key: string }
+  | { action: 'open-return'; reason: keyof typeof hybridReturnReasons; note: string; lines: HybridReturnLine[] }
+  | { action: 'review-return'; caseId: string; revision: number; status: HybridReturnStatus; note: string }
+  | { action: 'receive-return'; caseId: string; revision: number; disposition: HybridReturnDisposition; confirmed: boolean }
+  | { action: 'confirm-return-refund'; caseId: string; revision: number; amountMinor: number; method: string; reference: string; confirmed: boolean }
   | { action: 'record-return-cost'; caseId?: string; amountMinor: number; evidence: string }
   | { action: 'advance'; next: HybridFulfillmentStep; carrier?: string; trackingReference?: string; simulate?: boolean; warehouseId?: string }
   | { action: 'track'; status: HybridTrackingStep; evidence?: string }

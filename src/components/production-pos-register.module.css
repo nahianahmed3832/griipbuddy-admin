@@ -3,7 +3,7 @@
 .root h1 strong { color: #009e68; font-weight: 500; }
 .filter, .sheet, .pagination { border-radius: 10px; background: #fff; box-shadow: 0 3px 5px #17171726; }
 .filter summary { cursor: pointer; color: #009e68; font-size: 18px; padding: 16px; display: flex; align-items: center; gap: 8px; min-height: 60px; }
-.filter summary::-webkit-details-marker, .rowMenu summary::-webkit-details-marker { display: none; }
+.filter summary::-webkit-details-marker { display: none; }
 .controls { padding: 16px; border-top: 1px solid #e0e1e3; display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .controls > label { flex: 0 1 165px; }
 .controls label, .dialog label { display: grid; gap: 8px; }
@@ -17,7 +17,7 @@
 .secondary { background: #fff; color: #141414; border: 1px solid #dfdfe4; }
 .danger { background: #dc2626; }
 .primary:hover { background: #008453; }
-.primary:disabled, .secondary:disabled { opacity: .62; cursor: not-allowed; }
+.primary:disabled, .secondary:disabled, .danger:disabled { opacity: .62; cursor: not-allowed; }
 .metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 24px; }
 .metrics article { min-height: 80px; background: white; border: 1px solid #dedee1; padding: 12px 16px; border-radius: 10px; }
 .metrics article div { font-size: 12px; line-height: 16px; color: #626875; }
@@ -27,8 +27,9 @@
 .columns { display: flex; justify-content: flex-end; padding-bottom: 16px; }
 .columns details { position: relative; }
 .columns summary { border: 1px solid #dfdfe4; background: #fff; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
-.columns details > div, .rowMenu > div { position: absolute; z-index: 2; min-width: 145px; right: 0; padding: 4px; background: white; border: 1px solid #dfdfe4;
+.columns details > div, .rowActions { min-width: 145px; padding: 4px; background: white; border: 1px solid #dfdfe4;
   border-radius: 7px; box-shadow: 0 4px 7px #17171726; }
+.columns details > div { position: absolute; right: 0; z-index: 2; }
 .columns label { padding: 4px 8px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .columns input { width: auto; accent-color: #009b67; }
 .table { overflow-x: auto; min-height: 80px; }
@@ -41,12 +42,12 @@
 .table td span { display: block; }
 .table td:last-child, .table th:last-child { border-right: 0; }
 .table .empty { text-align: center; color: #697482; padding: 24px; }
-.rowMenu { position: relative; min-width: 49px; display: grid; place-items: center; }
-.rowMenu summary { cursor: pointer; list-style: none; border: 1px solid #dedee1; border-radius: 8px; display: grid; place-items: center; width: 36px; height: 36px; }
-.rowMenu > div { position: fixed; margin-top: 32px; margin-left: 35px; right: auto; justify-self: start; }
-.rowMenu a, .rowMenu button { width: 100%; cursor: pointer; font: inherit; border: 0; border-radius: 5px; display: flex; align-items: center; background: transparent; padding: 6px; gap: 8px; text-align: left; text-decoration: none; color: #151515; }
-.rowMenu a:hover, .rowMenu button:hover { background: #f3f5f4; }
-.rowMenu .dangerText { color: #c52323; }
+.rowMenu { min-width: 49px; display: grid; place-items: center; }
+.rowMenu button { cursor: pointer; border: 1px solid #dedee1; border-radius: 8px; background: white; display: grid; place-items: center; width: 36px; height: 36px; }
+.rowActions { z-index: 60; }
+.rowActions a, .rowActions button { width: 100%; cursor: pointer; font: inherit; border: 0; border-radius: 5px; display: flex; align-items: center; background: transparent; padding: 6px; gap: 8px; text-align: left; text-decoration: none; color: #151515; }
+.rowActions a:hover, .rowActions button:hover { background: #f3f5f4; }
+.rowActions .dangerText { color: #c52323; }
 .invoice { color: #697482; font-size: 12px; line-height: 16px; }
 .table .badge { display: inline-block; color: #009b67; border: 1px solid #009b67; border-radius: 7px; padding: 0 8px; font-size: 12px; }
 .pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; }

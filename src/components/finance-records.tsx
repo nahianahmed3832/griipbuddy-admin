@@ -9,7 +9,7 @@ import { expenseAttachmentPath } from '@/lib/finance-attachment';
 import { purchasePage } from '@/lib/purchases';
 import { has, type Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
-import { FinanceDialog, FinanceListFilters, FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
+import { ExpenseReportCategoryFilters, FinanceDialog, FinanceListFilters, FinanceRecordActions, FinanceRecordForm } from './finance-record-forms';
 import { Badge, Table } from './tables';
 import '@/app/purchases.css';
 import styles from './production-finance.module.css';
@@ -88,6 +88,7 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
   if (production) {
     filters.status = param(q, 'status') === undefined ? 'paid' : filters.status;
     filters.is_approved = param(q, 'is_approved') === undefined ? 'true' : filters.is_approved;
+    if (!filters.category) delete filters.subcategory;
   }
   const [result, choices] = await Promise.all([
     api(url('/expense/report', filters), auth.token), choicesFor(auth, ['category', 'subcategory', 'payment_source']),
@@ -118,9 +119,9 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
     const labels = (values: string[]) => values.map(id => ({ id, name: id === 'mobile_banking' ? 'Mobile Banking' : expenseLabel(id) }));
     const reportRows = arr(report.data).map(obj).flatMap(row => {
       const title = str(row.title);
-      return [{ title, id: str(row.categoryId), transactions: row.transactionCount, sum: row.totalAmount },
-        ...arr(row.subcategories).map(obj).map((sub, index) => ({ title: title + ' / ' + str(sub.title), id: str(row.categoryId) + '-' + index,
-          transactions: sub.transactionCount, sum: sub.totalAmount }))];
+      return [{ title, sku: str(row.sku), subcategory: false, id: str(row.categoryId), transactions: row.transactionCount, sum: row.totalAmount },
+        ...arr(row.subcategories).map(obj).map((sub, index) => ({ title: str(sub.title), sku: '', subcategory: true,
+          id: str(row.categoryId) + '-' + index, transactions: sub.transactionCount, sum: sub.totalAmount }))];
     });
     return <>
       <header className={styles.heading}><h1>Expense Report</h1><p>Spend analytics across categories, statuses and payment methods.</p></header>
@@ -132,8 +133,8 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
           {select('status', 'All statuses', labels(expenseStatuses))}
           {select('payment_method', 'All methods', labels(paymentMethods))}
           {select('is_approved', 'All approvals', [{ id: 'true', name: 'Approved' }, { id: 'false', name: 'Unapproved' }])}
-          {select('category', 'All categories', choices.category)}
-          {select('subcategory', 'All subcategories', choices.subcategory)}
+          <ExpenseReportCategoryFilters key={(filters.category ?? '') + '/' + (filters.subcategory ?? '')}
+            category={filters.category ?? ''} subcategory={filters.subcategory ?? ''} choices={choices}/>
           {select('payment_source', 'All sources', choices.payment_source)}
         </FinanceListFilters>
         <div className={styles.summary}>
@@ -152,7 +153,9 @@ async function ExpenseReport({ auth, q, production }: { auth: Session; q: Query;
         </section>}
         <section className={styles.card + ' ' + styles.records}>
           <table><thead><tr><th>Category / Subcategory</th><th>Transactions</th><th>Avg</th><th>Total</th></tr></thead>
-            <tbody>{reportRows.length ? reportRows.map(row => <tr key={row.id}><td>{row.title}</td><td>{numeric(row.transactions)}</td>
+            <tbody>{reportRows.length ? reportRows.map(row => <tr key={row.id} className={row.subcategory ? undefined : styles.category}>
+              <td className={row.subcategory ? styles.subcategory : undefined}>{row.subcategory && '↳ '}{row.title}
+                {row.sku && <span className={styles.sku}>{row.sku}</span>}</td><td>{numeric(row.transactions)}</td>
               <td>{numeric(Number(row.sum) / Math.max(Number(row.transactions) || 0, 1))}</td><td>{numeric(row.sum)}</td></tr>)
               : <tr><td className={styles.empty} colSpan={4}>No expenses match these filters.</td></tr>}</tbody>
           </table>
@@ -265,8 +268,14 @@ function ProductionFinanceRecords({ view, records, total, search, filters, optio
                       ['Created By', actorName(row.created_by)], ['Approved By', actorName(row.approved_by)],
                     ].map(([term, value]) => <div key={term}><dt>{term}</dt><dd>{value || '—'}</dd></div>)}</dl>
                     {!!str(row.description) && <p>{str(row.description)}</p>}
-                    {arr(row.attachments).map(str).filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value)).map((item, index) =>
-                      <a key={item + index} href={expenseAttachmentPath(item) ? adminPath(item) : item} target="_blank" rel="noreferrer">Attachment {index + 1}</a>)}
+                    <div className={styles.evidence}>{arr(row.attachments).map(str)
+                      .filter(value => expenseAttachmentPath(value) || /^https:\/\/[^\s]+$/i.test(value)).map((item, index) => {
+                        const href = expenseAttachmentPath(item) ? adminPath(item) : item;
+                        return <a key={item + index} href={href} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={href} loading="lazy" referrerPolicy="no-referrer" alt={'Attachment ' + (index + 1)}/>
+                        </a>;
+                      })}</div>
                   </FinanceDialog>
                   {canUpdate && <Link className="button subtle" href={productionFinancePath(view, id)}>Edit</Link>}
                   {([

@@ -162,3 +162,6 @@
 .purchaseDay input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 .expenseEditHeader { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .expenseEditHeader h2 { margin: 0; }
+
+.purchaseTotals { display: grid; gap: 8px; margin-top: 16px; font-size: 18px; font-weight: 500; }
+.purchaseTotals p { margin: 0; }

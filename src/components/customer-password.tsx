@@ -19,9 +19,9 @@ export function CustomerPassword({ id, revision, back, production = false }: { i
     setBusy(true);
     setFeedback('');
     try {
-      const response = await fetch(adminPath('/api/customers?action=password&id=' + id), {
+      const response = await fetch(adminPath('/api/customers?action=password&id=' + id + (production ? '&view=production' : '')), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-        body: JSON.stringify({ password, revision, reason: data.get('reason') }),
+        body: JSON.stringify({ password, revision, ...(!production && { reason: data.get('reason') }) }),
       });
       if (!response.ok) return setFeedback(await response.text());
       form.reset();
@@ -34,9 +34,9 @@ export function CustomerPassword({ id, revision, back, production = false }: { i
     <fieldset className="editor-fieldset" disabled={busy}>
       {!production && <legend>Set a new customer password</legend>}
       <div className="editor-grid">
-        <label>New password<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
-        <label>Confirm password<input name="confirmation" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
-        <label>Reason<textarea name="reason" minLength={8} maxLength={400} rows={3} placeholder="Record why the reset was requested. Leave the password out of this field." required/></label>
+        <label>New password<input name="password" type="password" autoComplete="new-password" minLength={production ? 6 : 12} maxLength={128} required/></label>
+        <label>Confirm password<input name="confirmation" type="password" autoComplete="new-password" minLength={production ? 6 : 12} maxLength={128} required/></label>
+        {!production && <label>Reason<textarea name="reason" minLength={8} maxLength={400} rows={3} placeholder="Record why the reset was requested. Leave the password out of this field." required/></label>}
       </div>
     </fieldset>
     <div className="page-actions">{production && <Link className="button secondary" href={back}>Cancel</Link>}

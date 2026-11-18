@@ -55,13 +55,15 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
   const suppliers = (await supplierDirectory(auth)).filter(row => (!type || row.type === type) && (!term ||
     [row.name, row.contact_id, row.email, row.phone].some(field => field.toLowerCase().includes(term))));
   if (production) {
-    const sizes = ['20','40','60','80','100'];
+    const sizes = ['20','40','60','80','100','all'];
     const requested = param(q, 'limit') ?? '20';
-    const limit = sizes.includes(requested) ? Number(requested) : 20;
-    const start = (page - 1) * limit;
+    const size = sizes.includes(requested) ? requested : '20';
+    const limit = size === 'all' ? suppliers.length : Number(size);
+    const currentPage = size === 'all' ? 1 : page;
+    const start = (currentPage - 1) * limit;
     const current = suppliers.slice(start, start + limit);
     const headings = ['Sl No.', 'Name', 'Type', 'Email', 'Phone', 'Address', 'Actions'];
-    const link = (page: number) => url(livePath, { region, q: search, type, page: String(page), limit: String(limit) });
+    const link = (page: number) => url(livePath, { region, q: search, type, page: String(page), limit: size });
     return <section className={styles.page}>
       <header className={styles.header}><h1>Suppliers ({suppliers.length})</h1></header>
       <div className={styles.tableBorder + ' ' + design.scroll}><table className={styles.table}>
@@ -74,10 +76,10 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
         </tr>)}{!current.length && <tr><td colSpan={headings.length} className={styles.empty}>No suppliers found.</td></tr>}</tbody>
       </table></div>
       <nav className={design.pages} aria-label="Supplier pages">
-        <RegistryPageSize current={String(limit)} choices={sizes} path={livePath} params={{ region, q: search, type }}/>
+        <RegistryPageSize current={size} choices={sizes} path={livePath} params={{ region, q: search, type }}/>
         <span>{current.length ? start + 1 : 0} - {start + current.length} of {suppliers.length}</span>
-        {page > 1 ? <Link className={styles.outline} href={link(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
-        {start + limit < suppliers.length ? <Link className={styles.outline} href={link(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
+        {currentPage > 1 ? <Link className={styles.outline} href={link(currentPage - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
+        {start + limit < suppliers.length ? <Link className={styles.outline} href={link(currentPage + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
       </nav>
     </section>;
   }

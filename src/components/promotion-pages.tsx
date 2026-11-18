@@ -30,7 +30,7 @@ export async function ProductionCouponWorkspace({ auth, region, id, q }: { auth:
     const tree = has(auth.staff, 'product.view') ? await loadCategoryTree(auth) : [];
     const now = Date.now();
     const day = new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC' });
-    return <ProductionCouponCreate region={region} tree={tree} starts={day.format(now)} expires={day.format(now + 7 * 86400000)}/>;
+    return <ProductionCouponCreate region={region} tree={tree} starts={day.format(now)} expires={day.format(now + 7 * 86400000)} openedAt={now}/>;
   }
   if (id) {
     if (!mongoId(id)) throw new ApiError(404);

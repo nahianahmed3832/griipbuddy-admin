@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import styles from './production-customers.module.css';
 import accessStyles from './production-staff-directory.module.css';
 
-export function ProductionCustomerSearch({ query, region }: { query: string; region: string }) {
+export function ProductionCustomerSearch({ query, region, limit }: { query: string; region: string; limit?: string }) {
   const [search, setSearch] = useState(query);
   const router = useRouter();
   const applied = useRef(query);
@@ -19,10 +19,11 @@ export function ProductionCustomerSearch({ query, region }: { query: string; reg
       applied.current = next;
       const params = new URLSearchParams({ region });
       if (next) params.set('q', next);
+      if (limit && limit !== '20') params.set('limit', limit);
       router.replace('/dashboard/customers?' + params.toString(), { scroll: false });
     }, 300);
     return () => clearTimeout(timeout);
-  }, [search, region, router]);
+  }, [search, region, limit, router]);
   return <input aria-label="Search customers" className={styles.search} type="search" placeholder="Search customers..."
     value={search} onChange={event => setSearch(event.target.value)} maxLength={100}/>;
 }

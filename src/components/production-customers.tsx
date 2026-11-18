@@ -11,8 +11,8 @@ const columns = ['Sl No:', 'Name', 'Total Orders', 'Completed Orders', 'Cancelle
 const date = (value?: string) => value && Number.isFinite(Date.parse(value))
   ? new Date(value).toLocaleDateString('en-US', { timeZone: 'Asia/Dhaka', year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
 
-export function ProductionCustomers({ rows, total, page, size, query, region, canExport, canChangePassword, canSeeOrders, children }: {
-  rows: Customer[]; total: number; page: number; size: number; query?: string; region: string; canExport: boolean;
+export function ProductionCustomers({ rows, total, page, size, query, region, limit, canExport, canChangePassword, canSeeOrders, children }: {
+  rows: Customer[]; total: number; page: number; size: number; query?: string; region: string; limit?: string; canExport: boolean;
   canChangePassword: boolean; canSeeOrders: boolean; children: React.ReactNode;
 }) {
   const values = [
@@ -25,7 +25,7 @@ export function ProductionCustomers({ rows, total, page, size, query, region, ca
     <header className={styles.heading}>
       <h1>All Customers</h1>
       <div>
-        <ProductionCustomerSearch query={query ?? ''} region={region}/>
+        <ProductionCustomerSearch query={query ?? ''} region={region} limit={limit}/>
         {canExport && (total > 0 ? <a className="button secondary" href={exportUrl} download><Download size={17}/> Download Excel</a>
           : <button className="button secondary" type="button" disabled><Download size={17}/> Download Excel</button>)}
       </div>
@@ -46,8 +46,8 @@ export function ProductionCustomers({ rows, total, page, size, query, region, ca
           <td>{row.userType || '—'}</td>
           <td>{date(row.createdAt)}</td><td>{date(row.updatedAt)}</td>
           <td><ProductionCustomerActions name={row.full_name || 'customer'}
-            passwordPath={canChangePassword && row.status === 'ACTIVE' && row.is_verified_number === true
-              ? url('/dashboard/password-change-customer/' + row._id, { q: query, region, page: String(page) }) : undefined}/></td>
+            passwordPath={canChangePassword
+              ? url('/dashboard/password-change-customer/' + row._id, { q: query, region, limit, page: String(page) }) : undefined}/></td>
         </tr>)}
         {!rows.length && <tr><td colSpan={columns.length}>No customers found.</td></tr>}</tbody>
       </table>

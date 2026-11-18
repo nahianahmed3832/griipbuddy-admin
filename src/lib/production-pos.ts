@@ -3,12 +3,12 @@ import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Sessi
 import { loadLocations, reference, requireWrite } from './advanced';
 import { param, type Query } from './data';
 import { locationInRegion } from './operations';
-import { dateLabel, posDay, posMoney, posRangeDates, posRanges, posTimeZone, type PosItem, type PosRange, type PosRegisterRow } from './pos';
+import { dateLabel, posDay, posMoney, posPageSizes, posRangeDates, posRanges, posTimeZone, type PosItem, type PosRange, type PosRegisterRow } from './pos';
 import { has, superAdmin } from './sections';
 
 const paymentNumbers = ['paid', 'discount', 'total', 'due'] as const;
 const paymentKeys = ['paid_amount', 'total_discount', 'total_amount', 'due_amount'] as const;
-export const posPageSizes = [20, 40, 60, 80, 100];
+export const allPosLimit = 10_000;
 const first = (value: unknown) => obj(Array.isArray(value) ? value[0] : value);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const literal = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -34,9 +34,8 @@ export async function posRegisterFilters(q: Query, auth: Session) {
   const canViewStaff = has(auth.staff, 'user.view');
   if (creator && (!canViewStaff || !mongoId(creator))) throw new ApiError(403);
   const serial = (param(q, 'saleSerialId') ?? param(q, 'serial') ?? '').trim().slice(0, 15);
-  const page = Math.max(1, Math.min(100000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const requestedSize = Number(param(q, 'size'));
-  const size = posPageSizes.includes(requestedSize) ? requestedSize : 20;
+  const size = posPageSizes.find(size => String(size) === param(q, 'size')) ?? 20;
+  const page = size === 'all' ? 1 : Math.max(1, Math.min(100000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const input = { business_location_id: location, startDate: from, endDate: to, created_by: creator };
   return {
     input, page, size, range, from, to, serial, locations, assigned, location, creator, today,
@@ -76,13 +75,25 @@ function registerRow(row: RecordData, filters: PosRegisterFilters): PosRegisterR
   };
 }
 
-export async function loadPosRegisterPage(auth: Session, filters: PosRegisterFilters, page = filters.page, size = filters.size) {
+export async function loadPosRegisterPage(auth: Session, filters: PosRegisterFilters, page: number, size: number) {
   if (!filters.valid) return { total: 0, rows: [] };
   const payload = obj(await api(url('/pos/sale', {
     ...filters.input, sale_serial_id: filters.serial, page: String(page), limit: String(size),
   }), auth.token));
   const sales = arr(payload.posSales).map(obj);
   return { total: number(obj(payload.meta).total), rows: sales.map(row => registerRow(row, filters)).filter(row => mongoId(row.id)) };
+}
+
+export async function loadPosRegister(auth: Session, filters: PosRegisterFilters) {
+  if (filters.size !== 'all') return { ...await loadPosRegisterPage(auth, filters, filters.page, filters.size), tooMany: false };
+  const pageSize = 250;
+  const { total, rows } = await loadPosRegisterPage(auth, filters, 1, pageSize);
+  if (total > allPosLimit) return { total, rows: [], tooMany: true };
+  for (let page = 2; page <= Math.ceil(total / pageSize); page++) {
+    const next = await loadPosRegisterPage(auth, filters, page, pageSize);
+    rows.push(...next.rows);
+  }
+  return { total, rows, tooMany: false };
 }
 
 export async function readPosRegisterReport(auth: Session, filters: PosRegisterFilters) {
@@ -179,6 +190,7 @@ export type PosReturnDetails = ReturnType<typeof posReturnDetails>;
 export async function changePosSale(id: string, action: unknown, payload: RecordData, auth: Session) {
   if (action !== 'delete' && action !== 'return') throw new ApiError(400, 'Unknown sale action.');
   requireWrite(auth, 'pos.view', action === 'delete' ? 'pos.delete' : 'pos.update');
+  if (action === 'delete' && payload.confirmation !== 'DELETE') throw new ApiError(400, 'Type DELETE to confirm.');
   const sale = await readPosSale(id, auth);
   if (action === 'delete') return api('/pos/admin/sale/' + id, auth.token, { method: 'DELETE' });
   const existing = new Map(arr(sale.products).map(obj).map(line => [str(obj(line.selected_variant).barcode), line]));

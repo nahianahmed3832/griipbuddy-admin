@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { ApiError, arr, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, type RecordData } from '@/lib/api';
+import { ApiError, arr, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url, type RecordData } from '@/lib/api';
 import { findVariantBySku, locationInRegion } from '@/lib/operations';
 import { canEditPurchase, purchaseRecord, purchaseStatuses, suppliers } from '@/lib/purchases';
 import { barcodeVariants } from '@/lib/smart-inventory';
@@ -68,10 +68,7 @@ export async function POST(req: NextRequest) {
     const supplier = str(body.supplier);
     const location = str(body.location);
     if (supplier !== reference(current.supplier) && !(await suppliers(auth)).some(row => row.value === supplier)) fail('Choose an active supplier.');
-    if (location !== reference(current.business_location)) {
-      if (current.status === 'received') fail('Use a stock transfer to move received goods.');
-      await locationInRegion(location, region, auth);
-    }
+    if (location !== reference(current.business_location)) await locationInRegion(location, region, auth);
 
     const before = new Map(arr(current.items).map(obj).map(line => [reference(line.variant), line]));
     const inputs = arr(body.lines).map(obj);
@@ -104,7 +101,7 @@ export async function POST(req: NextRequest) {
     const attachments = text(body, 'attachments', 5000).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (attachments.length > 10 || attachments.some(item => !existingLinks.includes(item) && !/^https:\/\/[^\s]+$/i.test(item))) fail('Enter up to ten HTTPS attachment links.');
 
-    const response = await requestApi('/purchase/' + id, auth.token, { method: 'PUT', body: JSON.stringify({
+    const response = await requestApi(url('/purchase/' + id, { region }), auth.token, { method: 'PUT', body: JSON.stringify({
       expected_updated_at: body.revision, supplier, business_location: location, status, items, expenses_applied,
       purchase_date: date + 'T00:00:00+06:00', additional_notes: text(body, 'note', 1000), attachments,
     }) });

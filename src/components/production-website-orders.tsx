@@ -13,7 +13,7 @@ import {
 import { OrderDateRangeCalendar, type OrderDateRange } from './order-date-range-calendar';
 import { normalizeFraudPhone, useCourierFraud } from './production-fraud';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
-import { ProductionOrderMenu, useManualDelivery } from './production-order-menu';
+import { ProductionOrderMenu, useManualOrderStatus } from './production-order-menu';
 import { OrderThumbnail } from './website-orders-table';
 import styles from './production-website-orders.module.css';
 
@@ -146,7 +146,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const dateTrigger = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [notice, setNotice] = useState('');
-  const { deliver, delivering } = useManualDelivery(region, setNotice);
+  const { updateStatus, updating } = useManualOrderStatus(region, setNotice);
   const [deferred, setDeferred] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const today = day(region);
@@ -215,7 +215,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             onClick={() => setDialog({ kind: 'sync' })}>
             <Truck size={16}/> Sync with Courier
           </button>}
-          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: executive ? undefined : '1' })} download>
+          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: '1' })} download>
             <FileSpreadsheet size={16}/> Download Excel
           </a>
         </div>}
@@ -301,9 +301,10 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           <tbody>{rows.length ? rows.map(order => {
             const number = orderNumber(order);
             const currency = currencyFor(order.currency, region);
-            const destinationQuery = query(region, formFilters, page, pageSize);
-            const href = '/dashboard/order-details/' + order._id + destinationQuery +
-              (assigned ? (destinationQuery ? '&' : '?') + 'source=assigned' : '');
+            const listQuery = query(region, formFilters, page, pageSize);
+            const source = assigned ? 'assigned' : executive ? 'executive' : undefined;
+            const destinationQuery = listQuery + (source ? (listQuery ? '&' : '?') + 'source=' + source : '');
+            const href = '/dashboard/order-details/' + order._id + destinationQuery;
             const projected = order.checkoutProjection;
             const actions = orderActions(order, access, region);
             const awaitStock = actions.some(action => action.kind === 'accept-stock');
@@ -312,10 +313,13 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id}>
               <td><ProductionOrderMenu order={order} href={href} actions={actions}
-                editHref={access.product && !order.managed && !order.transfer_to_courier && !order.scanReturn &&
-                  !order.assigned_business_location && !order.consignment_id &&
-                  ['PLACED', 'ACCEPTED', 'PROCESSING', 'NO_RESPONSE', 'AWAITING_STOCK'].includes(order.status) ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
-                delivering={delivering.has(order._id)} select={kind => kind === 'delivered' ? void deliver(order._id) : open(kind, order)}/></td>
+                editHref={order.managed ? href + (href.includes('?') ? '&' : '?') + 'edit=1'
+                  : access.product ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
+                updating={updating.get(order._id)} select={kind => {
+                  if (kind === 'delivered' || kind === 'pending-return') {
+                    void updateStatus(order._id, kind === 'delivered' ? 'DELIVERED' : 'PENDING_RETURN');
+                  } else open(kind, order);
+                }}/></td>
               <td><Link className={styles.orderNumber} href={href}>{number}</Link>
                 {order.order_note && <small>Customer Note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
               <td><span className={styles.dateCell}>{date.day}</span>{date.time && <span>{date.time}</span>}</td>
@@ -336,7 +340,8 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                   <button type="button" className={styles.primary} onClick={() => open('accept-stock', order)}>Accept</button>
                   <button type="button" className={styles.smallButton} onClick={() => open('decline-stock', order)}>Decline</button>
                 </div>}
-                {!projected && <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button>}</td>
+                {projected ? <Link className={styles.textLink} href={href + '#status-logs'}><Info size={13}/> Status Logs</Link>
+                  : <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button>}</td>
               <td>{projected ? '—' : order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
                 <small>{orderDate(order.latestCall?.called_at, region)}</small>
                 <button type="button" className={styles.textLink} onClick={() => open('calls', order)}>Call History</button></>

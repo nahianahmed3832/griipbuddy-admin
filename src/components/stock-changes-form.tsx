@@ -9,7 +9,7 @@ import { isStockTransfer, stockChangeHistory, stockChangeSource, type StockChang
   type StockChangeProduct } from '@/lib/stock-changes';
 import styles from './stock-changes.module.css';
 
-type Line = StockChangeProduct & { quantity: string; note: string };
+type Line = StockChangeProduct & { quantity: string; note: string; adjustmentPrice?: string };
 type ExpenseLine = { id: number; type: string; amount: string; note: string };
 
 const subscribe = () => () => undefined;
@@ -40,6 +40,7 @@ export function StockChangesForm({ locations, region, mode, production = false, 
   const expenseNumber = useRef(0);
   const attempt = useRef<{ key: string; body: string } | undefined>(undefined);
   const transfer = isStockTransfer(mode);
+  const canEditPrice = production && mode === 'adjustment';
   const sourceType = stockChangeSource(mode);
   const sourceLocations = locations.filter(location => !sourceType || location.type === sourceType);
   const destinations = locations.filter(location => location.id !== from && (mode !== 'outlet-update' || location.type === 'OUTLET'));
@@ -114,7 +115,7 @@ export function StockChangesForm({ locations, region, mode, production = false, 
       setFeedback({ message: error instanceof Error ? error.message : 'Could not load variants.', error: true });
     } finally { setSearching(false); }
   }
-  function editItem(variant: string, values: Partial<Pick<Line, 'quantity' | 'note'>>) {
+  function editItem(variant: string, values: Partial<Pick<Line, 'quantity' | 'note' | 'adjustmentPrice'>>) {
     setItems(current => current.map(item => item.variant === variant ? { ...item, ...values } : item));
   }
   function editExpense(id: number, values: Partial<Omit<ExpenseLine, 'id'>>) {
@@ -125,8 +126,9 @@ export function StockChangesForm({ locations, region, mode, production = false, 
     if (saving || !items.length) return;
     setSaving(true);
     setFeedback(undefined);
-    const lines = items.map(({ product, variant, quantity, note }) => ({
+    const lines = items.map(({ product, variant, quantity, note, adjustmentPrice, regularPrice }) => ({
       product, variant, qty: Number(quantity), ...(!transfer && note.trim() && { note: note.trim() }),
+      ...(canEditPrice && { regularPrice: adjustmentPrice === undefined ? regularPrice : Number(adjustmentPrice) }),
     }));
     const values = transfer
       ? { from, to, items: lines, expenses: expenses.map(({ type, amount, note }) => ({ type: type.trim(), amount: Number(amount), note: note.trim() })) }
@@ -226,7 +228,9 @@ export function StockChangesForm({ locations, region, mode, production = false, 
             <td>{row.name}<br />{row.sku}</td><td>{row.available}</td>
             <td><input aria-label={'Quantity for ' + row.sku} type="number" value={row.quantity} min="1" max={maximum(row)} step="1"
               onChange={event => editItem(row.variant, { quantity: event.target.value })} required /></td>
-            {!transfer && <><td>{row.regularPrice !== undefined ? (region === 'BD' ? '৳' : '') + row.regularPrice.toLocaleString('en') : '—'}</td>
+            {!transfer && <><td>{canEditPrice ? <input aria-label={'Regular Price for ' + row.sku} type="number" required min="0" max="10000000" step="0.01"
+              value={row.adjustmentPrice ?? row.regularPrice ?? ''} onChange={event => editItem(row.variant, { adjustmentPrice: event.target.value })}/>
+              : row.regularPrice !== undefined ? (region === 'BD' ? '৳' : '') + row.regularPrice.toLocaleString('en') : '—'}</td>
               <td><input aria-label={'Note for ' + row.sku} value={row.note} maxLength={500} onChange={event => editItem(row.variant, { note: event.target.value })} /></td></>}
             <td><button className="button subtle" type="button" onClick={() => setItems(current => current.filter(item => item.variant !== row.variant))}>Remove {row.sku}</button></td>
           </tr>)}</tbody>

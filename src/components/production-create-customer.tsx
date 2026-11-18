@@ -76,7 +76,7 @@ export function ProductionCreateCustomer({ region, allowPhoto }: { region: Regio
       <label>Full Name<input name="full_name" autoComplete="name" required maxLength={120}/></label>
       <label>Phone Number<input name="phone_number" type="tel" autoComplete="tel" maxLength={32} required/></label>
       <label>Email (Optional)<input name="email" type="email" autoComplete="email" maxLength={254}/></label>
-      <label>Password<input name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required/></label>
+      <label>Password<input name="password" type="password" autoComplete="new-password" minLength={6} maxLength={128} required/></label>
       <label>User Role<select name="role"><option value="USER">User</option></select></label>
       <label>Gender<select name="gender"><option value="MALE">Male</option><option value="FEMALE">Female</option></select></label>
       <label>Status<select name="status"><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="BANNED">Banned</option></select></label>

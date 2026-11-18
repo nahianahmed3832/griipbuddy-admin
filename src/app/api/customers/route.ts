@@ -37,9 +37,12 @@ export async function POST(request: NextRequest) {
     if (!canWrite(auth.staff) || !has(auth.staff, 'user.view')) return reject('Customer updates are restricted.', 403);
     const id = request.nextUrl.searchParams.get('id');
     const password = request.nextUrl.searchParams.get('action') === 'password';
-    if (password && (!id || !superAdmin(auth.staff))) return reject('Password changes are restricted to a super admin.', 403);
+    const productionPassword = password && request.nextUrl.searchParams.get('view') === 'production';
+    if (password && (!id || (productionPassword ? !has(auth.staff, 'business_locations.create') : !superAdmin(auth.staff)))) {
+      return reject('Customer password access is required.', 403);
+    }
     if (id !== null && !mongoId(id)) return reject('Customer not found.', 404);
-    if (!has(auth.staff, id ? 'user.update' : 'user.create')) return reject('Customer update permission required.', 403);
+    if (!productionPassword && !has(auth.staff, id ? 'user.update' : 'user.create')) return reject('Customer update permission required.', 403);
     const limit = 8000;
     if (!request.headers.get('content-type')?.startsWith('application/json') || Number(request.headers.get('content-length')) > limit) {
       return reject('Invalid customer request.', 400);
@@ -47,7 +50,8 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     if (Buffer.byteLength(body) > limit) return reject('Customer request is too large.', 413);
     try { JSON.parse(body); } catch { return reject('Invalid customer request.', 400); }
-    const response = await requestApi(id ? root + '/' + id + (password ? '/password' : '') : root, auth.token, { method: id && !password ? 'PATCH' : 'POST', body });
+    const target = id ? root + '/' + id + (password ? '/password' : '') : root;
+    const response = await requestApi(target + (productionPassword ? '?view=production' : ''), auth.token, { method: id && !password ? 'PATCH' : 'POST', body });
     const payload = obj(await response.json());
     if (!response.ok) {
       const validation = str(obj(arr(payload.errorMessages)[0]).message);

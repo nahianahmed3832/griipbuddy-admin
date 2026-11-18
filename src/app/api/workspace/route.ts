@@ -1,4 +1,4 @@
-import { ApiError, getRegion, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
+import { ApiError, arr, getRegion, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { bulkHandover, requireWrite, saveSale } from '@/lib/advanced';
 
 export async function POST(request: Request) {
@@ -20,6 +20,11 @@ export async function POST(request: Request) {
     }
     if (body.action === 'content') {
       requireWrite(auth, 'cms.view', 'cms.update');
+      const values = obj(body.values);
+      if (values.section === 'hero_section' && new URL(request.url).searchParams.get('view') === 'production' &&
+          arr(values.value).some(item => !str(obj(item).video_url).trim())) {
+        return new Response('Add a video to every hero entry.', { status: 400 });
+      }
       const result = await requestApi('/cms/admin/workspace', auth.token, { method: 'PATCH', body: JSON.stringify(body.values) });
       if (!result.ok) return new Response(result.status === 409 ? 'Content changed. Reload and review before saving.'
         : 'Check the content fields and try again.', { status: result.status });

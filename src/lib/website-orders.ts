@@ -8,7 +8,7 @@ export const statuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'HANDE
 export const statusLabel = (value: string) => value.toLowerCase().replaceAll('_', ' ').replace(/^./, s => s.toUpperCase());
 export const openStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'NO_RESPONSE', 'AWAITING_STOCK', 'PRE_ORDER', 'INCOMPLETE'];
 export const courierStatuses = ['IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT'];
-export const pendingStatuses = [...courierStatuses, 'DELIVERED', 'RETURN_REQUESTED'];
+export const pendingStatuses = [...courierStatuses, 'DELIVERED', 'RETURN_REQUESTED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'PARTIAL'];
 export const manualStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'INCOMPLETE', 'NO_RESPONSE', 'PRE_ORDER'];
 export const orderFilterKeys = ['q', 'sku', 'from', 'to', 'location', 'creator', 'called', 'filter'] as const;
 export type OrderFilters = Partial<Record<typeof orderFilterKeys[number], string>>;
@@ -42,13 +42,24 @@ export type WebsiteOrderDraft = {
   id: string; revision: string; serial: number; customer_name?: string; customer_phone?: string;
   delivery_address?: Address; order_note?: string; payment_type: 'CASH_ON_DELIVERY' | 'FULL_PAYMENT';
   delivery_charge: number; paid_amount: number; total_discount: number; paymentLocked: boolean; proofPresent: boolean;
-  sender?: string; reference?: string; products: (Variant & { quantity: number; discountAmount?: number; discountType?: 'FLAT' | 'PERCENTAGE' })[];
+  sender?: string; reference?: string; products: (Variant & { quantity: number; pickedQuantity?: number; discountAmount?: number; discountType?: 'FLAT' | 'PERCENTAGE' })[];
 };
 export type OrderAccess = { update: boolean; fraud: boolean; return: boolean; pick: boolean; handover: boolean; dispatch: boolean; delete: boolean; product: boolean };
 export type OrderLocation = { value: string; label: string };
 export type OrderMutation = 'edit' | 'update-status' | 'note' | 'sms' | 'pick' | 'dispatch' | 'handover'
-  | 'delivered' | 'return' | 'pending-return' | 'cancel' | 'called' | 'delete' | 'accept-stock' | 'decline-stock' | 'accept';
+  | 'delivered' | 'return' | 'scan-return' | 'pending-return' | 'cancel' | 'called' | 'delete' | 'accept-stock' | 'decline-stock' | 'accept';
 export type OrderAction = { kind: OrderMutation; label: string; group: 'Order' | 'Fulfillment' | 'Exceptions' };
+
+const deliverableStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'NO_RESPONSE', 'PRE_ORDER', 'INCOMPLETE', ...courierStatuses];
+
+export function orderStatusChoices(order: Order) {
+  const choices = order.transfer_to_courier ? []
+    : order.status === 'AWAITING_STOCK' ? [...manualStatuses.filter(status => !['PROCESSING'].includes(status)), 'CANCELLED']
+      : openStatuses.includes(order.status) ? [...manualStatuses, 'CANCELLED'] : [];
+  if (deliverableStatuses.includes(order.status)) choices.push('DELIVERED');
+  if (pendingStatuses.includes(order.status)) choices.push('PENDING_RETURN');
+  return choices.filter(status => status !== order.status);
+}
 
 export function orderActions(order: Order, access: OrderAccess, region: Region): OrderAction[] {
   if (order.checkoutProjection) return [];
@@ -64,24 +75,25 @@ export function orderActions(order: Order, access: OrderAccess, region: Region):
     add('accept-stock', 'Accept Order');
     add('decline-stock', 'Decline Order');
   }
-  if (editable) {
-    add('edit', 'Edit Order');
-    add('update-status', 'Update Status');
-  }
+  if (access.update && bd && !order.transfer_to_courier && openStatuses.includes(order.status)) add('edit', 'Edit Order');
+  if (access.update && legacy && orderStatusChoices(order).length) add('update-status', 'Update Status');
   if (access.update) add('note', 'Update Note');
   if (access.update && bd && order.customer_phone) add('sms', 'Send SMS');
   if (legacy && access.pick && ['PLACED', 'ACCEPTED', 'PROCESSING'].includes(order.status) && !order.transfer_to_courier)
     add('pick', 'Assign Barcodes', 'Fulfillment');
-  if (legacy && access.dispatch && !order.transfer_to_courier && !order.consignment_id && ['PLACED', 'ACCEPTED', 'PROCESSING'].includes(order.status))
+  if (legacy && access.dispatch && !order.transfer_to_courier && !order.consignment_id &&
+    ['PLACED', 'ACCEPTED', 'PROCESSING', 'NO_RESPONSE', 'PRE_ORDER'].includes(order.status))
     add('dispatch', 'Send to Courier', 'Fulfillment');
   if (shipped && access.handover && order.status === 'IN_REVIEW' && order.consignment_id && order.assigned_business_location?._id)
     add('handover', 'Mark as Handed Over', 'Fulfillment');
-  if (legacy && access.update && ['PLACED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'NO_RESPONSE', 'PRE_ORDER', 'INCOMPLETE', ...courierStatuses].includes(order.status))
+  if (legacy && access.update && deliverableStatuses.includes(order.status))
     add('delivered', 'Mark as Delivered', 'Fulfillment');
-  if (access.update && legacy && [...pendingStatuses, 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'PARTIAL'].includes(order.status))
+  if (access.update && legacy && pendingStatuses.includes(order.status))
     add('pending-return', 'Mark as Pending Return', 'Exceptions');
   if (access.return && legacy && ['ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'DELIVERED', 'PENDING_RETURN', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'PARTIAL', 'RETURN_REQUESTED', 'AWAITING_STOCK'].includes(order.status))
     add('return', 'Return Order', 'Exceptions');
+  if (access.return && legacy && order.status === 'PENDING_RETURN' && order.scanReturn)
+    add('scan-return', 'Scan to Return', 'Exceptions');
   if (legacy && access.delete && !order.tracking_code && !order.consignment_id && !order.transfer_to_courier &&
       !order.paid_amount && ['FAILED', 'INCOMPLETE'].includes(order.status)) add('delete', 'Delete Order', 'Exceptions');
   if (editable && order.status !== 'INCOMPLETE') add('cancel', 'Cancel Order', 'Exceptions');

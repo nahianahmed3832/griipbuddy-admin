@@ -77,7 +77,12 @@ export async function DELETE(request: Request) {
     const id = query.get('id') ?? '', depth = query.get('depth') ?? '';
     if (!mongoId(id) || !/^[0-3]$/.test(depth)) return invalid('Choose a valid category.');
     const response = await requestApi('/catalog/category-tree/' + depth + '/' + id, auth.token, { method: 'DELETE' });
-    if (!response.ok) return invalid(response.status === 400 ? 'Move linked products and remove child categories first.' : 'Could not delete the category.', response.status);
+    if (!response.ok) {
+      const payload = obj(await response.json().catch(() => null));
+      const message = str(payload.message).slice(0, 1000);
+      return invalid(response.status === 400 && message.startsWith('Cannot delete ')
+        ? message : 'Could not delete the category.', response.status);
+    }
     return Response.json({ deleted: true });
   } catch (error) {
     return invalid('The category service could not confirm removal.', error instanceof ApiError ? error.status : 502);

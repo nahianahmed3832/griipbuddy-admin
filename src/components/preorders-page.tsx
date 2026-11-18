@@ -64,10 +64,11 @@ export async function PreOrdersPage({ auth, q, region, view, productionLayout = 
   const filters = preOrderQuery({ ...filterInput, q: filterInput.q ?? (productionLayout ? param(q, 'searchQuery') : undefined),
     status: filterInput.status ?? param(q, 'filter') });
   const upstream = preOrderApiParams(filters);
-  const page = Math.max(1, Math.min(10000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const pageSize = productionLayout ? productionPreOrderSizes.find(size => String(size) === param(q, 'limit')) ?? defaultPageSize : defaultPageSize;
+  const page = pageSize === 'all' ? 1 : Math.max(1, Math.min(10000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
+  const allLimit = 10_000;
   const [listing, counts, batchData, creators, mediaOrigin] = await Promise.all([
-    api(preOrderUrl(root, { ...upstream, page: String(page), limit: String(pageSize) }), auth.token),
+    api(preOrderUrl(root, { ...upstream, page: String(page), limit: String(pageSize === 'all' ? allLimit : pageSize) }), auth.token),
     api(preOrderUrl(root + '/status/count', { batch: filters.batch, startDate: filters.from, endDate: filters.to }), auth.token),
     api(root + '/batches', auth.token),
     productionLayout ? [] : api(root + '/workspace/creators', auth.token),
@@ -79,7 +80,8 @@ export async function PreOrdersPage({ auth, q, region, view, productionLayout = 
   const count = (status: string) => Number(obj(counts)[status]) || 0;
   if (productionLayout) {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(new Date());
-    return <ProductionPreOrdersIndex rows={rows} total={total} filters={filters} counts={Object.fromEntries(['ALL', ...preOrderStatuses].map(status => [status, count(status)]))}
+    const tooMany = pageSize === 'all' && total > allLimit;
+    return <ProductionPreOrdersIndex rows={tooMany ? [] : rows} total={total} tooMany={tooMany} filters={filters} counts={Object.fromEntries(['ALL', ...preOrderStatuses].map(status => [status, count(status)]))}
       batches={batches} access={access} page={page} pageSize={pageSize} mediaOrigin={mediaOrigin} today={today}/>;
   }
   const destinations = [
@@ -127,7 +129,7 @@ export async function PreOrdersPage({ auth, q, region, view, productionLayout = 
     <PreOrdersTable key={preOrderUrl('', { ...filters, page: String(page) })} rows={rows} total={total} batches={batches} canUpdate={access.update} />
     <div className="pagination"><span>Page {page}</span><div>
       {page > 1 && <Link className="button secondary" href={preOrderUrl(preOrdersPath, { ...filters, page: String(page - 1) })}>Previous</Link>}
-      {page * pageSize < total && <Link className="button secondary" href={preOrderUrl(preOrdersPath, { ...filters, page: String(page + 1) })}>Next</Link>}
+      {page * defaultPageSize < total && <Link className="button secondary" href={preOrderUrl(preOrdersPath, { ...filters, page: String(page + 1) })}>Next</Link>}
     </div></div>
   </div>;
 }

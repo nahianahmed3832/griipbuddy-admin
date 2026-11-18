@@ -12,10 +12,11 @@ import {
   currencyFor, money, orderActions, orderDate, orderNumber,
   type OrderAccess, type OrderDetail, type OrderLocation,
 } from '@/lib/website-orders';
-import { useManualDelivery } from './production-order-menu';
+import { useManualOrderStatus } from './production-order-menu';
 import { OrderDialog, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionManagedPayment, ProductionManagedShipments, useManagedOrder } from './production-order-operations';
 import { ProductionHybridFulfillment } from './production-hybrid-fulfillment';
+import { HybridContactEditor, HybridOrderNotes, ProductionHybridReturns } from './production-hybrid-returns';
 import styles from './production-website-order-detail.module.css';
 
 type Props = {
@@ -116,15 +117,17 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
   const router = useRouter();
   const managed = useManagedOrder(order._id, managedOperations);
   const actions = orderActions(order, access, region);
-  if (access.update && managed.data?.contactEditable) actions.unshift({ kind: 'edit', label: 'Edit Order', group: 'Order' });
+  if (access.update && managed.data?.contactEditable && !actions.some(action => action.kind === 'edit')) {
+    actions.unshift({ kind: 'edit', label: 'Edit Order', group: 'Order' });
+  }
   const [dialog, setDialog] = useState<OrderDialogKind | undefined>(openEdit && actions.some(action => action.kind === 'edit') ? 'edit' : undefined);
   const [notice, setNotice] = useState('');
-  const { deliver, delivering } = useManualDelivery(region, setNotice);
+  const { updateStatus, updating } = useManualOrderStatus(region, setNotice);
   function selectAction(kind: OrderDialogKind) {
     if (kind === 'edit' && editHref) router.push(editHref);
-    else if (kind === 'delivered') {
+    else if (kind === 'delivered' || kind === 'pending-return') {
       setDialog(undefined);
-      void deliver(order._id);
+      void updateStatus(order._id, kind === 'delivered' ? 'DELIVERED' : 'PENDING_RETURN');
     } else setDialog(kind);
   }
   const contacts = [
@@ -143,23 +146,34 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         <section className={styles.card}>
           <div className={styles.actions}>
             <h2>Actions</h2>
-            {!order.checkoutProjection && <button type="button" disabled={delivering.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
+            {!order.checkoutProjection && <button type="button" disabled={updating.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
             <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
           </div>
         </section>
         {managedOperations && <ProductionManagedShipments operations={managed} editable={access.update} canReturn={access.return}/>}
         {hybridFulfillment && <ProductionHybridFulfillment orderId={order._id} state={hybridFulfillment}/>}
+        {hybridFulfillment && <ProductionHybridReturns orderId={order._id} state={hybridFulfillment}/>}
         <section className={styles.card}>
           <h2 className={styles.cardHeading}>Customer Info</h2>
           <div className={styles.contact}>
             {contacts.map(([label, value]) => <p key={label}><span>{label}</span> {value || 'N/A'}</p>)}
+            {hybridFulfillment && <HybridContactEditor order={order} state={hybridFulfillment}/>}
           </div>
         </section>
+        {hybridFulfillment && <section className={styles.card} id="status-logs">
+          <h2 className={styles.cardHeading}>Status Logs</h2>
+          <div className={styles.notes}>{order.statusHistory.length ? order.statusHistory.map((event, index) => <article key={index}>
+            <p>{event.status}</p><div><small>{event.by || 'System'}</small><small>{orderDate(event.at, region)}</small></div>
+          </article>) : <p>No status changes recorded.</p>}</div>
+        </section>}
         <section className={styles.card}>
           <h2 className={styles.cardHeading}>Executive Notes</h2>
           <div className={styles.notes}>{order.notes.length ? order.notes.map((note, index) => <article key={index}>
             <p>{note.text}</p><div><small>Added By: {note.by || 'System'}</small><small>{orderDate(note.at, region)}</small></div>
           </article>) : <p>No Note Found!</p>}</div>
+          {hybridFulfillment?.editable && hybridFulfillment.operations && <div className={styles.contact}>
+            <HybridOrderNotes orderId={order._id}/>
+          </div>}
         </section>
         {!managedOperations && (integrations.shipments || integrations.payments || integrations.receipt) && <section className={styles.card}>
           <h2 className={styles.cardHeading}>Fulfillment</h2>

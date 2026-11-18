@@ -42,3 +42,8 @@
 .actionMenu summary { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; border: 1px solid #e0e0e4; border-radius: 7px; cursor: pointer; }
 .actionMenu summary::-webkit-details-marker { display: none; }
 .actionMenu > :not(summary) { margin-top: 4px; width: 100%; }
+.records .category { background: #f8f8f9; }
+.records td.subcategory { padding-inline-start: 2rem; color: #71717a; }
+.sku { margin-inline-start: .5rem; color: #71717a; font-family: monospace; font-size: .75rem; }
+.evidence { display: flex; flex-wrap: wrap; gap: .5rem; }
+.evidence img { display: block; width: 5rem; height: 5rem; object-fit: cover; border: 1px solid #e1e1e4; border-radius: .5rem; }

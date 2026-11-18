@@ -47,7 +47,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
 }) {
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
   const filters = selectedFilters(q);
-  if (productionLayout && !executive && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
+  if (productionLayout && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
   const listPath = executive ? '/desk/orders/sales-executive' : ordersPath;
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
   if (executive && !Object.hasOwn(q, 'from') && !Object.hasOwn(q, 'to')) {
@@ -59,7 +59,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
   const limit = productionLayout && requestedLimit && productionPageSizes.includes(requestedLimit) ? requestedLimit : undefined;
   const dateDefaults = productionLayout && !filters.from && !filters.to ? { from: '1970-01-01', to: today } : {};
   const results = await Promise.allSettled([
-    productionLayout && !executive ? loadWebsiteOrders(auth, region, { ...filters, ...dateDefaults }, page, limit) :
+    productionLayout ? loadWebsiteOrders(auth, region, { ...filters, ...dateDefaults }, page, limit) :
       api(url('/order/workspace/orders', { region, ...filters, ...dateDefaults, page, limit }), auth.token) as Promise<Listing>,
     api(url('/order/workspace/creators', { region }), auth.token) as Promise<{ _id: string; label: string }[]>,
     has(auth.staff, 'business_locations.view') ? loadOrderLocations(auth, region) : Promise.resolve([]),
@@ -105,10 +105,13 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
 }) {
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
   const hybrid = hybridOrderId(id);
+  const source = param(q, 'source');
+  const productionOrdersPath = source === 'assigned' ? '/dashboard/assigned-orders'
+    : source === 'executive' ? '/dashboard/sales-executive' : '/dashboard/orders';
   if (productionLayout && hybrid && param(q, 'draft') !== '1' && param(q, 'edit') !== '1') {
     const { order, fulfillment } = await getHybridOrder(hybrid, auth, region);
     const size = param(q, 'limit');
-    const back = '/dashboard/orders' + orderListQuery(region, selectedFilters(q), param(q, 'page'))
+    const back = productionOrdersPath + orderListQuery(region, selectedFilters(q), param(q, 'page'))
       + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
     return <ProductionWebsiteOrderDetail order={order} region={region} back={back}
       access={{ update: false, fraud: false, delete: false, product: false, return: false, pick: false, handover: false, dispatch: false }}
@@ -125,13 +128,12 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
         throw error;
       }) : undefined,
   ]);
-  const mayDraft = region === 'BD' && access.update && has(auth.staff, 'product.view') && !order.managed && !order.transfer_to_courier
-    && !order.assigned_business_location && !order.consignment_id && ['PLACED','ACCEPTED','PROCESSING','NO_RESPONSE','AWAITING_STOCK'].includes(order.status);
+  const mayDraft = region === 'BD' && access.update && access.product && !order.managed && !order.transfer_to_courier
+    && !order.consignment_id && orderActions(order, access, region).some(action => action.kind === 'edit');
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
   const direct = productionLayout ? '/dashboard/order-details/' + id + regionQuery : ordersPath + '/' + id;
   const size = productionLayout ? param(q, 'limit') : undefined;
-  const assigned = productionLayout && param(q, 'source') === 'assigned';
-  const back = (productionLayout ? assigned ? '/dashboard/assigned-orders' : '/dashboard/orders' : ordersPath)
+  const back = (productionLayout ? productionOrdersPath : ordersPath)
     + orderListQuery(region, selectedFilters(q), param(q, 'page'))
     + (size && productionPageSizes.includes(size) ? '&limit=' + size : '');
   const draft = mayDraft ? await api('/order/workspace/orders/' + id + '/draft?region=BD', auth.token).catch((error: unknown) => {

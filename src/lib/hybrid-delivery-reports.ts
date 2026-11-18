@@ -171,7 +171,7 @@ function refundAllocations(receipt: ReturnType<typeof periodActivity>['returns']
   });
 }
 
-function salesByProduct(data: RecordData, orders: HybridReportOrder[]) {
+function salesByProduct(data: RecordData, orders: HybridReportOrder[], locations?: string) {
   const activity = periodActivity(orders, periodOf(obj(data.meta)));
   const params = obj(data.params);
   const category = str(params.category);
@@ -190,6 +190,12 @@ function salesByProduct(data: RecordData, orders: HybridReportOrder[]) {
       if (accepted(line)) mergeLine(rows, line, { unitsReturned: line.quantity, returnsValue: allocation[index] / 100 });
     });
   }
+  const pooled = new Map<string, number>();
+  if (!locations) {
+    for (const line of [...activity.delivered.flatMap(order => order.lines), ...activity.returns.flatMap(receipt => receipt.lines)]) {
+      if (line.pooledOnHand != null && Number.isSafeInteger(line.pooledOnHand) && line.pooledOnHand >= 0) pooled.set(line.id, line.pooledOnHand);
+    }
+  }
   const completed = rows.map(row => {
     const unitsDelivered = numeric(row.unitsDelivered);
     const netSales = numeric(row.netSales);
@@ -197,13 +203,16 @@ function salesByProduct(data: RecordData, orders: HybridReportOrder[]) {
     const returnsValue = numeric(row.returnsValue);
     const netAfterReturns = round(netSales - returnsValue);
     return { ...row, unitsDelivered, netSales, unitsReturned, returnsValue, netAfterReturns,
+      onHand: typeof row.onHand === 'number' ? row.onHand : pooled.get(str(row.variantId)) ?? null,
       avgPrice: unitsDelivered ? round(netSales / unitsDelivered) : null,
       _tones: { ...obj(row._tones), ...(unitsReturned && { unitsReturned: 'warning' }), ...(netAfterReturns < 0 && { netAfterReturns: 'danger' }) },
     };
   });
   const totals = sum(completed, ['unitsDelivered', 'netSales', 'unitsReturned', 'returnsValue', 'netAfterReturns', 'onHand']);
   const patched = replaceTable(data, 'products', table => ({ ...table, rows: completed, totals: { ...obj(table.totals), ...totals } }));
-  return updateMetrics(patched, { unitsDelivered: totals.unitsDelivered, netSales: totals.netSales, unitsReturned: totals.unitsReturned,
+  const hasPooledValues = rows.some(row => typeof row.onHand !== 'number' && pooled.has(str(row.variantId)));
+  const decorated = hasPooledValues ? appendQuality(patched, 'Hybrid-only SKUs show pooled storefront availability without warehouse allocation.', 'HYBRID_STOCK_POOL') : patched;
+  return updateMetrics(decorated, { unitsDelivered: totals.unitsDelivered, netSales: totals.netSales, unitsReturned: totals.unitsReturned,
     skus: completed.filter(row => row.unitsDelivered > 0).length }, item => item.key === 'unitsReturned'
       ? { ...item, tone: rateTone(ratio(totals.unitsReturned, totals.unitsDelivered), .05, .1) } : item);
 }
@@ -273,7 +282,7 @@ export async function reportWithHybrid(id: string, data: RecordData, auth: Sessi
   } else if (hybrid?.orders.length) {
     const merger = { 'sales-summary': mergeHybridSalesReport, 'sales-by-product': salesByProduct,
       'order-status': orderStatus, 'pending-fulfilment': pendingFulfilment, 'returns-rts': returnsReport }[id];
-    if (merger) combined = merger(data, hybrid.orders);
+    if (merger) combined = merger(data, hybrid.orders, locations);
   }
   return obj(data.mergeInputs).limit ? finalize(id, combined, exporting) : combined;
 }

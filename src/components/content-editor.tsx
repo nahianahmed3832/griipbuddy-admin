@@ -235,7 +235,7 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
       }
       records.push(result);
     }
-    const response = await fetch(adminPath('/api/workspace'), {
+    const response = await fetch(adminPath('/api/workspace' + (productionHero ? '?view=production' : '')), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'content', values: { section: section.id, id: doc._id ?? null,
         revision: doc.updatedAt ?? null, value: section.max ? records : records[0] } }),
@@ -245,7 +245,12 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
 
   async function saveRows(next: Row[]) {
     if (submitting.current || uploading || !writable) return;
-    if ((isCarousel || productionHero) && next.some(row => !row.video_url && !row.thumbnail_url && !Object.keys(object(row.files)).length)) {
+    if (productionHero && next.some(row => !row.video_url && !(object(row.files).video_url instanceof File))) {
+      setError(true);
+      setFeedback('Add a video to every hero entry.');
+      return;
+    }
+    if (isCarousel && next.some(row => !row.video_url && !row.thumbnail_url && !Object.keys(object(row.files)).length)) {
       setError(true);
       setFeedback('Add a photo or a video to every slide.');
       return;

@@ -36,6 +36,28 @@ export function FinanceListFilters({ path, children, preserveEmpty = [] }: {
   </form>;
 }
 
+export function ExpenseReportCategoryFilters({ category, subcategory, choices }: {
+  category: string; subcategory: string; choices: Pick<FinanceChoices, 'category' | 'subcategory'>;
+}) {
+  const [selected, setSelected] = useState(category);
+  const children = choices.subcategory.filter(row => row.parent === selected);
+  return <>
+    <label><select aria-label="All categories" name="category" value={selected} onChange={event => {
+      const previous = event.currentTarget.form?.elements.namedItem('subcategory');
+      if (previous instanceof HTMLSelectElement) previous.value = '';
+      setSelected(event.currentTarget.value);
+    }}>
+      <option value="">All categories</option>
+      {choices.category.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+    </select></label>
+    <label><select key={selected} aria-label="All subcategories" name="subcategory" disabled={!selected}
+      defaultValue={selected === category && children.some(row => row.id === subcategory) ? subcategory : ''}>
+      <option value="">All subcategories</option>
+      {children.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+    </select></label>
+  </>;
+}
+
 async function write(view: ExpenseView, id: string | undefined, action: string, payload?: Record<string, unknown>) {
   const query = new URLSearchParams({ view, region: 'BD', action });
   if (id) query.set('id', id);

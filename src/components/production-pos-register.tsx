@@ -4,7 +4,7 @@ import type { Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { posMoney, posRegisterPath } from '@/lib/pos';
 import { advancedEnabled } from '@/lib/advanced';
-import { loadPosRegisterPage, loadPosRegisterTotals, posRegisterFilters, posRegisterTitle, posStaff } from '@/lib/production-pos';
+import { allPosLimit, loadPosRegister, loadPosRegisterTotals, posRegisterFilters, posRegisterTitle, posStaff } from '@/lib/production-pos';
 import { has, type Region } from '@/lib/sections';
 import { PosRegisterFilterForm, PosRegisterTable, PosRangeFilter } from './production-pos-register-controls';
 import styles from './production-pos-register.module.css';
@@ -17,8 +17,8 @@ const metrics = [
 export async function ProductionPosRegister({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
   if (region !== 'BD') throw new ApiError(404);
   const filters = await posRegisterFilters(q, auth);
-  const [{ rows, total }, totals, staff] = await Promise.all([
-    loadPosRegisterPage(auth, filters), loadPosRegisterTotals(auth, filters),
+  const [{ rows, total, tooMany }, totals, staff] = await Promise.all([
+    loadPosRegister(auth, filters), loadPosRegisterTotals(auth, filters),
     filters.canViewStaff ? posStaff(auth) : [],
   ]);
   const { serial, location, creator, range, from, to, page, size, today } = filters;
@@ -49,6 +49,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
       </PosRegisterFilterForm>
     </details>
     {!filters.valid && <p role="alert">Enter a numeric sale ID and a valid date range.</p>}
+    {tooMany && <p role="alert">Narrow the filters to show at most {allPosLimit.toLocaleString('en-US')} sales at once.</p>}
     <div className={styles.metrics}>
       {metrics.filter(([key]) => Object.hasOwn(totals, key)).map(([key, label, Icon]) => <article key={key} data-metric={key}>
         <span><Icon size={15}/></span><div>{label}</div><strong>{key !== 'count' && '৳ '}{posMoney(totals[key] ?? 0)}</strong></article>)}

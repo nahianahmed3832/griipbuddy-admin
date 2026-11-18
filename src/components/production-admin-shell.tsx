@@ -75,7 +75,7 @@ const navigation = [
   ] },
   { title: 'Administration', groups: [
     { label: 'Manage Staffs and Roles', icon: UserRoundCog, entries: [
-      item('Manage Staffs', 'staffs'), item('Manage Roles', 'role'),
+      item('Manage Staffs', 'staffs', 'user.view'), item('Manage Roles', 'role', 'role.view'),
     ] },
   ] },
 ];

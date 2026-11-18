@@ -226,7 +226,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       ? await CustomerProfilePage({ auth, id: view[1], q, region, production: Boolean(production) })
       : await CustomersPage({ auth, q, region, production: Boolean(production) });
     else if (sectionId === 'customers' && active === 'create' && view.length === 1) content = CustomerCreatePage({ auth, region, production: Boolean(production) });
-    else if (sectionId === 'staff' && active && superAdmin(auth.staff)) content = await StaffWorkspace({ auth, view: active, id: view[1], q, production: Boolean(production) });
+    else if (sectionId === 'staff' && active) content = await StaffWorkspace({ auth, view: active, id: view[1], q, production: Boolean(production) });
     else if (resource) content = view[1] ? await ResourceDetail({section,view:active!,resource,id:view[1],auth,region})
       : await ResourcePage({section,view:active!,resource,auth,q,region});
     else if (resources[sectionId]) throw new ApiError(403);

@@ -275,11 +275,12 @@ export function mergeHybridClassic(report: RecordData, hybrid: HybridReportData 
     ...native, count: numeric(native.count) + placed.length, total_quantity: numeric(native.total_quantity) + hybridTotals.units,
     totalOrdersAmount: round(numeric(native.totalOrdersAmount) + hybridTotals.value / 100),
     totalOrdersDiscount: round(numeric(native.totalOrdersDiscount) + hybridTotals.discount / 100),
+    totalDue: round(numeric(native.totalDue) + placed.reduce((due, order) => due + numeric(order.dueMinor), 0) / 100),
   }, returns: { ...returns, totalRefund: round(numeric(returns.totalRefund) + paidRefund),
     ...(costReceipts.length && { totalReturnedCost: round(numeric(returns.totalReturnedCost) + returnedCost) }),
     total_quantity: numeric(returns.total_quantity) + returnedUnits, count: numeric(returns.count) + receipts.length,
   } }, daily: arr(report.daily).map(obj).map(row => ({ ...row, orders: round(numeric(row.orders) + (byDay.get(str(row.date).slice(0, 10)) ?? 0) / 100) })) },
-  note: placed.length ? 'Online order amount, discounts, quantity and count include Hybrid checkout. Due and profit figures use legacy records.' : undefined,
+  note: placed.length ? 'Online order totals and outstanding payments include Hybrid checkout. Hybrid profit is unavailable because order purchase costs are not recorded.' : undefined,
   returnNote: [
     receipts.length || paidRefund ? 'Includes Hybrid returns by receipt date and refunds by confirmation date.' : '',
     missingCosts ? 'Purchase-cost evidence is missing for ' + missingCosts + ' Hybrid ' + (missingCosts === 1 ? 'return receipt.' : 'return receipts.') : '',

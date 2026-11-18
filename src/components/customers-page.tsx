@@ -11,6 +11,7 @@ import { ProductionCustomers, productionCustomersPath } from './production-custo
 import { ProductionCreateCustomer } from './production-create-customer';
 import productionStyles from './production-customers.module.css';
 import { CustomerPassword } from './customer-password';
+import { RegistryPageSize } from './production-registry-size';
 import { PageHeading } from './dashboard';
 import { Badge, Empty } from './tables';
 import { CustomerActions, CustomerCreateForm, CustomerNote } from './customer-forms';
@@ -19,6 +20,7 @@ const apiRoot = '/customer-workspace';
 const number = (n: number) => n.toLocaleString('en');
 const accountType = (type?: string) => customerTypes.find(([key]) => key === type)?.[1] || type || 'Unknown';
 const filters = (q: Query) => Object.fromEntries(customerFilters.map(key => [key, param(q, key)?.trim().slice(0, 100)]));
+const pageSizes = ['20', '40', '60', '80', '100', 'all'];
 type Page = { total: number; page: number; size: number };
 type Listing = Page & { rows: Customer[]; summary: { all: number; active: number; inactive: number; unverified: number } };
 type Profile = Page & { customer: Customer; activity: CustomerActivity[] };
@@ -52,14 +54,18 @@ function Pager({ listing, href, label }: { listing: Page; href: (page: number) =
 export async function CustomersPage({ auth, q, region, production = false }: { auth: Session; q: Query; region: Region; production?: boolean }) {
   if (!has(auth.staff, 'user.view')) throw new ApiError(403);
   const filter = filters(q);
-  const list = await api(url(apiRoot, { ...filter, region, page: param(q, 'page') }), auth.token) as Listing;
+  const limit = production ? pageSizes.find(size => size === param(q, 'limit')) ?? '20' : undefined;
+  const list = await api(url(apiRoot, { ...filter, region, page: param(q, 'page'), limit }), auth.token) as Listing;
   const { summary } = list;
   const directory = { ...filter, region };
   const canViewOrders = has(auth.staff, 'order.view');
   if (production) return <ProductionCustomers rows={list.rows} total={list.total} page={list.page} size={list.size}
-    query={filter.q} region={region} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
-    canChangePassword={canWrite(auth.staff) && superAdmin(auth.staff) && has(auth.staff, 'user.update')}>
-    <Pager listing={list} label="Customer pages" href={page => url(productionCustomersPath, { ...directory, page: String(page) })}/>
+    query={filter.q} region={region} limit={limit} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
+    canChangePassword={canWrite(auth.staff) && has(auth.staff, 'business_locations.create')}>
+    <div className="page-actions">
+      <RegistryPageSize current={limit ?? '20'} choices={pageSizes} path={productionCustomersPath} params={directory}/>
+      <Pager listing={list} label="Customer pages" href={page => url(productionCustomersPath, { ...directory, limit, page: String(page) })}/>
+    </div>
   </ProductionCustomers>;
   const metricCards = [
     { label: 'Total accounts', value: summary.all, subtitle: 'Customer directory', Icon: UsersRound, tone: 'purple', filter: {} },
@@ -144,11 +150,13 @@ export async function CustomerProfilePage({ auth, id, q, region, production = fa
     canViewOrders ? (api(url(base + '/orders', { region, page: param(q, 'orderPage') }), auth.token) as Promise<Orders>).catch(() => null) : null,
   ]);
   const { customer } = profile;
-  const canResetPassword = canEdit && superAdmin(auth.staff) && customer.status === 'ACTIVE' && customer.is_verified_number === true;
+  const canResetPassword = production
+    ? canWrite(auth.staff) && has(auth.staff, 'business_locations.create')
+    : canEdit && superAdmin(auth.staff) && customer.status === 'ACTIVE' && customer.is_verified_number === true;
   if (param(q, 'action') === 'password') {
     if (!canResetPassword) throw new ApiError(403);
     if (production) {
-      const back = url(productionCustomersPath, { region, q: param(q, 'q'), page: param(q, 'page') });
+      const back = url(productionCustomersPath, { region, q: param(q, 'q'), page: param(q, 'page'), limit: param(q, 'limit') });
       return <section className={productionStyles.form}><h1>Change Password</h1>
         <CustomerPassword id={id} revision={customer.updatedAt ?? null} back={back} production/>
       </section>;

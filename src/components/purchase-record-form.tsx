@@ -74,7 +74,7 @@ export function PurchaseRecordForm({ record, suppliers, locations, region, produ
     try {
       const response = await fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...Object.fromEntries(form),
-          revision: record.revision, lines, expenses, location: received ? record.location : form.get('location'),
+          revision: record.revision, lines, expenses,
           status: received ? record.status : form.get('status') }),
       });
       if (!response.ok) throw new Error((await response.text()).slice(0, 320) || 'The purchase could not be saved.');
@@ -89,13 +89,15 @@ export function PurchaseRecordForm({ record, suppliers, locations, region, produ
     }
   }
   const fields = production ? purchaseFields.filter(field => field.key !== 'tax') : purchaseFields;
+  const totalPieces = lines.reduce((total, line) => total + (Number(line.quantity) || 0), 0);
+  const netAmount = lines.reduce((total, line) => total + Number(line.quantity) * Number(line.cost) - Number(line.discount), 0);
   const addExpense = <button type="button" className="button secondary" disabled={expenses.length >= 20 || disabled} onClick={() => {
     const key = nextKey.current++;
     setExpenses(rows => [...rows, { ...newExpense, key }]);
   }}><Plus size={16}/> {production ? 'Add Expense' : 'Add expense'}</button>;
   return <form onSubmit={save} className={'panel padded stack-form ' + (production ? styles.purchaseEdit : '')}><fieldset className="supplier-fields" disabled={disabled}>
     <label className="filter-label">Supplier<select name="supplier" required defaultValue={record.supplier}>{suppliers.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-    <label className="filter-label">{production ? 'Business Location' : 'Business location'}<select name="location" required defaultValue={record.location} disabled={received}>{locations.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+    <label className="filter-label">{production ? 'Business Location' : 'Business location'}<select name="location" required defaultValue={record.location}>{locations.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
     {production ? <label className="filter-label">Purchase Date<span className={styles.purchaseDay}>
       <span>{date ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(date + 'T00:00:00Z')) : 'Pick a date'}</span><CalendarDays size={16}/>
       <input type="date" aria-label="Purchase Date" name="date" required value={date} onChange={event => setDate(event.target.value)}/></span></label>
@@ -138,6 +140,10 @@ export function PurchaseRecordForm({ record, suppliers, locations, region, produ
           <td><button type="button" className="icon-button" disabled={lines.length < 2 || disabled} aria-label={'Remove item ' + (index + 1)}
             onClick={() => setLines(rows => rows.filter(row => row.key !== line.key))}><Trash2 size={16}/></button></td>
         </tr>)}</tbody></table></div>
+      {production && <div className={styles.purchaseTotals} aria-live="polite">
+        <p>Total Pcs <strong>{totalPieces}</strong></p>
+        <p>Net Total Amount <strong>{netAmount.toFixed(2)}</strong></p>
+      </div>}
     </section>
     <section className="stack-form" aria-label="Applied expenses"><header className={styles.expenseEditHeader}>
         <h2>{production ? 'Additional Expenses' : 'Applied expenses'}</h2>{production && addExpense}

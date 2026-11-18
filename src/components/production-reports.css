@@ -369,3 +369,7 @@
 @media (max-width: 639px) {
   .production-report-cards, .production-report-page .report-metrics { grid-template-columns: minmax(0, 1fr) !important; }
 }
+.production-report-loading { display: flex; gap: .6rem; align-items: center; }
+.production-report-loading svg { animation: report-loading-spin .9s linear infinite; }
+@keyframes report-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .production-report-loading svg { animation: none; } }

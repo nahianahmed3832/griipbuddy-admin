@@ -12,6 +12,7 @@ import { RegistryPageSize } from './production-registry-size';
 import { ProductionCatalogActions } from './production-catalog-actions';
 import styles from './production-catalog.module.css';
 import design from './production-catalog-details.module.css';
+import editor from './production-product-editor.module.css';
 
 export type RegistryKind = 'brands' | 'faqs' | 'reviews';
 export type RegistryProduct = { name: string; slug: string; sku: string; image: string };
@@ -52,17 +53,22 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
   const router = useRouter();
   const route = routes[kind];
   const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState('');
+  const [target, setTarget] = useState<RegistryRow>();
+  const [reviewSearch, setReviewSearch] = useState(search ?? '');
+  const recordLabel = kind === 'faqs' ? 'Faq' : 'Review';
   async function change(row: RegistryRow, action: 'delete' | 'status', status?: string) {
-    if (pending.current || action === 'delete' && !window.confirm('Delete this ' + (kind === 'faqs' ? 'FAQ' : kind.slice(0,-1)) + '?')) return;
+    if (pending.current) return;
     pending.current = true;
+    setBusy(true);
     setIssue('');
     try {
-      await saveCatalog({ kind, action, id: row.id, region,
-        values: { status } });
+      await saveCatalog({ kind, action, id: row.id, region, values: { status } });
+      if (action === 'delete') setTarget(undefined);
       router.refresh();
     } catch (failure) { setIssue(failure instanceof Error ? failure.message : 'Could not save the change.'); }
-    finally { pending.current = false; }
+    finally { pending.current = false; setBusy(false); }
   }
   const params = { region: region === 'INTERNATIONAL' ? region : '', q: search, filter, product, rating };
   const offset = (page - 1) * pageSize;
@@ -78,8 +84,10 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       {canCreate && route.create && <Link className={styles.primary} href={scope(route.create, region)}>
         {kind === 'faqs' ? 'Add new Faq' : 'Add new Brand'}
       </Link>}
+      {kind === 'reviews' && <input className={design.reviewSearch} aria-label="Search Reviews" placeholder="Search Reviews..."
+        value={reviewSearch} onChange={event => setReviewSearch(event.currentTarget.value)}/>}
     </header>
-    {issue && <p className={styles.error} role="alert">{issue}</p>}
+    {issue && !target && <p className={styles.error} role="alert">{issue}</p>}
     <div className={styles.tableBorder + ' ' + design.scroll}>
       <table className={styles.table}>
         <thead><tr>{columns[kind].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
@@ -93,19 +101,31 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
                 {kind === 'faqs' ? <td className={design.description}>{row.question}</td>
                   : <><td>{row.rating}</td><td>{row.title}</td><td className={design.description}>{row.content}</td></>}
               </>}
-            <td><span className={styles.activeBadge} data-active={row.status === 'active' || row.status === 'approved'}>{labels[row.status] || row.status}</span></td>
+            <td>{kind !== 'brands' && canEdit
+              ? <select className={design.registryStatus} aria-label={'Status for ' + (row.title || row.question || row.product.name)}
+                  value={statuses[kind].includes(row.status) ? row.status : ''} disabled={busy}
+                  onChange={event => void change(row, 'status', event.currentTarget.value)}>
+                  <option value="" disabled>Select status</option>
+                  {statuses[kind].map(status => <option key={status} value={status}>{labels[status]}</option>)}
+                </select>
+              : <span className={styles.activeBadge} data-active={row.status === 'active' || row.status === 'approved'}>{labels[row.status] || row.status}</span>}</td>
             {kind === 'faqs' && <td>{row.creator || 'Anonymous'}</td>}
             {kind !== 'brands' && <td>{date(row.created)}</td>}
             {kind === 'faqs' && <td>{date(row.updated)}</td>}
             <td><div className={design.tableActions}>
               {kind !== 'brands' && <Link href={detail} className={styles.outline} aria-label={'View ' + (row.title || row.question)}><Eye size={16}/></Link>}
-              {(canEdit || canDelete) && <ProductionCatalogActions label="Open menu" title="Actions">
+              {(canDelete || canEdit && kind !== 'reviews') && <ProductionCatalogActions label="Open menu" title="Actions">
                 {close => <>
                   {kind === 'brands' && canEdit && <Link href={detail} onClick={close}>Edit</Link>}
                   {kind === 'faqs' && canEdit && <Link href={detail} onClick={close}>Reply Faq</Link>}
-                  {canEdit && kind === 'reviews' && statuses[kind].filter(status => status !== row.status).map(status =>
-                    <button key={status} type="button" onClick={() => { close(); void change(row, 'status', status); }}>{labels[status]}</button>)}
-                  {canDelete && <button type="button" onClick={() => { close(); void change(row, 'delete'); }}>{kind === 'faqs' ? 'Delete Faq' : 'Delete'}</button>}
+                  {canDelete && <button type="button" onClick={() => {
+                    close();
+                    if (kind === 'brands') {
+                      if (window.confirm('Delete this brand?')) void change(row, 'delete');
+                      return;
+                    }
+                    setIssue(''); setTarget(row);
+                  }}>{kind === 'brands' ? 'Delete' : 'Delete ' + recordLabel}</button>}
                 </>}
               </ProductionCatalogActions>}
             </div></td>
@@ -119,6 +139,16 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       {page > 1 ? <Link className={styles.outline} href={href(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
       {hasNext ? <Link className={styles.outline} href={href(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
     </nav>}
+    {target && <dialog ref={node => { if (node && !node.open) node.showModal(); }} className={editor.editorDialog + ' ' + design.registryDelete}
+      aria-labelledby="registry-delete-title" onCancel={event => { if (pending.current) event.preventDefault(); }} onClose={() => setTarget(undefined)}>
+      <div className={editor.dialogHeading}><h3 id="registry-delete-title">Delete {recordLabel}</h3></div>
+      <p>This action cannot be undone. Are you sure you want to delete <strong>{target.title || target.question || target.name}</strong>?</p>
+      {issue && <p className={styles.error} role="alert">{issue}</p>}
+      <div className={editor.saveActions}>
+        <button type="button" className={styles.outline} disabled={busy} onClick={() => { setTarget(undefined); setIssue(''); }}>Cancel</button>
+        <button type="button" className={editor.danger} disabled={busy} onClick={() => void change(target, 'delete')}>{busy ? 'Deleting…' : 'Delete'}</button>
+      </div>
+    </dialog>}
   </section>;
 }
 

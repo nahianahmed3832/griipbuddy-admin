@@ -7,7 +7,7 @@ import { EllipsisVertical, ExternalLink, FileSpreadsheet, Filter, History, X } f
 import {
   inboundPreOrderStatuses, outboundPreOrderStatuses, preOrderItems, preOrderMedia, preOrderNumber, preOrderProduct,
   preOrderRequest, preOrderRequestUrl, preOrderStatuses, preOrderUrl, productionPreOrderSizes, productionPreOrdersPath, statusText,
-  type PreOrderFilters, type PreOrderRow,
+  type PreOrderFilters, type PreOrderPageSize, type PreOrderRow,
 } from '@/lib/preorders';
 import type { PosRange } from '@/lib/pos';
 import { ProductionDateRange } from './production-date-range';
@@ -16,7 +16,7 @@ import { PreOrderPicture, PreOrderStatus } from './preorders-production-media';
 import styles from './preorders.module.css';
 
 type Props = {
-  rows: PreOrderRow[]; total: number; batches: string[]; filters: PreOrderFilters; page: number; pageSize: number;
+  rows: PreOrderRow[]; total: number; batches: string[]; filters: PreOrderFilters; page: number; pageSize: PreOrderPageSize; tooMany: boolean;
   counts: Record<string, number>; access: { create: boolean; update: boolean; remove: boolean }; mediaOrigin: string; today: string;
 };
 const callDate = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', dateStyle: 'medium', timeStyle: 'short' });
@@ -31,7 +31,7 @@ const columns = [
 
 type Dialog = { kind: ProductionPreOrderAction; row?: PreOrderRow; ids?: string[] };
 
-export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, pageSize, counts, access, mediaOrigin, today }: Props) {
+export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, pageSize, tooMany, counts, access, mediaOrigin, today }: Props) {
   const router = useRouter();
   const [local, setLocal] = useState(filters);
   const [preset, setPreset] = useState<PosRange>(filters.from || filters.to ? 'Custom Range' : 'All Time');
@@ -44,7 +44,8 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
   const selectedVisible = selected.filter(id => rows.some(row => row._id === id));
   const some = selectedVisible.length > 0 && selectedVisible.length < rows.length;
   const all = rows.length > 0 && selectedVisible.length === rows.length;
-  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+  const perPage = pageSize === 'all' ? Math.max(1, total) : pageSize;
+  const maxPage = Math.max(1, Math.ceil(total / perPage));
 
   useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = some; }, [some]);
@@ -161,13 +162,16 @@ export function ProductionPreOrdersIndex({ rows, total, batches, filters, page, 
           })}</tbody>
         </table>
       </div>
-      {!rows.length && <p className={styles.noResults}>No pre-orders found!</p>}
+      {!rows.length && <p className={styles.noResults}>{tooMany ? 'Narrow the filters to show at most 10,000 pre-orders at once.' : 'No pre-orders found!'}</p>}
     </section>
     <div className={`${styles.surface} ${styles.pagination}`}>
-      <select aria-label="Items per page" value={pageSize} onChange={event => navigate(local, 1, Number(event.target.value))}>
-        {productionPreOrderSizes.map(size => <option key={size}>{size}</option>)}
+      <select aria-label="Items per page" value={pageSize} onChange={event => {
+        const selectedSize = productionPreOrderSizes.find(size => String(size) === event.target.value);
+        if (selectedSize !== undefined) navigate(local, 1, selectedSize);
+      }}>
+        {productionPreOrderSizes.map(size => <option key={size} value={size}>{size === 'all' ? 'All' : size}</option>)}
       </select>
-      <span>{total ? Math.min((page - 1) * pageSize + 1, total) : 0} - {Math.min(page * pageSize, total)} of {total}</span>
+      <span>{rows.length ? Math.min((page - 1) * perPage + 1, total) : 0} - {rows.length ? Math.min(page * perPage, total) : 0} of {total}</span>
       <div className={styles.inline}><button type="button" className={styles.primary} disabled={page <= 1} onClick={() => navigate(local, page - 1)}>Previous</button>
         <button type="button" className={styles.primary} disabled={page >= maxPage} onClick={() => navigate(local, page + 1)}>Next</button></div>
     </div>

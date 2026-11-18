@@ -50,7 +50,8 @@ function NoResults({ title, detail, kind }: { title: string; detail: string; kin
 }
 
 export async function StaffWorkspace({ auth, view, id, q, production = false }: { auth: Session; view: string; id?: string; q: Query; production?: boolean }) {
-  if (!superAdmin(auth.staff)) throw new ApiError(403);
+  const permission = view === 'staff' ? 'user.view' : 'role.view';
+  if (view === 'activity' ? !superAdmin(auth.staff) : !has(auth.staff, permission)) throw new ApiError(403);
   const write = canWrite(auth.staff);
   const enrollment = staffEnrollmentAvailable();
   const canInvite = write && enrollment && has(auth.staff, 'user.create');
@@ -78,9 +79,10 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
 
   if (view === 'roles' && id) {
     const create = id === 'new';
-    const edit = write && has(auth.staff, create ? 'role.create' : 'role.update');
-    if (create && !edit) throw new ApiError(403);
+    const allowed = write && has(auth.staff, create ? 'role.create' : 'role.update');
+    if (create && !allowed) throw new ApiError(403);
     const { catalog, role } = await api(url(endpoint + '/role-editor', { id: create ? undefined : id }), auth.token) as { catalog: string[]; role: RoleRecord | null };
+    const edit = allowed && (!role || role.permissions.every(key => catalog.includes(key)));
     if (production) return <RoleEditor role={role} catalog={catalog} writable={edit} canDelete={false} production/>;
     return <><PageHeading eyebrow={title} title={role?.name ?? 'Create role'}
       description="Grant the permissions staff need for this role. Review the effect before saving."/>
@@ -113,7 +115,8 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
   }
   if (id) {
     const row = await api(endpoint + '/directory/' + id, auth.token) as StaffRecord;
-    const editable = write && has(auth.staff, 'user.update') && !row.protected && row.id !== auth.staff.id;
+    const editable = write && has(auth.staff, 'user.update') && !row.protected && row.id !== auth.staff.id &&
+      (superAdmin(auth.staff) || row.permissions.every(key => has(auth.staff, key)));
     const options = editable ? await api(endpoint + '/options', auth.token) as Options : null;
     if (production && options && row.status !== 'PENDING' && !row.setupExpiresAt) {
       return <StaffForm row={row} options={options} back="/dashboard/staffs" production/>;
@@ -133,7 +136,8 @@ export async function StaffWorkspace({ auth, view, id, q, production = false }: 
   }
   const result = await api(url(endpoint + '/directory', { page, q: search, status }), auth.token) as Paged<StaffRecord>;
   if (production) return <ProductionStaffDirectory rows={result.rows} self={auth.staff.id} create={canInvite}
-    canUpdate={write && has(auth.staff, 'user.update')} canPermissions={write && superAdmin(auth.staff)} canDelete={write && has(auth.staff, 'user.delete')}>
+    canUpdate={write && has(auth.staff, 'user.update')} canPermissions={write && superAdmin(auth.staff)}
+    canDelete={write && superAdmin(auth.staff) && has(auth.staff, 'user.delete')}>
     <Pages path="/dashboard/staffs" result={result} filters={{ q: search, status }}/>
   </ProductionStaffDirectory>;
   return <><PageHeading eyebrow={title} title="Staff directory" description="Review team access across all business locations.">

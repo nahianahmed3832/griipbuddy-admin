@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Boxes, ChartNoAxesCombined, CircleAlert,
   ChevronRight, FileText, Info, Minus, RefreshCw, ShoppingBag, TrendingDown, TrendingUp } from 'lucide-react';
 import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
@@ -19,6 +21,7 @@ import { productionReportPeriodRange } from '@/lib/production-report-period';
 import { hybridOrderId } from '@/lib/hybrid-orders';
 import { hybridReportLocations } from '@/lib/hybrid-orders';
 import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
+import { ReportDownloads } from './report-downloads';
 import './production-reports.css';
 
 const shortcuts = [
@@ -201,9 +204,42 @@ function ReportTable({ table, auth, region, currency, path, query, production }:
   </section>;
 }
 
-export async function Reports({ auth, id, q, region, production = false }: {
+type ReportProps = {
   auth: Session; id?: string; q: Query; region: Region; production?: boolean;
-}) {
+};
+
+export async function Reports(props: ReportProps) {
+  if (!props.production) return ReportContent(props);
+  return <Suspense key={JSON.stringify([props.region, props.id, props.q])} fallback={
+    <div className="panel padded production-report-loading" role="status" aria-busy="true">
+      <RefreshCw size={18} aria-hidden="true"/>{props.id ? 'Loading report…' : 'Loading reports…'}
+    </div>
+  }><ProductionReportContent {...props}/></Suspense>;
+}
+
+async function ProductionReportContent(props: ReportProps) {
+  try {
+    return await ReportContent(props);
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    if (error.status === 404) notFound();
+    if (error.status === 401 || error.status === 403) return <Empty title="Access restricted" detail="Your account does not have access to this report."/>;
+    const path = '/dashboard/reports' + (props.id ? '/' + props.id : '');
+    const query = new URLSearchParams();
+    for (const [name, value] of Object.entries(props.q)) {
+      for (const entry of Array.isArray(value) ? value : [value]) if (entry !== undefined) query.append(name, entry);
+    }
+    query.set('region', props.region);
+    query.set('refresh', '1');
+    query.set('attempt', String(Date.now()));
+    return <section className="panel padded stack-form" role="alert">
+      <p>{props.id ? 'Could not load this report.' : 'Could not load reports.'}</p>
+      <Link className="button secondary" href={path + '?' + query}>Retry</Link>
+    </section>;
+  }
+}
+
+async function ReportContent({ auth, id, q, region, production = false }: ReportProps) {
   const reportBase = production ? '/dashboard/reports' : '/desk/reports';
   if (!id) {
     const definitions = arr(await api(url('/analytics/reports', {region}),auth.token)).map(obj).filter(report => reportIds.includes(str(report.id)));
@@ -320,8 +356,11 @@ export async function Reports({ auth, id, q, region, production = false }: {
       <div className="page-actions report-actions">
         {asOf && <time className="muted" dateTime={generatedAt}>Data as of {asOf}{!production && ' Dhaka'}</time>}
         <a className="button secondary" href={adminPath(url(path,{...query,page,limit,period:dates ? period : undefined,refresh:'1'}))}><RefreshCw size={15}/> Refresh</a>
-        <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'csv'}))}><ArrowDownToLine size={16}/> CSV</a>
-        <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'xlsx'}))}><ArrowDownToLine size={16}/> Excel</a>
+        {production ? <ReportDownloads csv={adminPath(url('/api/download',{...query,id,format:'csv'}))}
+          xlsx={adminPath(url('/api/download',{...query,id,format:'xlsx'}))}/> : <>
+          <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'csv'}))}><ArrowDownToLine size={16}/> CSV</a>
+          <a className="button secondary" href={adminPath(url('/api/download',{...query,id,format:'xlsx'}))}><ArrowDownToLine size={16}/> Excel</a>
+        </>}
       </div>
     </header>
     {production ? <ProductionReportFilters path={path} region={region} period={period} from={from} to={to}

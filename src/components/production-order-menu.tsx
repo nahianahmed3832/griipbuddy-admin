@@ -10,42 +10,45 @@ import { orderNumber, orderRequest, type Order, type OrderAction } from '@/lib/w
 import type { OrderDialogKind } from './website-orders-dialog';
 import styles from './production-website-orders.module.css';
 
-export function useManualDelivery(region: Region, notify: (message: string) => void) {
+type DirectStatus = 'DELIVERED' | 'PENDING_RETURN';
+
+export function useManualOrderStatus(region: Region, notify: (message: string) => void) {
   const router = useRouter();
-  const inFlight = useRef(new Set<string>());
-  const [delivering, setDelivering] = useState<ReadonlySet<string>>(new Set());
-  async function deliver(id: string) {
+  const inFlight = useRef(new Map<string, DirectStatus>());
+  const [updating, setUpdating] = useState<ReadonlyMap<string, DirectStatus>>(new Map());
+  async function updateStatus(id: string, status: DirectStatus) {
     if (inFlight.current.has(id)) return;
-    inFlight.current.add(id);
-    setDelivering(new Set(inFlight.current));
+    const label = status === 'DELIVERED' ? 'delivered' : 'pending return';
+    inFlight.current.set(id, status);
+    setUpdating(new Map(inFlight.current));
     notify('');
     try {
-      await orderRequest('update-status', region, { query: { id }, values: { status: 'DELIVERED' } });
-      notify('Order marked as delivered successfully');
+      await orderRequest('update-status', region, { query: { id }, values: { status } });
+      notify(`Order marked as ${label} successfully`);
       router.refresh();
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'Failed to mark order as delivered');
+      notify(error instanceof Error ? error.message : `Failed to mark order as ${label}`);
     } finally {
       inFlight.current.delete(id);
-      setDelivering(new Set(inFlight.current));
+      setUpdating(new Map(inFlight.current));
     }
   }
-  return { deliver, delivering };
+  return { updateStatus, updating };
 }
 
-export function ProductionOrderMenu({ order, href, editHref, actions, select, delivering }: {
+export function ProductionOrderMenu({ order, href, editHref, actions, select, updating }: {
   order: Order;
   href: string;
   editHref?: string;
   actions: OrderAction[];
   select: (kind: OrderDialogKind) => void;
-  delivering: boolean;
+  updating?: DirectStatus;
 }) {
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   const label = 'Actions for ' + orderNumber(order);
   const orderedKinds: OrderAction['kind'][] = [
-    'accept', 'edit', 'update-status', 'note', 'sms', 'pick', 'dispatch', 'handover', 'delivered', 'return', 'pending-return', 'cancel', 'delete',
+    'accept', 'edit', 'update-status', 'note', 'sms', 'pick', 'dispatch', 'handover', 'delivered', 'return', 'pending-return', 'scan-return', 'cancel', 'delete',
   ];
   const items = orderedKinds.flatMap(kind => actions.filter(action => action.kind === kind));
 
@@ -82,16 +85,19 @@ export function ProductionOrderMenu({ order, href, editHref, actions, select, de
         <Link href={href} role="menuitem" className={styles.orderMenuItem} onClick={() => setOpen(false)}>View Details</Link>
         {following.map(({ kind, label }, index) => {
           const previous = following[index - 1]?.kind ?? '';
-          const divider = ['delivered','return','pending-return'].includes(kind) && !['delivered','return','pending-return'].includes(previous) ||
+          const returns = ['delivered', 'return', 'pending-return', 'scan-return'];
+          const divider = returns.includes(kind) && !returns.includes(previous) ||
             ['cancel','delete'].includes(kind) && !['cancel','delete'].includes(previous);
-          const tone = kind === 'delivered' ? 'positive' : kind === 'pending-return' ? 'warning' :
+          const tone = kind === 'delivered' ? 'positive' : kind === 'pending-return' || kind === 'scan-return' ? 'warning' :
             ['return', 'cancel', 'delete'].includes(kind) ? 'danger' : undefined;
+          const direct = kind === 'delivered' || kind === 'pending-return';
+          const loading = kind === 'delivered' ? updating === 'DELIVERED' : kind === 'pending-return' && updating === 'PENDING_RETURN';
           return <div key={kind} role="presentation">
             {divider && <div className={styles.orderMenuSeparator} role="separator"/>}
             {kind === 'edit' && editHref ? <Link href={editHref} role="menuitem" className={styles.orderMenuItem}
               onClick={() => setOpen(false)}>{label}</Link> : <button type="button" role="menuitem" data-tone={tone}
-              className={styles.orderMenuItem} disabled={kind === 'delivered' && delivering}
-              onClick={() => { setOpen(false); select(kind); }}>{kind === 'delivered' && delivering ? 'Marking as Delivered…' : label}</button>}
+              className={styles.orderMenuItem} disabled={direct && !!updating}
+              onClick={() => { setOpen(false); select(kind); }}>{loading ? label.replace('Mark', 'Marking') + '…' : label}</button>}
           </div>;
         })}
       </Popover.Content>

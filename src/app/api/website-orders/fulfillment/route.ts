@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (!auth) return reject('Sign in required.', 401);
   const id = hybridOrderId(request.nextUrl.searchParams.get('id') ?? '');
   if (!id) return reject('Order not found.', 404);
-  const limit = 3000;
+  const limit = 14_000;
   if (!request.headers.get('content-type')?.startsWith('application/json') || Number(request.headers.get('content-length')) > limit) {
     return reject('Invalid fulfillment request.', 400);
   }

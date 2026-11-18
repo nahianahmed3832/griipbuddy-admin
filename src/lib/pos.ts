@@ -1,5 +1,7 @@
 export const posRegisterPath = '/dashboard/pos/all';
 export const posMethods = ['Cash', 'Advance', 'Card', 'Cheque', 'Bkash', 'Nagad', 'Rocket', 'Other'] as const;
+export const posPageSizes = [20, 40, 60, 80, 100, 'all'] as const;
+export type PosPageSize = (typeof posPageSizes)[number];
 export const posRanges = ['All Time', 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Last Month',
   'This month last year', 'This Year', 'Last Year', 'Current financial year', 'Last financial year', 'Custom Range'] as const;
 export type PosRange = typeof posRanges[number];
@@ -71,8 +73,8 @@ export function posDiscountMinor(base: number, discount: PosDiscount) {
 export const posColumns = [
   ['date', 'Date'], ['invoice', 'Sale, Invoice No.'], ['customer', 'Customer'], ['location', 'Location'],
   ['quantity', 'Total Items'], ['sku', 'Items SKU'], ['paid', 'Total Paid'], ['cost', 'Total Purchase Price'],
-  ['profit', 'Total Profit'], ['discount', 'Total Discount'], ['total', 'Total Amount'], ['status', 'Payment Status'],
-  ['method', 'Payment Method'], ['creator', 'Added By'], ['due', 'Amount Due'], ['note', 'Sale Note'], ['paymentNote', 'Payment Note'],
+  ['profit', 'Total Profit'], ['discount', 'Total Discount'], ['total', 'Total Amount'], ['due', 'Sell Due'],
+  ['status', 'Payment Status'], ['method', 'Payment Method'], ['creator', 'Added By'], ['note', 'Sell Note'], ['paymentNote', 'Payment Note'],
 ] as const;
 export type PosColumn = typeof posColumns[number][0];
 export type PosRegisterRow = { id: string; serial: string; subtotal: number; cells: Partial<Record<PosColumn, string>>; amounts: Partial<Record<PosColumn, number>> };

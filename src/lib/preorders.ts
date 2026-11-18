@@ -2,7 +2,8 @@ import { adminPath } from './paths';
 
 export const preOrdersPath = '/desk/orders/preorders';
 export const productionPreOrdersPath = '/dashboard/pre-orders';
-export const productionPreOrderSizes = [20, 40, 60, 80, 100] as const;
+export const productionPreOrderSizes = [20, 40, 60, 80, 100, 'all'] as const;
+export type PreOrderPageSize = (typeof productionPreOrderSizes)[number];
 export const preOrderActionStatus = 'ACTION_REQUIRED';
 export const preOrderStatuses = [
   'REQUESTED', 'QUOTED', 'CONFIRMED', 'PURCHASED', 'SHIPPED_TO_BD', 'ARRIVED_IN_BD',

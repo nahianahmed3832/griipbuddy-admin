@@ -34,7 +34,7 @@ export async function ProductionStockHistory({ auth, q, region, mode }: { auth: 
   if (!has(auth.staff, 'stock.view')) throw new ApiError(403);
   const adjustment = mode === 'adjustment';
   const inventory = mode === 'inventory';
-  const endpoint = adjustment ? '/stocks/adjustment' : '/stocks/admin/transfer-history';
+  const endpoint = adjustment ? '/stocks/adjustment' : inventory ? '/stocks/admin/inventory-transfer-history' : '/stocks/admin/transfer-history';
   const path = '/dashboard/' + (adjustment ? 'stock-adjustment/all' : inventory ? 'inventory/transfer-history' : 'stock-transfer/all');
   const requested = param(q, 'limit') ?? '';
   const limit = pageSizes.includes(requested) ? requested : '20';
@@ -48,27 +48,31 @@ export async function ProductionStockHistory({ auth, q, region, mode }: { auth: 
   const validAction = ['ADDITION', 'DEDUCTION'].includes(action) ? action : undefined;
   const query = adjustment ? { region: regionQuery, action: validAction, sku, location, operator, from, to } : { region: regionQuery };
   const amount = new Intl.NumberFormat('en', { style: 'currency', currency: region === 'BD' ? 'BDT' : 'USD' });
-  const [items, places, staff] = await Promise.all([
-    records(endpoint, adjustment ? 'data' : 'stockTransferHistory', adjustment ? {
+  const desiredPage = Math.max(1, Math.min(100000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
+  const pagedInventory = inventory && limit !== 'all';
+  const inventoryPage = (page: number) => api(url(endpoint, { region, page: String(page), limit }), auth.token).then(obj);
+  const [data, places, staff] = await Promise.all([
+    pagedInventory ? inventoryPage(desiredPage) : records(endpoint, adjustment || inventory ? 'data' : 'stockTransferHistory', adjustment ? {
       business_location: mongoId(location) ? location : undefined, action: validAction, adjust_by: mongoId(operator) ? operator : undefined,
       sku: sku.replace(/[.*+?^\x24{}()|[\]\\]/g, '\\$&'), startDate: from && from + 'T00:00:00' + (region === 'BD' ? '+06:00' : 'Z'),
       endDate: to && to + 'T23:59:59.999' + (region === 'BD' ? '+06:00' : 'Z'),
-    } : {}, auth, adjustment ? 100 : 250),
+    } : inventory ? { region } : {}, auth, adjustment ? 100 : 250),
     adjustment ? api(url('/business-location', { region, limit: '10000' }), auth.token).then(result => arr(obj(result).businessLocations).map(obj)) : [],
     adjustment && has(auth.staff, 'user.view') ? posStaff(auth).catch(() => []) : [],
   ]);
   const placeIds = new Set(places.map(reference));
-  const scoped = items.filter(row => {
+  const scoped = (Array.isArray(data) ? data : arr(data.data).map(obj)).filter(row => {
     if (adjustment) return placeIds.has(reference(row.business_location));
+    if (inventory) return true;
     const source = obj(row.from), destination = obj(row.to);
     if (!reference(source) || !reference(destination) || (str(source.region) || 'BD') !== region || (str(destination.region) || 'BD') !== region) return false;
-    if (!inventory) return true;
-    return (str(source.type) || str(source.business_location_type)) === 'WAREHOUSE'
-      && (str(destination.type) || str(destination.business_location_type)) === 'OUTLET';
+    return true;
   });
   const pageSize = limit === 'all' ? Math.max(scoped.length, 1) : Number(limit);
-  const page = limit === 'all' ? 1 : Math.min(Math.max(1, Math.ceil(scoped.length / pageSize)), Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const rows = scoped.slice((page - 1) * pageSize, page * pageSize);
+  const total = Array.isArray(data) ? scoped.length : asNumber(obj(data.meta).total);
+  const page = limit === 'all' ? 1 : Math.min(Math.max(1, Math.ceil(total / pageSize)), desiredPage);
+  const rows = pagedInventory ? page === desiredPage ? scoped : arr((await inventoryPage(page)).data).map(obj)
+    : scoped.slice((page - 1) * pageSize, page * pageSize);
   const adjustmentStaff = new Map(staff.map(row => [row.id, row.name]));
   if (adjustment) for (const row of scoped) {
     const staffId = reference(row.adjust_by);
@@ -96,14 +100,15 @@ export async function ProductionStockHistory({ auth, q, region, mode }: { auth: 
     </form>}
     <div className={layout.list}><table className={styles.table}>
       <thead><tr>{headers.map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
-      <tbody>{rows.map((row, index) => adjustment ? <AdjustmentRow row={row} key={reference(row)} amount={amount}/> :
-        <TransferRow row={row} key={reference(row)} index={(page - 1) * pageSize + index + 1} inventory={inventory} amount={amount}/>)}</tbody>
-      {!rows.length && <tbody><tr><td colSpan={headers.length} className={styles.empty}>No data found!</td></tr></tbody>}
+      <tbody>{rows.map((row, index) => adjustment ? <AdjustmentRow row={row} key={reference(row)} amount={amount}/>
+        : inventory ? <ClassicTransferRow row={row} key={reference(row)} index={(page - 1) * pageSize + index + 1}/>
+          : <TransferRow row={row} key={reference(row)} amount={amount}/>)}
+      {!rows.length && <tr><td colSpan={headers.length} className={styles.empty}>No data found!</td></tr>}</tbody>
     </table></div>
     <nav className={design.pages} aria-label="Stock history pages">
       <RegistryPageSize path={path} params={query} choices={pageSizes} current={limit}/>
       {page > 1 ? <Link className={styles.outline} href={pageLink(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
-      {page * pageSize < scoped.length ? <Link className={styles.outline} href={pageLink(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
+      {page * pageSize < total ? <Link className={styles.outline} href={pageLink(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
     </nav>
   </section>;
 }
@@ -121,14 +126,28 @@ function AdjustmentRow({ row, amount }: { row: RecordData; amount: Intl.NumberFo
   </tr>;
 }
 
-function TransferRow({ row, index, inventory, amount }: { row: RecordData; index: number; inventory: boolean; amount: Intl.NumberFormat }) {
+function ClassicTransferRow({ row, index }: { row: RecordData; index: number }) {
+  const dateTime = asDate(row.createdAt);
+  const [date, time] = dateTime.split(', ');
+  return <tr><td>{String(index).padStart(2, '0')}</td><td>{date}{time && <><br/>{time}</>}</td>
+    <td>{str(row.from) || '—'}</td><td>{str(row.to) || '—'}</td>
+    <td>{arr(row.products).map(obj).map((product, productIndex) => <div key={productIndex}>
+      {Boolean(product.name) && <strong>{str(product.name)}</strong>}
+      {arr(product.variants).map(obj).map((variant, variantIndex) => <div key={variantIndex}>
+        <small>SKU: {str(variant.sku) || '—'}</small>
+        <div className={design.tags}>{Object.entries(obj(variant.attributes)).map(([key, value]) => <span key={key}>{str(value)}</span>)}</div>
+      </div>)}
+    </div>)}</td>
+    <td>{str(row.operator) || '—'}{Boolean(row.role) && <div><span className={styles.activeBadge} data-active="false">{str(row.role).replaceAll('_', ' ')}</span></div>}</td>
+  </tr>;
+}
+
+function TransferRow({ row, amount }: { row: RecordData; amount: Intl.NumberFormat }) {
   const items = arr(row.items).map(obj).map(item => ({ sku: str(obj(item.variant).sku) || '—',
     attrs: variants(obj(item.variant).attribute_values), quantity: asNumber(item.qty) }));
   const record = { date: asDate(row.createdAt), from: locationName(row.from), to: locationName(row.to),
     operator: str(obj(row.transferBy).full_name) || '—', items, expenses: arr(row.expenses_applied).map(obj).map(item => `${str(item.type)} ${amount.format(asNumber(item.amount))}`) };
-  return inventory ? <tr><td>{index}</td><td>{record.date}</td><td>{record.from}</td><td>{record.to}</td>
-    <td>{items.map((item, i) => <div key={i}>SKU: {item.sku} {item.attrs && <span className={styles.activeBadge} data-active="false">{item.attrs}</span>} · {item.quantity}</div>)}</td>
-    <td>{record.operator}</td></tr> : <tr><td>{record.date}</td><td><StockHistoryItems items={items}/></td><td>{record.from}</td><td>{record.to}</td>
+  return <tr><td>{record.date}</td><td><StockHistoryItems items={items}/></td><td>{record.from}</td><td>{record.to}</td>
     <td>{record.expenses.map(expense => <div key={expense}>{expense}</div>)}{!record.expenses.length && '—'}</td><td>{record.operator}</td>
     <td><StockTransferInvoice record={record}/></td></tr>;
 }

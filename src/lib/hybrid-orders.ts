@@ -2,15 +2,15 @@ import 'server-only';
 import { createHmac } from 'node:crypto';
 import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, str, url, type Session } from './api';
 import { has, superAdmin, type Region } from './sections';
-import { hybridStatusLabels, type HybridFulfillment, type HybridReturnCost, type HybridReturnCostReceipt, type HybridShipment } from './hybrid-fulfillment';
-import type { Listing, Order, OrderDetail, OrderFilters, OrderLocation } from './website-orders';
+import { hybridStatusLabels, type HybridFulfillment, type HybridOrderOperations, type HybridReturnCost, type HybridReturnCostReceipt, type HybridShipment } from './hybrid-fulfillment';
+import { statusLabel, type Listing, type Order, type OrderDetail, type OrderFilters, type OrderLocation, type OrderNote } from './website-orders';
 
 const orderIdPrefix = 'hybrid-';
 const uuid = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const workspaceLimit = 10_000;
 
 type HybridItem = { productName: string; variantName: string; sku: string; quantity: number; unitPriceMinor: number; lineTotalMinor: number;
-  variantId?: string; variant?: { productId: string; product: { department: { id: string; name: string } } } };
+  variantId?: string; variant?: { productId: string; inventory?: { available: number } | null; product: { department: { id: string; name: string } } } };
 type HybridReturn = { id?: string; status: string; createdAt?: string; returnReceivedAt?: string | null;
   returnDisposition?: 'RESTOCK' | 'HOLD' | null; returnCost?: HybridReturnCost | null;
   refundAmountMinor?: number | null; refundConfirmedAt?: string | null;
@@ -26,6 +26,7 @@ type HybridOrder = {
   manualPayment?: HybridFulfillment['manualPayment'];
   events?: { status: string; type: string; createdAt: string; actor: { name: string } | null }[];
   cases?: HybridReturn[];
+  operations?: HybridOrderOperations & { customerName: string; phone: string; address: string; locality: string; notes: OrderNote[] };
 };
 
 export function hybridOrderId(value: string) {
@@ -42,14 +43,22 @@ function checkoutConnection(auth: Session, region: Region) {
   return { token, port };
 }
 
-async function checkoutRead<T>({ token, port }: NonNullable<ReturnType<typeof checkoutConnection>>, params: Record<string, string | undefined>, timeout = 8000) {
+async function checkoutRead<T>({ token, port }: NonNullable<ReturnType<typeof checkoutConnection>>, params: Record<string, string | undefined>, timeout = 8000, proof?: string) {
   const response = await fetch(url('http://127.0.0.1:' + port + '/api/internal/dev-admin-orders', params), {
-    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }, cache: 'no-store', redirect: 'error',
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json', ...(proof && { 'X-Griip-Hybrid-Proof': proof }) }, cache: 'no-store', redirect: 'error',
     signal: AbortSignal.timeout(timeout),
   }).catch(() => { throw new ApiError(503, 'Checkout orders are temporarily unavailable.'); });
   if (!response.ok) throw new ApiError(response.status);
   return await response.json() as T;
 }
+
+function checkoutProof(secret: string, purpose: string, body: string) {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', Buffer.from(secret, 'hex')).update(purpose + '\n' + timestamp + '\n' + body).digest('hex');
+  return timestamp + '.' + signature;
+}
+
+const returnActions = ['open-return', 'review-return', 'receive-return', 'confirm-return-refund'];
 
 function checkoutFulfillmentConnection(auth: Session, region: Region) {
   const connection = checkoutConnection(auth, region);
@@ -63,10 +72,10 @@ export async function saveHybridFulfillment(id: string, auth: Session, region: R
   const connection = checkoutFulfillmentConnection(auth, region);
   if (!connection) throw new ApiError(403, 'Access denied.');
   if (!uuid.test(id)) throw new ApiError(404, 'Order not found.');
-  if (!['advance', 'track', 'receive', 'record-return-cost', 'collect', 'cancel', 'approve-wallet', 'decline-wallet'].includes(str(command.action))) {
+  if (!['advance', 'track', 'receive', 'record-return-cost', 'collect', 'cancel', 'approve-wallet', 'decline-wallet', 'edit-contact', 'add-note', ...returnActions].includes(str(command.action))) {
     throw new ApiError(400, 'Invalid fulfillment action.');
   }
-  if ((command.action === 'receive' || command.action === 'track' && command.status === 'REFUSED') && !connection.canReturn) {
+  if ((returnActions.includes(str(command.action)) || command.action === 'receive' || command.action === 'track' && command.status === 'REFUSED') && !connection.canReturn) {
     throw new ApiError(403, 'Access denied.');
   }
   if (command.action === 'record-return-cost' && (!connection.canReturn || !connection.canRecordReturnCost)) {
@@ -87,12 +96,10 @@ export async function saveHybridFulfillment(id: string, auth: Session, region: R
       ...(command.action === 'record-return-cost' && { canRecordReturnCost: connection.canRecordReturnCost }) },
     command: signedCommand,
   });
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = createHmac('sha256', Buffer.from(connection.secret, 'hex'))
-    .update('griipbuddy/hybrid-fulfillment/v1\n' + timestamp + '\n' + body).digest('hex');
+  const proof = checkoutProof(connection.secret, 'griipbuddy/hybrid-fulfillment/v1', body);
   const response = await fetch('http://127.0.0.1:' + connection.port + '/api/internal/dev-admin-orders', {
     method: 'POST', body,
-    headers: { Authorization: 'Bearer ' + connection.token, 'Content-Type': 'application/json', 'X-Griip-Hybrid-Proof': timestamp + '.' + signature },
+    headers: { Authorization: 'Bearer ' + connection.token, 'Content-Type': 'application/json', 'X-Griip-Hybrid-Proof': proof },
     cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000),
   }).catch(() => { throw new ApiError(503, 'Could not confirm the fulfillment change. Refresh the order before retrying.'); });
   if (!response.ok) {
@@ -145,14 +152,14 @@ async function loadHybridWarehouses(auth: Session, region: Region, location?: st
 }
 
 export type HybridReportOrder = {
-  status: string; placedAt: number; totalMinor: number; productMinor: number; discountMinor: number; units: number;
+  status: string; placedAt: number; totalMinor: number; dueMinor: number; productMinor: number; discountMinor: number; units: number;
   awaitingPayment: boolean; claimedMinor: number; inTransit: boolean; uncollectedCodMinor: number; dispatched: boolean;
   id: string; reference: string; district: string; warehouse?: string; statusAt: number; dispatchedAt?: number; deliveredAt?: number; deliveryMinor: number;
   wasDelivered: boolean; lines: HybridReportLine[]; returns: HybridReportReturn[];
   inventoryReceipts?: { receivedAt: number; costMinor?: number }[];
 };
 export type HybridReportLine = { id: string; sku: string; name: string; productId?: string;
-  categoryId?: string; category?: string; quantity: number; amountMinor: number };
+  categoryId?: string; category?: string; quantity: number; amountMinor: number; pooledOnHand?: number };
 export type HybridReportReturn = { receivedAt: number; confirmedAt?: number; estimateMinor: number; confirmedMinor?: number; lines: HybridReportLine[] };
 export type HybridReportData = { orders: HybridReportOrder[]; issue?: string };
 
@@ -165,6 +172,8 @@ function returnLine(item: HybridItem, quantity: number): HybridReportLine {
   const department = item.variant?.product?.department;
   return { id: item.variantId || item.sku, sku: item.sku, name: item.productName, productId: item.variant?.productId,
     categoryId: department?.id, category: department?.name, quantity,
+    // Imported Mongo variants already use the location stock ledger on combined reports.
+    pooledOnHand: item.variantId && !/^v-[a-f0-9]{24}$/i.test(item.variantId) ? item.variant?.inventory?.available : undefined,
     amountMinor: Math.floor(item.lineTotalMinor * quantity / item.quantity) };
 }
 
@@ -228,6 +237,8 @@ export async function loadHybridReportOrders(auth: Session, region: Region, scop
       }
       return {
         inventoryReceipts, status, placedAt, totalMinor: order.totalMinor, inTransit, awaitingPayment,
+        dueMinor: order.status === 'PLACED' && (awaitingPayment || order.payment?.status === 'AWAITING_COLLECTION')
+          ? order.payment!.amountMinor : 0,
         id: orderIdPrefix + order.id, reference: order.reference, district: order.districtLabel, warehouse: order.shippingWarehouseName ?? undefined,
         dispatchedAt, deliveredAt, deliveryMinor: order.deliveryMinor ?? 0,
         wasDelivered: deliveredAt != null || order.fulfillmentStatus === 'DELIVERED' || order.bangladeshShipment?.status === 'DELIVERED',
@@ -272,9 +283,14 @@ export async function getHybridOrder(id: string, auth: Session, region: Region):
   const connection = checkoutConnection(auth, region);
   if (!connection || !uuid.test(id)) throw new ApiError(404);
   const canReadCost = has(auth.staff, 'purchase.price.view');
-  const order = await checkoutRead<HybridOrder>(connection, { id, costs: canReadCost ? '1' : undefined });
-  if (order.id !== id || order.currency !== 'BDT' || !Array.isArray(order.items)) throw new ApiError(502);
   const assigned = assignedHybridWarehouse(auth);
+  const secret = process.env.GRIIP_HYBRID_ADMIN_FULFILLMENT_TOKEN;
+  const params = { id, ...(canReadCost && { costs: '1' }), ...(secret && /^[a-f0-9]{64}$/.test(secret) &&
+    { ops: '1', ...(assigned && { warehouse: assigned }) }) };
+  const proof = params.ops && secret
+    ? checkoutProof(secret, 'griipbuddy/hybrid-order-details/v1', new URLSearchParams(params).toString()) : undefined;
+  const order = await checkoutRead<HybridOrder>(connection, params, 8000, proof);
+  if (order.id !== id || order.currency !== 'BDT' || !Array.isArray(order.items)) throw new ApiError(502);
   if (assigned && order.shippingWarehouseId && assigned !== order.shippingWarehouseId) throw new ApiError(404, 'Order not found.');
   const editable = checkoutFulfillmentConnection(auth, region);
   const warehouseChoices = editable && order.status === 'PLACED' && order.fulfillmentStatus === 'READY_TO_SHIP'
@@ -295,15 +311,29 @@ export async function getHybridOrder(id: string, auth: Session, region: Region):
   const receipt = order.bangladeshRefusedParcelReceipt;
   const activity = (order.events ?? []).map(event => ({ by: event.actor?.name ?? 'Online checkout', at: event.createdAt,
     text: event.type === 'ORDER_PLACED' ? 'Order placed' : event.type === 'ORDER_CANCELLED' ? 'Cancelled' : hybridStatusLabels[event.status] ?? event.status }));
+  const operations = order.operations;
+  const statusHistory = [
+    ...activity.map(event => ({ by: event.by, at: event.at, status: event.text })),
+    ...(order.bangladeshShipment?.events ?? []).map(event => ({
+      by: order.bangladeshShipment?.carrier ?? 'Courier', at: event.recordedAt, status: hybridStatusLabels[event.status] ?? statusLabel(event.status),
+    })),
+    ...operations?.cases.flatMap(entry => entry.events.map(event => ({
+      by: event.actor?.name ?? 'Customer', at: event.createdAt, status: event.refundConfirmed ? 'Refund confirmed' : event.status === 'OPEN' ? 'Return requested' : statusLabel(event.status),
+    }))) ?? [],
+  ].sort((left, right) => right.at.localeCompare(left.at));
   return {
-    order: { ...orderRow(order), sub_total: amount(order.subtotalMinor), total_discount: amount(order.discountMinor),
+    order: { ...orderRow(order), ...(operations && {
+      customer_name: operations.customerName, customer_phone: operations.phone,
+      delivery_address: { address: operations.address, district: order.districtLabel, thana: operations.locality },
+    }), sub_total: amount(order.subtotalMinor), total_discount: amount(order.discountMinor),
       delivery_charge: amount(order.deliveryMinor), tax: amount(order.taxMinor), payment_type: order.payment?.method,
       payment: order.payment ? { amount: amount(order.payment.amountMinor), date: order.payment.collectedAt ?? undefined, status: order.payment.status } : undefined,
-      notes: [], activity, statusHistory: [], discounts: [] },
+      notes: operations?.notes ?? [], activity, statusHistory, discounts: [] },
     fulfillment: { status: order.status, step: order.fulfillmentStatus, payment: order.payment, shipment: order.bangladeshShipment,
       receipt: receipt ? { receivedAt: receipt.receivedAt, disposition: receipt.disposition,
         restockedUnits: receipt.restockedUnits, note: receipt.note } : null,
       manualPayment: editable ? order.manualPayment ?? null : null,
+      ...(operations && { operations: { updatedAt: operations.updatedAt, items: operations.items, cases: operations.cases } }),
       editable: !!editable, canReturn: editable?.canReturn ?? false, warehouseChoices,
       canRecordReturnCost: Boolean(editable?.canReturn && editable?.canRecordReturnCost), returnCostReceipts,
       shippingWarehouse: order.shippingWarehouseName ?? undefined },
@@ -313,16 +343,16 @@ export async function getHybridOrder(id: string, auth: Session, region: Region):
 const sortDate = (row: Order) => Date.parse(row.order_date ?? '') || 0;
 
 export async function loadWebsiteOrders(auth: Session, region: Region, filters: OrderFilters, page?: string, limit?: string,
-  { exportOrders = false }: { exportOrders?: boolean } = {}) {
+  { exportOrders = false, assigned = false }: { exportOrders?: boolean; assigned?: boolean } = {}) {
   const native = (ahead?: number) => api(url('/order/workspace/orders', { region, ...filters, page, limit,
-    includeAhead: ahead ? String(ahead) : undefined }), auth.token) as Promise<Listing & { start?: number }>;
+    assigned: assigned ? '1' : undefined, includeAhead: ahead ? String(ahead) : undefined }), auth.token) as Promise<Listing & { start?: number }>;
   const connection = checkoutConnection(auth, region);
   if (!connection || filters.called === 'true' || (filters.creator && !['USER', 'GUEST'].includes(filters.creator))) {
     return exportOrders ? null : native();
   }
   const locations = hybridReportLocations(auth, filters.location);
   const projected = await checkoutRead<{ workspaceOrders: HybridOrder[]; tooMany: boolean }>(connection, {
-    view: 'workspace', q: filters.q, sku: filters.sku, from: filters.from, to: filters.to, creator: filters.creator,
+    view: 'workspace', assigned: assigned ? '1' : undefined, q: filters.q, sku: filters.sku, from: filters.from, to: filters.to, creator: filters.creator,
     locations,
   }).catch(reason => {
     if (reason instanceof ApiError && reason.status === 400) throw reason;
@@ -331,7 +361,9 @@ export async function loadWebsiteOrders(auth: Session, region: Region, filters: 
   });
   if (projected === null) return { ...await native(), hybridUnavailable: true };
   if (projected.tooMany) throw new ApiError(422);
-  const orders = projected.workspaceOrders.filter(order => !locations || order.shippingWarehouseId === locations).map(orderRow);
+  const selected = locations?.split(',');
+  const orders = projected.workspaceOrders.filter(order => (!assigned || order.shippingWarehouseId) &&
+    (!selected || order.shippingWarehouseId && selected.includes(order.shippingWarehouseId))).map(orderRow);
   if (!orders.length) return exportOrders ? null : native();
 
   const statuses = new Set(filters.filter?.split(',').filter(Boolean));

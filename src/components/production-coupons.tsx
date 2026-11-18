@@ -134,7 +134,9 @@ function useCouponProducts(region: Region, query: string, product: string) {
   return { products, variants, error };
 }
 
-export function ProductionCouponCreate({ tree, region, starts, expires }: { tree: CategoryOption[]; region: Region; starts: string; expires: string }) {
+export function ProductionCouponCreate({ tree, region, starts, expires, openedAt }: {
+  tree: CategoryOption[]; region: Region; starts: string; expires: string; openedAt: number;
+}) {
   const router = useRouter();
   const { submit, pending, result } = usePromotionSave();
   const [type, setType] = useState('FLAT');
@@ -153,9 +155,13 @@ export function ProductionCouponCreate({ tree, region, starts, expires }: { tree
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const offset = region === 'BD' ? '+06:00' : 'Z';
+    const startDay = String(data.get('startAt'));
+    const expireDay = String(data.get('expireAt'));
+    const startAt = startDay === starts ? new Date(openedAt).toISOString() : startDay + 'T00:00' + offset;
+    const expireAt = expireDay === expires ? new Date(openedAt + 7 * 86400000).toISOString() : expireDay + 'T00:00' + offset;
     const values = { ...Object.fromEntries(data), isActive: data.get('isActive') === 'true', firstOrderOnly: data.get('firstOrderOnly') === 'true',
-      maxDiscountAmount: type === 'FLAT' ? discount : data.get('maxDiscountAmount'), startAt: data.get('startAt') + 'T00:00' + offset,
-      expireAt: data.get('expireAt') + 'T00:00' + offset, categoryIds: subcategory.length || subsub.length ? [] : ids(category),
+      maxDiscountAmount: type === 'FLAT' ? discount : data.get('maxDiscountAmount'), startAt, expireAt,
+      categoryIds: subcategory.length || subsub.length ? [] : ids(category),
       subcategoryIds: subsub.length ? [] : ids(subcategory), sub_subcategoryIds: ids(subsub), productIds: variants.length ? [] : ids(product), variant: ids(variants) };
     if (await submit('create-coupon', values)) { router.push(scope(couponPath, region)); router.refresh(); }
   }

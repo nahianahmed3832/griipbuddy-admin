@@ -99,7 +99,7 @@ test('staff can create, quote, receive, edit, export and manage a pre-order', as
   const download = await page.getByRole('link', { name: 'Download Excel' }).getAttribute('href');
   const report = await page.request.get(origin + download);
   expect(report.status()).toBe(200);
-  expect(report.headers()['content-disposition']).toContain('pre-orders.xlsx');
+  expect(report.headers()['content-disposition']).toMatch(/pre_orders_\d{1,2}-\d{1,2}-\d{4}\.xlsx/);
   expect((await report.body()).subarray(0, 2).toString()).toBe('PK');
   await page.getByText('Send selected to courier', { exact: true }).click();
   await page.getByLabel('I verified the addresses and cash to collect for the selected pre-orders.').check();
