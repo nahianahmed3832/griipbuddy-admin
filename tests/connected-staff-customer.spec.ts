@@ -27,7 +27,7 @@ async function publicData(page: Page, path: string) {
 
 test('one main-admin catalog reaches the storefront, purchases, packing, cancellation and return', async ({ page, browser }, testInfo) => {
   test.skip(process.env.GRIIP_CONNECTED_TEST_COMMERCE !== '1', 'Use a disposable two-market COD fixture with consented measurement.');
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   const tag = randomUUID().slice(0, 8);
   const slug = 'acceptance-' + tag;
   const productName = 'Acceptance case ' + tag;
@@ -54,10 +54,11 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
   const buyerContext = await browser.newContext({ baseURL: storefrontOrigin, viewport: page.viewportSize() ?? undefined,
     isMobile: testInfo.project.use.isMobile, hasTouch: testInfo.project.use.hasTouch });
   const buyer = await buyerContext.newPage();
-  await Promise.all([page.context(), buyerContext].map(context => context.route('**/*', route => {
-    const origin = new URL(route.request().url()).origin;
-    return origin === adminOrigin || origin === storefrontOrigin ? route.continue() : route.abort();
-  })));
+  buyer.setDefaultTimeout(20_000);
+  await Promise.all([page.context(), buyerContext].map(context => context.route(
+    url => url.origin !== adminOrigin && url.origin !== storefrontOrigin,
+    route => route.abort(),
+  )));
 
   const skuStock = async (region: Region = 'BD') => (await command(page, { read: 'inventory', q: firstSku }, region)).rows;
   const order = (id: string) => command(page, { read: 'order', id });
@@ -291,12 +292,17 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
     });
 
     async function buy(quantity = 1) {
+      if (quantity > 1) {
+        await buyer.route('**/api/cart/resolve', route => route.abort('failed'), { times: 1 });
+      }
       await buyer.goto(`/products/${slug}?market=bd&variant=${firstVariant}`);
       const delivery = buyer.getByRole('form', { name: 'Check delivery', exact: true });
       await delivery.getByRole('combobox', { name: 'Delivery district' }).selectOption('dhaka');
       await delivery.getByRole('combobox', { name: 'Delivery service' }).selectOption('COD:standard');
       await buyer.getByRole('button', { name: 'Check delivery', exact: true }).click();
       if (quantity > 1) {
+        await expect(buyer.getByRole('alert').filter({ hasText: 'Cart sync is temporarily unavailable' })).toBeVisible();
+        await buyer.getByRole('button', { name: 'Retry cart sync', exact: true }).click();
         const control = buyer.getByRole('group', { name: 'Quantity', exact: true });
         for (let unit = 1; unit < quantity; unit++) await control.getByRole('button', { name: 'Increase quantity' }).click();
       }

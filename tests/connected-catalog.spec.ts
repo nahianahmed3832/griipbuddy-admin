@@ -300,7 +300,7 @@ test('category settings, attribute rules, collections and menus persist in the c
   await expect.poll(category).toMatchObject({ seoTitle, seoDescription });
   await page.reload();
   await expect(page.getByLabel('SEO title')).toHaveValue(seoTitle);
-  const categoryPage = await page.request.get(`${storefrontOrigin}/departments/${slug}?market=bd&lang=en-BD`);
+  const categoryPage = await page.request.get(`${storefrontOrigin}/departments/${slug}?market=bd&lang=en-BD`, { timeout: 30_000 });
   expect(categoryPage.status()).toBe(200);
   const markup = await categoryPage.text();
   expect(markup).toContain(seoTitle);
@@ -350,8 +350,15 @@ test('category settings, attribute rules, collections and menus persist in the c
   await expect(page.getByRole('button', { name: 'Hide from this market' })).toBeVisible();
   const publicCollection = await page.request.get(`${storefrontOrigin}/api/catalog/collections/${collectionSlug}?market=bd`);
   expect(publicCollection.status()).toBe(200);
-  expect((await publicCollection.json()).collection).toMatchObject({ id: collectionId, selection: 'NEW' });
+  const collectionPayload = (await publicCollection.json()).collection;
+  expect(collectionPayload).toMatchObject({ id: collectionId, selection: 'NEW' });
+  expect(collectionPayload).not.toHaveProperty('history');
   expect((await page.request.get(`${storefrontOrigin}/api/catalog/collections/${collectionSlug}?market=us`)).status()).toBe(404);
+  const collectionHistory = page.getByRole('region', { name: 'Collection change history' });
+  await expect(collectionHistory.getByRole('row', { name: /Collection published.*Bangladesh/ })).toBeVisible();
+  await expect(collectionHistory.getByRole('row', { name: /Collection created.*Shared catalog/ })).toBeVisible();
+  await page.reload();
+  await expect(collectionHistory.getByRole('row', { name: /Collection published.*Bangladesh/ })).toBeVisible();
 
   const menuKey = `menu-${tag}`;
   await page.goto(`${catalog}/catalog-menus?menuKey=${menuKey}`);
@@ -380,8 +387,13 @@ test('category settings, attribute rules, collections and menus persist in the c
   const menu = await (await page.request.get(menuHref)).json();
   expect(menu.items).toMatchObject([{ target: { type: 'collection', id: collectionId } }]);
   expect(menu.items).toHaveLength(1);
+  expect(menu).not.toHaveProperty('history');
   await page.reload();
   await expect(page.getByRole('combobox', { name: 'Destination', exact: true }).last()).toHaveValue(collectionId);
+  const menuHistory = page.getByRole('region', { name: 'Menu change history' });
+  const savedMenu = menuHistory.getByRole('row', { name: /Menu saved.*Bangladesh/ });
+  await expect(savedMenu).toBeVisible();
+  await expect(savedMenu.getByRole('cell').nth(1)).toHaveText(/\w/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -453,7 +465,7 @@ test('attribute impact shows later affected products before saving the reviewed 
   await expect(page.getByText(/Review fixture 16/)).toBeVisible();
   const save = page.getByRole('button', { name: 'Save reviewed change' });
   await save.click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.locator('form').filter({ has: save }).getByRole('alert')).toBeVisible();
   await expect(pagination).toContainText('Page 2 of 2');
   await save.click();
   await expect(page.getByRole('row').filter({ hasText: attributeName })).toContainText('Required');

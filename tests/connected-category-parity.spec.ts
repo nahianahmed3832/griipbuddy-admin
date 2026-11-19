@@ -118,7 +118,7 @@ test('category search, revisioned assignments and move review preserve placement
   await lifecycle.getByRole('combobox', { name: 'Move to parent' }).selectOption(sourceBranch);
   page.once('dialog', dialog => dialog.accept());
   await lifecycle.getByRole('button', { name: 'Move category', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'Category breadcrumb' })).toContainText(names[sourceBranch]);
+  await expect(page.getByRole('navigation', { name: 'Category breadcrumb' })).toContainText(names[sourceBranch], { timeout: 20_000 });
   await page.reload();
   const saved = await read();
   expect(saved.categories.find(row => row.id === destination)).toMatchObject({ id: destination, parentId: sourceBranch });

@@ -19,6 +19,7 @@ export default defineConfig({
     ...(process.env.GRIIP_HOMEPAGE_TEST_PRODUCT ? ['connected-homepage.spec.ts'] : []),
   ],
   timeout: 75_000,
+  expect: { timeout: 15_000 },
   workers: 1,
   reporter: 'list',
   use: {

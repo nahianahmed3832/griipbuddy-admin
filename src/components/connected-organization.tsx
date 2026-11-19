@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { catalogRequest } from '@/lib/connected-catalog-client';
-import { taxonomyHref, type CategoryPermission, type CollectionKind, type Collections, type MenuItem, type MenuPage, type Navigation } from '@/lib/connected-category-data';
+import { taxonomyHref, type CategoryPermission, type CollectionKind, type Collections, type MenuItem, type MenuPage,
+  type MerchandisingHistoryEntry, type Navigation } from '@/lib/connected-category-data';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import { Feedback, ImageFields, imageInput, moveInList, OrderButtons, readField, TextInput, useTaxonomyCommand } from './connected-category-controls';
@@ -101,6 +102,7 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
       </div>}
       <Feedback value={command.feedback}/>
     </section>
+    <MerchandisingHistory title="Menu change history" rows={navigation.history} market={marketName}/>
   </div>;
 }
 
@@ -137,8 +139,25 @@ export function ConnectedCollections({ data, region, permissions, canUpload }: {
       {current && current.selection === 'CURATED' && permissions.update && <CuratedProducts current={current} region={region}/>}
       {current && current.selection !== 'CURATED' && <section className={css.panel}><h2>Product selection</h2>
         <p>Eligible products are selected automatically from products marked {current.selection === 'NEW' ? 'as new arrivals' : 'as featured'}.</p></section>}
+      {current && <MerchandisingHistory title="Collection change history" rows={current.history} market={data.marketName}/>}
     </div>
   </div>;
+}
+
+const historyDate = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
+function MerchandisingHistory({ title, rows, market }: { title: string; rows?: MerchandisingHistoryEntry[]; market: string }) {
+  if (!rows) return null;
+  return <section className={css.panel} aria-label={title}><h2>{title}</h2>
+    {!rows.length ? <p>No recorded changes.</p> : <div className={css.scroll}>
+      <table className={catalog.table}><thead><tr>
+        <th scope="col">Change</th><th scope="col">Staff</th><th scope="col">Scope</th>
+        <th scope="col">Revision</th><th scope="col">Time (UTC)</th>
+      </tr></thead><tbody>{rows.map(row => <tr key={`${row.scope}:${row.revision}:${row.createdAt}`}>
+        <td>{row.summary}</td><td>{row.actor ?? '—'}</td><td>{row.scope === 'shared' ? 'Shared catalog' : market}</td>
+        <td>{row.revision}</td><td><time dateTime={row.createdAt}>{historyDate.format(new Date(row.createdAt))}</time></td>
+      </tr>)}</tbody></table>
+    </div>}
+  </section>;
 }
 
 function CollectionEditor({ current, region, canUpload }: { current: Collections['current']; region: Region; canUpload: boolean }) {

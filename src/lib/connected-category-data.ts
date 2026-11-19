@@ -27,16 +27,19 @@ type MenuTarget = { id: string; label: string; visible: boolean; href: string };
 export type MenuPage = 'HOME' | 'SEARCH' | 'SHOP';
 export type MenuItem = { label: string | null; visible: boolean } & (
   { type: 'category'; categoryId: string } | { type: 'collection'; collectionId: string } | { type: 'page'; page: MenuPage });
+export type MerchandisingHistoryEntry = {
+  createdAt: string; actor: string | null; summary: string; revision: number; scope: string;
+};
 export type Navigation = { marketId: string; marketName: string; key: string; locale: string; previewLocale: string;
   existingKeys: string[]; revision: number | null; inheritsMenu: boolean; items: MenuItem[];
   languages: string[]; categories: MenuTarget[]; collections: MenuTarget[];
-  pages: (Omit<MenuTarget, 'id'> & { page: MenuPage })[] };
+  pages: (Omit<MenuTarget, 'id'> & { page: MenuPage })[]; history?: MerchandisingHistoryEntry[] };
 export type CollectionKind = 'CURATED' | 'NEW' | 'FEATURED';
 type CollectionChoice = { id: string; name: string; selection: CollectionKind; published: boolean };
 export type Collections = { marketId: string; marketName: string; eligibleCount: number; collections: CollectionChoice[];
   current: (CollectionChoice & { slug: string; description: string; position: number; revision: number;
     imageSrc: string | null; imageAlt: string | null; hasOverride: boolean;
-    products: { id: string; name: string; visibleInMarket: boolean }[] }) | null };
+    products: { id: string; name: string; visibleInMarket: boolean }[]; history?: MerchandisingHistoryEntry[] }) | null };
 export type CategoryData = { categories: CatalogCategory[]; owner: boolean; markets: string[]; businessCodes: { namespace: string; value: string }[];
   uploadEnabled?: boolean;
   navigation: Navigation | null; collections: Collections | null; attributes: Attributes | null; assignments: CategoryAssignments | null;
