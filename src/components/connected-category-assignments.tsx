@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { CatalogRequestError, catalogRequest } from '@/lib/connected-catalog-client';
 import { taxonomyHref, type CatalogCategory, type CategoryAssignments } from '@/lib/connected-category-data';
 import { adminPath } from '@/lib/paths';
@@ -15,6 +15,10 @@ import catalog from './production-catalog.module.css';
 type Product = CategoryAssignments['products'][number];
 type Scope = 'direct' | 'descendants' | 'all' | 'search';
 type Choice = { id: string; label: string };
+
+const subscribeHydration = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 function placementChoices(categories: CatalogCategory[]) {
   const byId = new Map(categories.map(category => [category.id, category]));
@@ -113,6 +117,7 @@ export function ConnectedCategoryAssignments({ data, current, categories, query,
   const [notice, setNotice] = useState('');
   const [failures, setFailures] = useState<string[]>([]);
   const saving = useRef(false);
+  const ready = useSyncExternalStore(subscribeHydration, clientReady, serverReady);
   const choices = placementChoices(categories);
   const canAdd = canEdit && choices.some(choice => choice.id === current.id);
   const eligible = canAdd ? data.products.filter(row => row.primaryCategoryId !== current.id && !row.secondaryCategoryIds.includes(current.id)) : [];
@@ -165,11 +170,11 @@ export function ConnectedCategoryAssignments({ data, current, categories, query,
     {failures.length > 0 && <ul role="alert" className={css.error}>{failures.map(detail => <li key={detail}>{detail}</li>)}</ul>}
     <div className={css.scroll}><table className={catalog.table}><thead><tr>
       {canAdd && <th scope="col"><input aria-label="Select eligible products on this page" type="checkbox" checked={selectAll}
-        disabled={!eligible.length || pending || Boolean(editing)} onChange={event => setSelected(event.target.checked ? eligible.map(row => row.id) : [])}/></th>}
+        disabled={!ready || !eligible.length || pending || Boolean(editing)} onChange={event => setSelected(event.target.checked ? eligible.map(row => row.id) : [])}/></th>}
       <th scope="col">Product</th><th scope="col">Placement</th>{canEdit && <th scope="col">Action</th>}
     </tr></thead><tbody>{data.products.map(row => <tr key={row.id}>
       {canAdd && <td><input aria-label={'Select ' + row.name} type="checkbox" checked={selected.includes(row.id)}
-        disabled={pending || Boolean(editing) || !eligible.some(item => item.id === row.id)} onChange={event => {
+        disabled={!ready || pending || Boolean(editing) || !eligible.some(item => item.id === row.id)} onChange={event => {
           const chosen = event.target.checked;
           setSelected(values => chosen ? [...values, row.id] : values.filter(id => id !== row.id));
         }}/></td>}
@@ -178,7 +183,7 @@ export function ConnectedCategoryAssignments({ data, current, categories, query,
       <td>{row.primaryCategoryId === current.id ? 'Primary' : row.secondaryCategoryIds.includes(current.id) ? 'Additional' :
         row.placement === 'descendant' ? 'Descendant' : 'Unassigned'}</td>
       {canEdit && <td><button className={catalog.outline + ' ' + css.compact} type="button" aria-label={'Edit assignments for ' + row.name}
-        disabled={pending || Boolean(editing)} onClick={() => setEditing(row)}>Edit</button></td>}
+        disabled={!ready || pending || Boolean(editing)} onClick={() => setEditing(row)}>Edit</button></td>}
     </tr>)}
       {!data.products.length && <tr><td colSpan={2 + Number(canAdd) + Number(canEdit)} className={catalog.empty}>No matching products.</td></tr>}
     </tbody></table></div>
