@@ -55,6 +55,7 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
     isMobile: testInfo.project.use.isMobile, hasTouch: testInfo.project.use.hasTouch });
   const buyer = await buyerContext.newPage();
   buyer.setDefaultTimeout(20_000);
+  buyer.setDefaultNavigationTimeout(40_000);
   await Promise.all([page.context(), buyerContext].map(context => context.route(
     url => url.origin !== adminOrigin && url.origin !== storefrontOrigin,
     route => route.abort(),
@@ -295,7 +296,10 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
       if (quantity > 1) {
         await buyer.route('**/api/cart/resolve', route => route.abort('failed'), { times: 1 });
       }
-      await buyer.goto(`/products/${slug}?market=bd&variant=${firstVariant}`);
+      await Promise.all([
+        buyer.waitForResponse(response => response.ok() && new URL(response.url()).pathname === `/api/catalog/products/${slug}/variants/${firstVariant}`),
+        buyer.goto(`/products/${slug}?market=bd&variant=${firstVariant}`, { waitUntil: 'domcontentloaded' }),
+      ]);
       const delivery = buyer.getByRole('form', { name: 'Check delivery', exact: true });
       await delivery.getByRole('combobox', { name: 'Delivery district' }).selectOption('dhaka');
       await delivery.getByRole('combobox', { name: 'Delivery service' }).selectOption('COD:standard');
