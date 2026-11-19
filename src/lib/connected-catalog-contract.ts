@@ -1,4 +1,5 @@
 import { connectedOrderActions, marketplaceOrderQueues, orderIdentifier, type MarketplaceOrderQueue } from './connected-order-contract';
+import { isMarketId, type MarketId } from '../components/connected-catalog-product/markets';
 
 const homepageReads = ['homepage-scopes', 'homepage', 'homepage-preview', 'homepage-references', 'homepage-asset'] as const;
 type HomepageReadName = typeof homepageReads[number];
@@ -7,7 +8,7 @@ export type CatalogRead = { read: 'categories' | 'products' | 'product' | 'inven
   'orders' | 'order' | 'order-cases' | 'order-case' | HomepageReadName; id?: string; q?: string; page?: number;
   menuKey?: string; locale?: string; collectionId?: string; scope?: 'direct' | 'descendants' | 'all' | 'search'; input?: Record<string, unknown>;
   homepageScope?: string; marketId?: string; previewAt?: string; kind?: 'products' | 'categories' | 'collections' | 'media';
-  state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; queue?: MarketplaceOrderQueue; closed?: boolean };
+  state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; offerMarketId?: MarketId; queue?: MarketplaceOrderQueue; closed?: boolean };
 export type CatalogCommand = { action: string; input: Record<string, unknown> };
 export type CatalogRequest = CatalogRead | CatalogCommand;
 export const catalogRequestLimit = 512 * 1024;
@@ -59,7 +60,7 @@ export function parseCatalogRequest(value: unknown): CatalogRequest | null {
   }
   const orderDetail = value.read === 'order' || value.read === 'order-case';
   const requestKeys = value.read === 'categories' ? ['read', 'id', 'q', 'page', 'menuKey', 'locale', 'collectionId', 'scope'] :
-    value.read === 'attribute-impact' ? ['read', 'input', 'page'] : value.read === 'products' ? ['read', 'q', 'page', 'state', 'source'] :
+    value.read === 'attribute-impact' ? ['read', 'input', 'page'] : value.read === 'products' ? ['read', 'q', 'page', 'state', 'source', 'offerMarketId'] :
       value.read === 'search-status' || value.read === 'warehouses' ? ['read'] : value.read === 'device' || orderDetail ? ['read', 'id'] :
         value.read === 'orders' ? ['read', 'queue', 'page'] : value.read === 'order-cases' ? ['read', 'closed', 'page'] : ['read', 'id', 'q', 'page'];
   if (typeof value.read === 'string' && reads.has(value.read) && Object.keys(value).every(key => requestKeys.includes(key)) &&
@@ -68,6 +69,7 @@ export function parseCatalogRequest(value: unknown): CatalogRequest | null {
       (value.scope === undefined || ['direct', 'descendants', 'all', 'search'].some(scope => scope === value.scope)) &&
       (value.state === undefined || ['DRAFT', 'ACTIVE', 'ARCHIVED'].some(state => state === value.state)) &&
       (value.source === undefined || value.source === 'connected' || value.source === 'legacy') &&
+      (value.offerMarketId === undefined || isMarketId(value.offerMarketId)) &&
       (value.read !== 'attribute-impact' || object(value.input)) &&
       (value.read !== 'device' || typeof value.id === 'string') &&
       (!orderDetail || typeof value.id === 'string' && orderIdentifier.test(value.id)) &&

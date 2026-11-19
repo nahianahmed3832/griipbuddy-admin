@@ -24,6 +24,7 @@ async function command(page: Page, request: object, region = 'BD') {
 }
 
 test('the existing admin session edits the same catalog on desktop and mobile', async ({ page }) => {
+  test.setTimeout(150_000);
   await page.route('**/*', route => {
     const origin = new URL(route.request().url()).origin;
     return origin === adminOrigin || origin === storefrontOrigin ? route.continue() : route.abort();
@@ -149,12 +150,35 @@ test('the existing admin session edits the same catalog on desktop and mobile', 
   await inventory.getByRole('combobox', { name: 'Stock variant', exact: true }).selectOption(variantId);
   await inventory.getByRole('combobox', { name: 'Stock warehouse', exact: true }).selectOption(warehouseId);
   await inventory.getByRole('button', { name: 'Open stock pool', exact: true }).click();
-  await inventory.getByRole('button', { name: 'Record stock', exact: true }).click();
-  await inventory.getByRole('spinbutton', { name: 'Stock units', exact: true }).fill('3');
-  await inventory.getByRole('textbox', { name: 'Movement reason', exact: true }).fill('Synthetic receipt');
-  await inventory.getByRole('textbox', { name: 'Movement reference', exact: true }).fill(sku);
+  const prepareReceipt = async () => {
+    await inventory.getByRole('button', { name: 'Record stock', exact: true }).click();
+    await inventory.getByRole('spinbutton', { name: 'Stock units', exact: true }).fill('3');
+    await inventory.getByRole('textbox', { name: 'Movement reason', exact: true }).fill('Synthetic receipt');
+    await inventory.getByRole('textbox', { name: 'Movement reference', exact: true }).fill(sku);
+  };
+  let receiptKey: string | undefined;
+  await page.route(`${adminOrigin}${admin}/api/connected-catalog`, async route => {
+    const payload = route.request().postDataJSON();
+    if (payload?.request?.action !== 'inventory.movement') return route.continue();
+    const key = payload.request.input.idempotencyKey;
+    if (receiptKey) {
+      expect(key).toBe(receiptKey);
+      return route.continue();
+    }
+    receiptKey = key;
+    const committed = await route.fetch();
+    expect(committed.status()).toBe(200);
+    await route.abort('failed');
+  });
+  await prepareReceipt();
+  await inventory.getByRole('button', { name: 'Record movement', exact: true }).click();
+  await expect(inventory.getByRole('alert')).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.goto(`${admin}/dashboard/product-details/${productId}?region=INTERNATIONAL`);
+  await prepareReceipt();
   await inventory.getByRole('button', { name: 'Record movement', exact: true }).click();
   await expect(inventory.getByText('Stock movement recorded.', { exact: true })).toBeVisible();
+  await page.unroute(`${adminOrigin}${admin}/api/connected-catalog`);
   await inventory.getByText('Recent stock movements and allocations', { exact: true }).click();
   await expect(inventory.getByRole('table', { name: 'Recent stock movements' })).toContainText('+3');
   const [bdStock, usStock] = await Promise.all(['BD', 'INTERNATIONAL'].map(region => command(page, { read: 'inventory', q: sku }, region)));
@@ -163,6 +187,7 @@ test('the existing admin session edits the same catalog on desktop and mobile', 
   expect((await command(page, { read: 'warehouses' }, 'INTERNATIONAL')).locations)
     .toEqual(expect.arrayContaining([expect.objectContaining({ id: warehouseId, name: warehouseName, marketId: 'bd' })]));
 
+  await page.goto(`${admin}/dashboard/product-details/${productId}?region=BD`);
   const offers = page.locator('#markets');
   await offers.getByRole('button', { name: `Add offer for ${sku}`, exact: true }).click();
   const offerForm = offers.getByRole('form', { name: `Offer for ${sku}` });
@@ -176,6 +201,23 @@ test('the existing admin session edits the same catalog on desktop and mobile', 
   expect((await command(page, { read: 'product', id: productId }, 'INTERNATIONAL')).commerce.variants[0].offer).toBeNull();
   await page.getByRole('button', { name: 'Publish product', exact: true }).click();
   await expect.poll(async () => (await command(page, { read: 'product', id: productId })).shared.publication).toBe('ACTIVE');
+  await page.goto(`${admin}/dashboard/products?${new URLSearchParams({ q: sku })}`);
+  const offerMarket = page.getByRole('combobox', { name: 'Offer market', exact: true });
+  const productList = page.getByRole('table', { name: 'Products in the shared catalog' });
+  const result = productList.getByRole('row').filter({ hasText: name });
+  await expect(result).toContainText('Bangladesh');
+  const searchProducts = page.locator('form').filter({ has: offerMarket }).getByRole('button', { name: 'Search', exact: true });
+  await offerMarket.selectOption('us');
+  await searchProducts.click();
+  await expect(page).toHaveURL(/offerMarket=us/);
+  await expect(result).toHaveCount(0);
+  await offerMarket.selectOption('bd');
+  await searchProducts.click();
+  await expect(page).toHaveURL(/offerMarket=bd/);
+  await expect(result).toContainText('Bangladesh');
+  await page.reload();
+  await expect(offerMarket).toHaveValue('bd');
+  await expect(result).toContainText('Bangladesh');
   const crossOrigin = await page.request.post(`${admin}/api/connected-catalog`, {
     headers: { Origin: storefrontOrigin }, data: { region: 'BD', request: { read: 'product', id: productId } },
   });
@@ -250,6 +292,19 @@ test('category settings, attribute rules, collections and menus persist in the c
     const result = await command(page, { read: 'categories', id: categoryId }, region);
     return result.categories.find((row: { id: string }) => row.id === categoryId);
   };
+  const seoTitle = `Catalog SEO ${tag}`;
+  const seoDescription = `Category search description ${tag}`;
+  await page.getByLabel('SEO title').fill(seoTitle);
+  await page.getByLabel('SEO description').fill(seoDescription);
+  await page.getByRole('button', { name: 'Save category', exact: true }).click();
+  await expect.poll(category).toMatchObject({ seoTitle, seoDescription });
+  await page.reload();
+  await expect(page.getByLabel('SEO title')).toHaveValue(seoTitle);
+  const categoryPage = await page.request.get(`${storefrontOrigin}/departments/${slug}?market=bd&lang=en-BD`);
+  expect(categoryPage.status()).toBe(200);
+  const markup = await categoryPage.text();
+  expect(markup).toContain(seoTitle);
+  expect(markup).toContain(`name="description" content="${seoDescription}"`);
   const translations = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Translations', exact: true }) });
   await translations.getByLabel('Language tag').fill('bn-BD');
   await translations.getByLabel('Localized name', { exact: true }).fill('বাংলা বিভাগ');
@@ -307,7 +362,19 @@ test('category settings, attribute rules, collections and menus persist in the c
   await page.getByRole('combobox', { name: 'Target type', exact: true }).last().selectOption('collection');
   await page.getByRole('combobox', { name: 'Destination', exact: true }).last().selectOption(collectionId);
   await expect(page.getByRole('navigation', { name: 'Menu preview' }).getByRole('listitem')).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: 'Menu preview' })).toContainText(`/collections/${collectionSlug}`);
+  let releaseMenu = () => {};
+  const delayMenu = new Promise<void>(resolve => { releaseMenu = resolve; });
+  await page.route('**/admin/api/connected-catalog', async route => {
+    if (route.request().postDataJSON()?.request?.action !== 'menu.save') return route.fallback();
+    await delayMenu;
+    await route.continue();
+  });
   await page.getByRole('button', { name: 'Save menu' }).click();
+  try {
+    await expect(page.getByRole('button', { name: 'Add item' })).toBeDisabled();
+    await expect(page.getByRole('combobox', { name: 'Destination', exact: true }).last()).toBeDisabled();
+  } finally { releaseMenu(); }
   const menuHref = `${storefrontOrigin}/api/catalog/navigation?market=bd&key=${menuKey}`;
   await expect.poll(async () => (await page.request.get(menuHref)).status()).toBe(200);
   const menu = await (await page.request.get(menuHref)).json();
@@ -328,6 +395,70 @@ test('legacy customer and limited staff cannot use the bridged editor', async ({
   await expect(page).toHaveURL(/\/admin\/dashboard\/overview$/);
   result = await page.request.post(`${admin}/api/connected-catalog`, { headers: { Origin: adminOrigin }, data: read });
   expect(result.status()).toBe(403);
+});
+
+test('attribute impact shows later affected products before saving the reviewed rule', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Category authoring already runs in both viewports. This case seeds 16 products in the database.');
+  await page.route('**/*', route => {
+    const origin = new URL(route.request().url()).origin;
+    return origin === adminOrigin || origin === storefrontOrigin ? route.continue() : route.abort();
+  });
+  await signIn(page, '01000000001');
+  await expect(page).toHaveURL(/\/admin\/dashboard\/overview$/);
+  const key = 'attribute-impact-' + randomUUID().slice(0, 8);
+  const department = key + '-department';
+  const branch = key + '-category';
+  const leaf = key + '-leaf';
+  const attributeId = key + '-finish';
+  const attributeName = 'Finish ' + key;
+  for (const [id, kind, parentId] of [[department, 'DEPARTMENT', null], [branch, 'CATEGORY', department], [leaf, 'SUBCATEGORY', branch]] as const) {
+    await command(page, { action: 'category.save', input: { id, kind, parentId, state: 'ACTIVE', revision: null,
+      position: 0, name: id, shortName: kind, slug: id, description: '', image } });
+  }
+  await command(page, { action: 'attribute.save', input: { id: attributeId, name: attributeName, scope: 'PRODUCT', dataType: 'TEXT' } });
+  for (let number = 1; number <= 16; number++) {
+    const suffix = String(number).padStart(2, '0');
+    const id = key + '-product-' + suffix;
+    await command(page, { action: 'product.save', input: { id, slug: id, name: 'Review fixture ' + suffix, expectedRevision: null,
+      primaryCategoryId: leaf, publication: 'DRAFT', description: 'Synthetic attribute impact fixture', options: [],
+      variants: [{ id: 'v-' + id, sku: id.toUpperCase(), selections: {} }] } });
+  }
+
+  let resumePreview = () => {};
+  const delayedPreview = new Promise<void>(resolve => { resumePreview = resolve; });
+  let discardFirstSave = true;
+  await page.route('**/admin/api/connected-catalog', async route => {
+    const operation = route.request().postDataJSON()?.request;
+    if (operation?.action === 'category.attribute' && discardFirstSave) {
+      discardFirstSave = false;
+      return route.abort('failed');
+    }
+    if (operation?.read !== 'attribute-impact' || operation.page !== 1) return route.fallback();
+    await delayedPreview;
+    await route.continue();
+  });
+  await page.goto(`${admin}/dashboard/category-attributes?category=${leaf}`);
+  await page.getByRole('combobox', { name: 'Attribute', exact: true }).selectOption(attributeId);
+  const required = page.getByRole('checkbox', { name: 'Required', exact: true });
+  await required.check();
+  await page.getByRole('button', { name: 'Preview rule change' }).click();
+  try { await expect(required).toBeDisabled(); }
+  finally { resumePreview(); }
+  const pagination = page.getByRole('navigation', { name: 'Affected products pages' });
+  await expect(pagination).toContainText('Page 1 of 2');
+  await expect(page.getByText('16 affected products · 0 published')).toBeVisible();
+  await expect(page.getByText(/Review fixture 16/)).toHaveCount(0);
+  await pagination.getByRole('button', { name: 'Next page' }).click();
+  await expect(pagination).toContainText('Page 2 of 2');
+  await expect(page.getByText(/Review fixture 16/)).toBeVisible();
+  const save = page.getByRole('button', { name: 'Save reviewed change' });
+  await save.click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(pagination).toContainText('Page 2 of 2');
+  await save.click();
+  await expect(page.getByRole('row').filter({ hasText: attributeName })).toContainText('Required');
+  await page.reload();
+  await expect(page.getByRole('row').filter({ hasText: attributeName })).toContainText('Required');
 });
 
 test('approved device aliases and isolated search maintenance persist in the main admin', async ({ page }) => {

@@ -22,14 +22,16 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
   const [rows, setRows] = useState(() => navigation.items.map((item, id) => ({ item, id })));
   const [nextRow, setNextRow] = useState(navigation.items.length);
   const command = useTaxonomyCommand(region);
+  const editDisabled = !canEdit || command.pending;
+  const collectionTargets = new Map(navigation.collections.map(target => [target.id, target]));
   const targets = {
     category: navigation.categories,
-    collection: collections.map(row => ({ id: row.id, label: row.name, visible: navigation.collections.some(target => target.id === row.id) })),
-    page: navigation.pages.map(row => ({ id: row.page, label: row.label, visible: row.visible })),
+    collection: collections.map(row => collectionTargets.get(row.id) ?? { id: row.id, label: row.name, visible: false, href: '' }),
+    page: navigation.pages.map(({ page, ...target }) => ({ id: page, ...target })),
   };
   const preview = rows.flatMap(({ id, item }) => {
     const target = targets[item.type].find(choice => choice.id === menuId(item));
-    return item.visible && target?.visible ? [{ id, label: item.label?.trim() || target.label }] : [];
+    return item.visible && target?.visible ? [{ id, label: item.label?.trim() || target.label, href: target.href }] : [];
   });
   function amend(index: number, item: MenuItem) {
     command.changed(true);
@@ -50,7 +52,7 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
         <h3>Menu preview</h3>
         <p>{navigation.previewLocale}</p>
         {preview.length > 0
-          ? <ol className={css.preview}>{preview.map(row => <li key={row.id}>{row.label}</li>)}</ol>
+          ? <ol className={css.preview}>{preview.map(row => <li key={row.id}>{row.label}<br/><small>{row.href}</small></li>)}</ol>
           : <p>No links are visible in this menu.</p>}
       </nav>
     </section>
@@ -62,25 +64,25 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
         const target = choices.find(choice => choice.id === chosen);
         return <div className={css.item} key={id}><h3>{item.label || choices.find(target => target.id === chosen)?.label || 'Menu item'}</h3>
           <div className={css.form}><div className={css.fields}>
-            <label>Target type<select value={item.type} disabled={!canEdit} onChange={event => {
+            <label>Target type<select value={item.type} disabled={editDisabled} onChange={event => {
               const type = event.target.value as MenuItem['type'];
               amend(index, menuItem(type, targets[type][0]?.id ?? '', item));
             }}><option value="category">Category</option><option value="collection">Collection</option><option value="page">Storefront page</option></select></label>
-            <label>Destination<select value={chosen} disabled={!canEdit} onChange={event => amend(index, menuItem(item.type, event.target.value, item))}>
+            <label>Destination<select value={chosen} disabled={editDisabled} onChange={event => amend(index, menuItem(item.type, event.target.value, item))}>
               {(!chosen || !choices.some(target => target.id === chosen)) && <option value={chosen}>{chosen || 'Select destination'}</option>}
               {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}{choice.visible ? '' : ' (hidden in this market)'}</option>)}</select></label>
-            <label>Custom label<input value={item.label ?? ''} maxLength={80} disabled={!canEdit}
+            <label>Custom label<input value={item.label ?? ''} maxLength={80} disabled={editDisabled}
               onChange={event => amend(index, { ...item, label: event.target.value || null })}/></label>
-            <label className={css.check}><input type="checkbox" checked={item.visible} disabled={!canEdit}
+            <label className={css.check}><input type="checkbox" checked={item.visible} disabled={editDisabled}
               onChange={event => amend(index, { ...item, visible: event.target.checked })}/>Visible</label>
           </div></div>
           {item.visible && !target?.visible && <small>Hidden by this target’s market settings.</small>}
-          {canEdit && <div className={css.actions}><OrderButtons index={index} length={rows.length}
+          {canEdit && <div className={css.actions}><OrderButtons index={index} length={rows.length} disabled={command.pending}
             label={item.label || 'item ' + (index + 1)} move={delta => {
               command.changed(true);
               setRows(values => moveInList(values, index, delta));
             }}/>
-            <button type="button" className={catalog.outline + ' ' + css.compact}
+            <button type="button" className={catalog.outline + ' ' + css.compact} disabled={command.pending}
               onClick={() => {
                 command.changed(true);
                 setRows(values => values.filter(value => value.id !== id));
@@ -88,7 +90,7 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
         </div>;
       })}
       {canEdit && <div className={css.actions}>
-        <button type="button" className={catalog.outline} disabled={rows.length >= 100} onClick={() => {
+        <button type="button" className={catalog.outline} disabled={command.pending || rows.length >= 100} onClick={() => {
           command.changed(true);
           setRows(values => [...values, { id: nextRow, item: { type: 'page', page: 'HOME', label: null, visible: true } }]);
           setNextRow(value => value + 1);
@@ -183,28 +185,30 @@ function CuratedProducts({ current, region }: { current: NonNullable<Collections
   }
   return <section className={css.panel}><h2>Curated products</h2>
     <form className={css.search} onSubmit={event => { event.preventDefault(); void search(); }}>
-      <label>Product name or SKU<input type="search" maxLength={120} value={query} onChange={event => { setQuery(event.target.value); setResult(undefined); }}/></label>
-      <button className={catalog.outline} disabled={searching}>Search products</button>
+      <label>Product name or SKU<input type="search" maxLength={120} value={query} disabled={searching || command.pending}
+        onChange={event => { setQuery(event.target.value); setResult(undefined); }}/></label>
+      <button className={catalog.outline} disabled={searching || command.pending}>Search products</button>
     </form>
+    {searching && <p role="status">Searching products…</p>}
     {issue && <p className={css.error} role="alert">{issue}</p>}
     {result && <div className={css.item}>
       {result.products.map(product => <div className={css.actions} key={product.id}><span>{product.name}</span>
-        <button type="button" className={catalog.outline + ' ' + css.compact} disabled={members.some(member => member.id === product.id)}
+        <button type="button" className={catalog.outline + ' ' + css.compact} disabled={searching || command.pending || members.some(member => member.id === product.id)}
           onClick={() => { command.changed(true); setMembers(values => [...values, product]); }}>Add</button></div>)}
       {!result.products.length && <p>No matching products.</p>}
-      <div className={css.actions}><button type="button" className={catalog.outline} disabled={searching || result.page <= 1} onClick={() => void search(result.page - 1)}>Previous</button>
-        <button type="button" className={catalog.outline} disabled={searching || result.page >= result.pages} onClick={() => void search(result.page + 1)}>Next</button></div>
+      <div className={css.actions}><button type="button" className={catalog.outline} disabled={searching || command.pending || result.page <= 1} onClick={() => void search(result.page - 1)}>Previous</button>
+        <button type="button" className={catalog.outline} disabled={searching || command.pending || result.page >= result.pages} onClick={() => void search(result.page + 1)}>Next</button></div>
     </div>}
     {members.map((product, index) => <div className={css.item} key={product.id}><span>{product.name} {!product.visibleInMarket && <small>Unavailable in this market</small>}</span>
-      <div className={css.actions}><OrderButtons index={index} length={members.length} label={product.name}
+      <div className={css.actions}><OrderButtons index={index} length={members.length} label={product.name} disabled={command.pending}
         move={delta => { command.changed(true); setMembers(values => moveInList(values, index, delta)); }}/>
-        <button type="button" className={catalog.outline + ' ' + css.compact} onClick={() => {
+        <button type="button" className={catalog.outline + ' ' + css.compact} disabled={command.pending} onClick={() => {
           command.changed(true);
           setMembers(values => values.filter(row => row.id !== product.id));
         }}>Remove</button></div>
     </div>)}
     {!members.length && <p>No curated products.</p>}
-    <div><button type="button" className={catalog.primary} disabled={command.pending} onClick={() => void command.send({
+    <div><button type="button" className={catalog.primary} disabled={searching || command.pending} onClick={() => void command.send({
       action: 'collection.products', input: { collectionId: current.id, expectedRevision: current.revision,
         expectedProductIds: current.products.map(row => row.id), productIds: members.map(row => row.id) },
     }, 'Collection products saved.')}>Save product order</button></div>

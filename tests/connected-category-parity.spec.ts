@@ -16,7 +16,7 @@ async function command<T = unknown>(page: Page, request: object) {
 }
 
 type AssignmentRead = {
-  categories: { id: string; parentId: string | null; revision: number; state: string }[];
+  categories: { id: string; parentId: string | null; revision: number; state: string; position: number }[];
   assignments: { products: { id: string; revision: number; primaryCategoryId: string; secondaryCategoryIds: string[] }[] };
 };
 
@@ -72,6 +72,15 @@ test('category search, revisioned assignments and move review preserve placement
   await expect(page.getByRole('link', { name: names[sourceBranch], exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: names[destination], exact: true }).click();
 
+  await page.getByText('Reorder sibling categories', { exact: true }).click();
+  await page.getByRole('button', { name: 'Move ' + names[destination] + ' up' }).click();
+  await page.getByRole('button', { name: 'Save order', exact: true }).click();
+  await expect.poll(async () => {
+    const { categories } = await command<AssignmentRead>(page, { read: 'categories', id: destination });
+    return [destination, archive].map(id => categories.find(row => row.id === id)?.position);
+  }).toEqual([0, 1]);
+  await page.reload();
+
   const assignments = page.getByRole('region', { name: 'Product assignments' });
   await assignments.getByRole('combobox', { name: 'Placement' }).selectOption('search');
   await assignments.getByRole('searchbox', { name: 'Product or SKU' }).fill(key);
@@ -113,6 +122,9 @@ test('category search, revisioned assignments and move review preserve placement
   await page.reload();
   const saved = await read();
   expect(saved.categories.find(row => row.id === destination)).toMatchObject({ id: destination, parentId: sourceBranch });
+  const history = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Category change history' }) });
+  const moveHistory = history.getByRole('row').filter({ hasText: 'Parent category changed' }).first();
+  await expect(moveHistory.getByRole('cell').nth(1)).toHaveText(/\w/);
   expect(saved.assignments.products).toEqual(expect.arrayContaining([
     expect.objectContaining({ id: first.id, primaryCategoryId: destination, secondaryCategoryIds: [] }),
     expect.objectContaining({ id: second.id, primaryCategoryId: existing, secondaryCategoryIds: [destination] }),
@@ -134,4 +146,44 @@ test('category search, revisioned assignments and move review preserve placement
   await page.reload();
   await expect(newArrivals).toBeChecked();
   await expect(featured).toBeChecked();
+
+  const collectionId = key + '-manual';
+  await command(page, { action: 'collection.save', input: { id: collectionId, slug: collectionId,
+    expectedRevision: null, name: key + ' collection', description: '', selection: 'CURATED', position: 0, image: null } });
+  await page.goto(`/admin/dashboard/catalog-collections?collection=${collectionId}`);
+  const curated = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Curated products' }) });
+  let releaseSearch = () => {};
+  let releaseSave = () => {};
+  const delayedSearch = new Promise<void>(resolve => { releaseSearch = resolve; });
+  const delayedSave = new Promise<void>(resolve => { releaseSave = resolve; });
+  await page.route('**/admin/api/connected-catalog', async route => {
+    const operation = route.request().postDataJSON()?.request;
+    if (operation?.read === 'collection-products') await delayedSearch;
+    else if (operation?.action === 'collection.products') await delayedSave;
+    else return route.fallback();
+    await route.continue();
+  });
+  const query = curated.getByRole('searchbox', { name: 'Product name or SKU' });
+  await query.fill(key);
+  await curated.getByRole('button', { name: 'Search products' }).click();
+  try {
+    await expect(curated.getByRole('status').filter({ hasText: 'Searching products' })).toBeVisible();
+    await expect(query).toBeDisabled();
+  } finally { releaseSearch(); }
+  const add = curated.getByRole('button', { name: 'Add', exact: true });
+  await expect(add).toHaveCount(2);
+  await add.first().click();
+  await add.last().click();
+  await curated.getByRole('button', { name: 'Move ' + second.name + ' up' }).click();
+  await curated.getByRole('button', { name: 'Save product order' }).click();
+  try {
+    await expect(curated.getByRole('button', { name: 'Move ' + first.name + ' up' })).toBeDisabled();
+    await expect(curated.getByRole('button', { name: 'Remove', exact: true }).first()).toBeDisabled();
+  } finally { releaseSave(); }
+  await expect(query).toHaveValue('');
+  await page.reload();
+  const ordered = curated.getByRole('button', { name: /^Move .* up$/ });
+  await expect(ordered).toHaveCount(2);
+  await expect(ordered.first()).toHaveAccessibleName('Move ' + second.name + ' up');
+  await expect(ordered.last()).toHaveAccessibleName('Move ' + first.name + ' up');
 });

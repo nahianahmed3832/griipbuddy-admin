@@ -23,6 +23,7 @@
 .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
 .form { display: grid; gap: 12px; min-width: 0; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ruleFields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .form label, .search label { display: grid; gap: 5px; min-width: 0; font-size: 14px; font-weight: 500; }
 .form :is(input:not([type='checkbox']),select,textarea), .search :is(input,select) {
   min-width: 0;

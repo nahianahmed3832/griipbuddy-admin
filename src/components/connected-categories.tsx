@@ -219,7 +219,7 @@ function SiblingOrder({ current, nodes, region }: { current: CatalogCategory; no
   if (entries.length < 2) return null;
   return <details><summary>Reorder sibling categories</summary><div className={css.stack}>
     {entries.map((entry, index) => <div className={css.actions} key={entry.id}><span>{entry.name}</span>
-      <OrderButtons label={entry.name} index={index} length={entries.length} move={delta => {
+      <OrderButtons label={entry.name} index={index} length={entries.length} disabled={command.pending} move={delta => {
         command.changed(true);
         setEntries(values => moveInList(values, index, delta));
       }}/></div>)}
@@ -372,6 +372,7 @@ function CategoryHistory({ history }: { history: NonNullable<CategoryData['histo
 
 function AttributePanel({ category, attributes, region, canEdit }: { category: CatalogCategory; attributes: Attributes; region: Region; canEdit: boolean }) {
   const [attributeId, setAttributeId] = useState(attributes.local[0]?.attributeId ?? attributes.definitions[0]?.id ?? '');
+  const confirmNavigation = useConfirmTaxonomyNavigation();
   const selected = attributes.definitions.find(item => item.id === attributeId);
   const local = attributes.local.find(item => item.attributeId === attributeId);
   const rule = local ?? attributes.effective.find(item => item.id === attributeId);
@@ -391,12 +392,12 @@ function AttributePanel({ category, attributes, region, canEdit }: { category: C
     </section>
     {canEdit && <>
       <section className={css.panel}><h2>Attribute rule</h2><label className={css.form}>Attribute<select value={attributeId}
-        onChange={event => setAttributeId(event.target.value)}><option value="">Choose an attribute</option>
+        onChange={event => { if (confirmNavigation()) setAttributeId(event.target.value); }}><option value="">Choose an attribute</option>
         {attributes.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select></label>
         {selected && <AttributeRule key={attributeId} selected={selected} category={category} rule={rule} local={Boolean(local)} region={region}/>}
       </section>
       <section className={css.panel}><h2>Reusable attribute definitions</h2><label className={css.form}>Definition<select value={definitionId}
-        onChange={event => setDefinitionId(event.target.value)}><option value="">Create a definition</option>
+        onChange={event => { if (confirmNavigation()) setDefinitionId(event.target.value); }}><option value="">Create a definition</option>
         {attributes.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select></label>
         <AttributeDefinition key={definitionId} definition={attributes.definitions.find(item => item.id === definitionId)} region={region}/>
       </section>
@@ -404,19 +405,25 @@ function AttributePanel({ category, attributes, region, canEdit }: { category: C
   </div>;
 }
 
-type AttributeImpact = { total: number; published: number; products: { id: string; name: string; reasons: string[] }[] };
+type AttributeImpact = { total: number; published: number; page: number; pages: number;
+  products: { id: string; name: string; reasons: string[] }[] };
 function AttributeRule({ selected, category, rule, local, region }: { selected: Attribute; category: CatalogCategory;
   rule?: Omit<Template, 'excluded'> & { excluded?: boolean }; local: boolean; region: Region }) {
   const command = useTaxonomyCommand(region);
   const [review, setReview] = useState<{ impact: AttributeImpact; input: Record<string, unknown> }>();
   const [problem, setProblem] = useState('');
   const [checking, setChecking] = useState(false);
-  async function check(template: Template | null) {
-    const input = { departmentId: category.id, attributeId: selected.id, expectedRevision: category.revision, template };
-    setChecking(true); setReview(undefined); setProblem('');
-    try { setReview({ impact: await catalogRequest<AttributeImpact>({ read: 'attribute-impact', input }, region), input }); }
+  async function check(input: Record<string, unknown>, page = 1) {
+    if (checking || command.pending) return;
+    setChecking(true);
+    setProblem('');
+    if (input !== review?.input) setReview(undefined);
+    try { setReview({ impact: await catalogRequest<AttributeImpact>({ read: 'attribute-impact', input, page }, region), input }); }
     catch (error) { setProblem(error instanceof Error ? error.message : 'Impact could not be loaded.'); }
     finally { setChecking(false); }
+  }
+  function preview(template: Template | null) {
+    return check({ departmentId: category.id, attributeId: selected.id, expectedRevision: category.revision, template });
   }
   return <form className={css.form} onChange={() => {
     setReview(undefined);
@@ -424,22 +431,30 @@ function AttributeRule({ selected, category, rule, local, region }: { selected: 
   }} onSubmit={event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    void check({ required: data.has('required'), filterable: data.has('filterable'), inheritable: data.has('inheritable'),
+    void preview({ required: data.has('required'), filterable: data.has('filterable'), inheritable: data.has('inheritable'),
       excluded: data.has('excluded'), position: Number(readField(data, 'position')) });
   }}>
     <p>{selected.scope} · {selected.dataType}{selected.variantOptionKey ? ' · Option ' + selected.variantOptionKey : ''}</p>
-    <div className={css.fields}>
+    <fieldset className={`${css.fields} ${css.ruleFields}`} disabled={checking || command.pending}>
       <ChoiceCheck name="required" defaultChecked={rule?.required}>Required</ChoiceCheck>
       <ChoiceCheck name="filterable" defaultChecked={rule?.filterable}>Filterable</ChoiceCheck>
       <ChoiceCheck name="inheritable" defaultChecked={rule?.inheritable ?? true}>Inherit to descendants</ChoiceCheck>
       <ChoiceCheck name="excluded" defaultChecked={rule?.excluded}>Exclude inherited rule here</ChoiceCheck>
       <label>Display order<input name="position" type="number" min={0} max={9999} defaultValue={rule?.position ?? 0}/></label>
-    </div>
+    </fieldset>
     <div className={css.actions}><button className={catalog.outline} disabled={checking || command.pending}>Preview rule change</button>
-      {local && <button type="button" className={catalog.outline} disabled={checking || command.pending} onClick={() => void check(null)}>Preview removing override</button>}</div>
+      {local && <button type="button" className={catalog.outline} disabled={checking || command.pending} onClick={() => void preview(null)}>Preview removing override</button>}</div>
+    {checking && <p role="status">Reviewing affected products…</p>}
     {review && <div className={css.item}><p>{review.impact.total} affected products · {review.impact.published} published</p>
       {review.impact.products.length > 0 && <ul>{review.impact.products.map(row => <li key={row.id}>{row.name} · {row.reasons.map(reason => reason.replaceAll('_', ' ')).join(', ')}</li>)}</ul>}
-      <div><button type="button" className={catalog.primary} disabled={command.pending} onClick={() => void command.send({
+      {review.impact.pages > 1 && <nav className={css.actions} aria-label="Affected products pages">
+        <button type="button" className={catalog.outline} disabled={checking || command.pending || review.impact.page <= 1}
+          onClick={() => void check(review.input, review.impact.page - 1)}>Previous page</button>
+        <span role="status">Page {review.impact.page} of {review.impact.pages}</span>
+        <button type="button" className={catalog.outline} disabled={checking || command.pending || review.impact.page >= review.impact.pages}
+          onClick={() => void check(review.input, review.impact.page + 1)}>Next page</button>
+      </nav>}
+      <div><button type="button" className={catalog.primary} disabled={checking || command.pending} onClick={() => void command.send({
         action: 'category.attribute', input: review.input,
       }, 'Attribute rule saved.')}>Save reviewed change</button></div>
     </div>}

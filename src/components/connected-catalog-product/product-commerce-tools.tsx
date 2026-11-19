@@ -207,16 +207,29 @@ export function ConnectedOffers({ data, canEdit }: { data: Data; canEdit: boolea
 
 const stockScope = (data: Data) => ({ productId: data.productId, marketId: data.market.id });
 
-function useStockKey() {
-  const ref = useRef<{ fingerprint: string; value: string }>(null);
+function useStockKey(actorId: string) {
+  const pending = useRef<{ storageKey: string; value: string }>(null);
   return {
-    key(payload: object) {
-      const fingerprint = JSON.stringify(Object.entries(payload).filter(([field]) =>
-        field !== "expectedUpdatedAt" && field !== "expectedDestinationUpdatedAt"));
-      if (ref.current?.fingerprint !== fingerprint) ref.current = { fingerprint, value: window.crypto.randomUUID() };
-      return ref.current.value;
+    async key(payload: object) {
+      // A shared pool's movement is the same action after a refresh or market switch.
+      const fields = Object.entries(payload).filter(([field]) =>
+        field !== "marketId" && field !== "expectedUpdatedAt" && field !== "expectedDestinationUpdatedAt");
+      const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(fields)));
+      const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+      const storageKey = `griip-stock-pending:${actorId}:${fingerprint}`;
+      let value = pending.current?.storageKey === storageKey ? pending.current.value : null;
+      try { value ??= window.sessionStorage.getItem(storageKey); } catch { /* Storage can be unavailable in this tab. */ }
+      value ??= window.crypto.randomUUID();
+      pending.current = { storageKey, value };
+      try { window.sessionStorage.setItem(storageKey, value); } catch { /* Retry in memory if the tab cannot persist it. */ }
+      return value;
     },
-    clear() { ref.current = null; },
+    clear() {
+      if (pending.current) {
+        try { window.sessionStorage.removeItem(pending.current.storageKey); } catch { /* The operation already succeeded. */ }
+      }
+      pending.current = null;
+    },
   };
 }
 
@@ -295,17 +308,17 @@ function WarehouseServices({ data }: { data: Data }) {
   </details>;
 }
 
-function MovementForm({ data, pool, onSaved }: { data: Data; pool: Pool; onSaved: (message: string) => void }) {
+function MovementForm({ data, actorId, pool, onSaved }: { data: Data; actorId: string; pool: Pool; onSaved: (message: string) => void }) {
   const operation = useTaxonomyOperation();
-  const stockKey = useStockKey();
+  const stockKey = useStockKey(actorId);
   const [kind, setKind] = useState("RECEIPT");
   const [expectedUpdatedAt] = useState(pool.updatedAt);
   return <TaxonomyForm className="commerce-panel" aria-label="Stock movement" onSubmit={async event => {
     const form = new FormData(event.currentTarget);
     const payload = { ...stockScope(data), poolId: pool.id, kind, quantity: Number(formValue(form, "quantity")),
       expectedUpdatedAt, reason: formValue(form, "reason"), reference: formValue(form, "reference") };
-    const saved = await operation.run(() => command("inventory.movement", {
-      ...payload, idempotencyKey: stockKey.key(payload),
+    const saved = await operation.run(async () => command("inventory.movement", {
+      ...payload, idempotencyKey: await stockKey.key(payload),
     }), "");
     if (saved) { stockKey.clear(); onSaved("Stock movement recorded."); }
     return saved;
@@ -327,21 +340,21 @@ function MovementForm({ data, pool, onSaved }: { data: Data; pool: Pool; onSaved
   </TaxonomyForm>;
 }
 
-function TransferForm({ data, pool, destinations, onSaved }: { data: Data; pool: Pool; destinations: Pool[]; onSaved: () => void }) {
+function TransferForm({ data, actorId, pool, destinations, onSaved }: { data: Data; actorId: string; pool: Pool; destinations: Pool[]; onSaved: () => void }) {
   const operation = useTaxonomyOperation();
-  const stockKey = useStockKey();
+  const stockKey = useStockKey(actorId);
   const [expectedUpdatedAt] = useState(pool.updatedAt);
   const [destinationVersions] = useState(() => new Map(destinations.map(row => [row.id, row.updatedAt])));
   return <TaxonomyForm className="commerce-panel" aria-label="Stock transfer" onSubmit={async event => {
     const form = new FormData(event.currentTarget);
     const to = destinations.find(item => item.id === formValue(form, "destination"));
-    const saved = await operation.run(() => {
+    const saved = await operation.run(async () => {
       const expectedDestinationUpdatedAt = to && destinationVersions.get(to.id);
       if (!to || !expectedDestinationUpdatedAt) throw new Error("Choose a destination warehouse from the original pool list or reload.");
       const payload = { ...stockScope(data), fromPoolId: pool.id, toPoolId: to.id,
         quantity: Number(formValue(form, "quantity")), expectedUpdatedAt, expectedDestinationUpdatedAt,
         reason: formValue(form, "reason"), reference: formValue(form, "reference") };
-      return command("inventory.transfer", { ...payload, idempotencyKey: stockKey.key(payload) });
+      return command("inventory.transfer", { ...payload, idempotencyKey: await stockKey.key(payload) });
     }, "");
     if (saved) { stockKey.clear(); onSaved(); }
     return saved;
@@ -388,7 +401,7 @@ function InventoryHistory({ data, skus }: { data: Data; skus: Map<string, Varian
   </details>;
 }
 
-export function ConnectedInventory({ data, canEdit }: { data: Data; canEdit: boolean }) {
+export function ConnectedInventory({ data, actorId, canEdit }: { data: Data; actorId: string; canEdit: boolean }) {
   const [selected, setSelected] = useState<{ id: string; action: "movement" | "transfer" }>();
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
@@ -439,8 +452,8 @@ export function ConnectedInventory({ data, canEdit }: { data: Data; canEdit: boo
     <PageButtons page={currentPage} count={count} setPage={setPage} />
     <TaxonomyFeedback message={notice} />
     {canEdit && current && (selected?.action === "movement"
-      ? <MovementForm key={current.id} data={data} pool={current} onSaved={message => { setNotice(message); setSelected(undefined); }} />
-      : <TransferForm key={current.id} data={data} pool={current} destinations={destinations(current)}
+      ? <MovementForm key={current.id} data={data} actorId={actorId} pool={current} onSaved={message => { setNotice(message); setSelected(undefined); }} />
+      : <TransferForm key={current.id} data={data} actorId={actorId} pool={current} destinations={destinations(current)}
         onSaved={() => { setNotice("Stock transfer recorded."); setSelected(undefined); }} />)}
     {canEdit && (data.warehouses.length ? <>
       <OpenPoolForm data={data} />

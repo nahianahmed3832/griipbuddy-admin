@@ -108,9 +108,11 @@ export function moveInList<T>(items: T[], index: number, delta: number): T[] {
   return next;
 }
 
-export function OrderButtons({ index, length, label, move }: { index: number; length: number; label: string; move: (delta: number) => void }) {
+export function OrderButtons({ index, length, label, move, disabled = false }: {
+  index: number; length: number; label: string; move: (delta: number) => void; disabled?: boolean;
+}) {
   return <>
-    <button type="button" className={catalog.outline + ' ' + styles.compact} aria-label={'Move ' + label + ' up'} disabled={index === 0} onClick={() => move(-1)}>Up</button>
-    <button type="button" className={catalog.outline + ' ' + styles.compact} aria-label={'Move ' + label + ' down'} disabled={index >= length - 1} onClick={() => move(1)}>Down</button>
+    <button type="button" className={catalog.outline + ' ' + styles.compact} aria-label={'Move ' + label + ' up'} disabled={disabled || index === 0} onClick={() => move(-1)}>Up</button>
+    <button type="button" className={catalog.outline + ' ' + styles.compact} aria-label={'Move ' + label + ' down'} disabled={disabled || index >= length - 1} onClick={() => move(1)}>Down</button>
   </>;
 }

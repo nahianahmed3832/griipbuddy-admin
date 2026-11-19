@@ -11,7 +11,7 @@ import { ConnectedProductMedia } from "./connected-product-media";
 import { ConnectedProductPublication } from "./connected-product-publication";
 import { ConnectedWarehouseSetup, type DispatchWarehouseList } from "./connected-warehouse-setup";
 import type { ProductWorkspace, ProductWorkspaceList } from "./contracts";
-import { markets } from "./markets";
+import { isMarketId, markets } from "./markets";
 import { ConnectedInventory, ConnectedOffers } from "./product-commerce-tools";
 import { productPath } from "./routes";
 import { TaxonomyPendingChanges } from "./taxonomy-controls";
@@ -33,10 +33,13 @@ async function ProductList({ auth, region, q }: Props) {
   const state = rawState === "DRAFT" || rawState === "ACTIVE" || rawState === "ARCHIVED" ? rawState : undefined;
   const rawSource = param(q, "source");
   const source = rawSource === "connected" || rawSource === "legacy" ? rawSource : undefined;
-  const data = await connectedCatalog<ProductWorkspaceList>(auth, region, { read: "products", q: search || undefined, page, state, source });
+  const rawOfferMarket = param(q, "offerMarket");
+  const offerMarketId = superAdmin(auth.staff) && isMarketId(rawOfferMarket) ? rawOfferMarket : undefined;
+  const data = await connectedCatalog<ProductWorkspaceList>(auth, region, { read: "products", q: search || undefined, page, state, source, offerMarketId });
   const path = "/dashboard/products";
   const listHref = (number: number) => `${path}?${new URLSearchParams({ region,
     ...(search && { q: search }), ...(state && { state }), ...(source && { source }),
+    ...(offerMarketId && { offerMarket: offerMarketId }),
     ...(number > 1 && { page: String(number) }) })}`;
   return <>
     <PageHeading eyebrow="COMMERCE / CATALOG" title="Products"
@@ -54,6 +57,10 @@ async function ProductList({ auth, region, q }: Props) {
       <label className="filter-label">Catalog setup<select name="source" defaultValue={source ?? ""}>
         <option value="">All products</option><option value="connected">Connected</option><option value="legacy">Legacy</option>
       </select></label>
+      {data.owner && <label className="filter-label">Offer market<select name="offerMarket" defaultValue={offerMarketId ?? ""}>
+        <option value="">All accessible markets</option>
+        {data.marketIds.map(id => <option key={id} value={id}>{markets[id].name}</option>)}
+      </select></label>}
       <button className="button secondary">Search</button>
     </form>
     <div className="panel table-scroll">
@@ -173,7 +180,8 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
             <ConnectedOffers key={data.commerce.market.id} data={data.commerce} canEdit={!archived && mayEditConnectedOffers(auth)} />
           </section>
           {canViewStock && <section className="taxonomy-card" id="inventory" aria-labelledby="main-admin-inventory"><h2 id="main-admin-inventory">Inventory</h2>
-            <ConnectedInventory key={data.commerce.market.id} data={data.commerce} canEdit={!archived && mayEditConnectedStock(auth)} />
+            <ConnectedInventory key={data.commerce.market.id} data={data.commerce} actorId={auth.staff.id}
+              canEdit={!archived && mayEditConnectedStock(auth)} />
           </section>}
         </>}
         {shared && <section id="history" className="taxonomy-card" aria-labelledby="product-history">
