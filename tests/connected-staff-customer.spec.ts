@@ -290,12 +290,16 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
       await expect(buyer.getByRole('button', { name: 'Publish product', exact: true })).toHaveCount(0);
     });
 
-    async function buy() {
+    async function buy(quantity = 1) {
       await buyer.goto(`/products/${slug}?market=bd&variant=${firstVariant}`);
       const delivery = buyer.getByRole('form', { name: 'Check delivery', exact: true });
       await delivery.getByRole('combobox', { name: 'Delivery district' }).selectOption('dhaka');
       await delivery.getByRole('combobox', { name: 'Delivery service' }).selectOption('COD:standard');
       await buyer.getByRole('button', { name: 'Check delivery', exact: true }).click();
+      if (quantity > 1) {
+        const control = buyer.getByRole('group', { name: 'Quantity', exact: true });
+        for (let unit = 1; unit < quantity; unit++) await control.getByRole('button', { name: 'Increase quantity' }).click();
+      }
       await buyer.getByRole('button', { name: 'Add to cart', exact: true }).click();
       await buyer.getByRole('link', { name: 'View cart', exact: true }).click();
       await expect(buyer.getByRole('listitem').filter({ hasText: firstSku })).toContainText(amountBD[0]);
@@ -323,18 +327,43 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
       const forbidden = await buyer.request.post(adminOrigin + adminApi, { headers: { Origin: adminOrigin },
         data: { region: 'BD', request: { read: 'categories' } } });
       expect(forbidden.status()).toBe(401);
-      firstOrderId = await buy();
+      firstOrderId = await buy(2);
       expect((await order(firstOrderId)).lines).toMatchObject([{ variantId: firstVariant, sku: firstSku,
-        productName, options: `Model ${modelA} · Design Plain`, quantity: 1, unitPriceMinor: 129900 }]);
-      expect(await skuStock()).toMatchObject([{ id: poolId, onHand: 3, reserved: 1, available: 2 }]);
+        productName, options: `Model ${modelA} · Design Plain`, quantity: 2, unitPriceMinor: 129900 }]);
+      expect(await skuStock()).toMatchObject([{ id: poolId, onHand: 3, reserved: 2, available: 1 }]);
       await page.goto(`${dashboard}/order-details/native-${firstOrderId}?region=BD`);
       await expect(page.getByRole('heading', { name: 'Purchased items', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Start packing', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Mark ready to ship', exact: true })).toBeVisible();
+      const firstParcel = page.getByRole('region', { name: 'Parcel 1', exact: true });
+      await firstParcel.getByText('Create another parcel', { exact: true }).click();
+      await firstParcel.getByRole('spinbutton', { name: new RegExp(`^Units to move for ${firstSku}`) }).fill('1');
+      await firstParcel.getByLabel('Reason for splitting this parcel').fill('Use two smaller boxes.');
+      const attempts: string[] = [];
+      await page.route('**/api/connected-catalog', async route => {
+        const body = route.request().postDataJSON();
+        if (body?.request?.action === 'order.parcel.split') {
+          attempts.push(body.request.input.operationId);
+          if (attempts.length === 1) { await route.abort('failed'); return; }
+        }
+        await route.fallback();
+      });
+      await firstParcel.getByRole('button', { name: 'Create parcel', exact: true }).click();
+      await expect(firstParcel.getByRole('alert')).toBeVisible();
+      await firstParcel.getByRole('button', { name: 'Create parcel', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Parcel 2', exact: true })).toBeVisible();
+      expect(attempts).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/), attempts[0]]);
+      const split = await order(firstOrderId);
+      expect(split.parcels).toHaveLength(2);
+      expect(split.parcels).toMatchObject([
+        { warehouse: warehouseName, lines: [{ sku: firstSku, quantity: 1 }] },
+        { warehouse: warehouseName, lines: [{ sku: firstSku, quantity: 1 }] },
+      ]);
+      expect(await skuStock()).toMatchObject([{ id: poolId, onHand: 3, reserved: 2, available: 1 }]);
       await page.emulateMedia({ media: 'print' });
       await expect(page.locator('[aria-label="Packing slip"]')).toContainText(firstSku);
       await expect(page.locator('[aria-label="Packing slip"]')).toContainText(warehouseName);
       await page.emulateMedia({ media: 'screen' });
-      await page.getByRole('button', { name: 'Start packing', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Mark ready to ship', exact: true })).toBeVisible();
       await command(page, { read: 'order', id: firstOrderId }, 'INTERNATIONAL', 404);
     });
 
@@ -348,7 +377,30 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
       const parcelId = paid.parcels[0].id;
       await orderOperation(secondOrder, 'order.advance', { next: 'PACKING' });
       await orderOperation(secondOrder, 'order.advance', { next: 'READY_TO_SHIP' });
-      await orderOperation(secondOrder, 'order.parcel.dispatch', { parcelId, carrier: 'Fixture manual courier', trackingReference: slug });
+      await page.goto(`${dashboard}/order-details/native-${secondOrder}?region=BD`);
+      const parcel = page.getByRole('region', { name: 'Parcel 1', exact: true });
+      await parcel.getByText('Edit carrier and tracking reference', { exact: true }).click();
+      const edit = parcel.locator('form').filter({ has: page.getByRole('button', { name: 'Save tracking reference', exact: true }) });
+      await edit.getByLabel('Carrier', { exact: true }).fill('Fixture manual courier');
+      await edit.getByLabel('Tracking reference', { exact: true }).fill(slug);
+      await edit.getByLabel('Reason for this update').fill('Reference copied from the parcel label.');
+      await edit.getByRole('button', { name: 'Save tracking reference' }).click();
+      await expect(parcel.getByText(`Fixture manual courier · ${slug}`, { exact: true })).toBeVisible();
+      expect((await order(secondOrder)).parcels[0].trackingStatus).toBe('PREPARING');
+      expect(await skuStock()).toMatchObject([{ id: poolId, onHand: 3, reserved: 1, available: 2 }]);
+      const dispatch = parcel.locator('form').filter({ has: page.getByRole('button', { name: 'Dispatch parcel', exact: true }) });
+      await dispatch.getByLabel('Reason or proof of handoff').fill('Handed over at the fixture counter.');
+      await dispatch.getByRole('button', { name: 'Dispatch parcel' }).click();
+      await expect(parcel.getByRole('list', { name: 'Tracking timeline' })).toContainText('Handed over at the fixture counter.');
+      await parcel.getByText('Delivery exception', { exact: true }).click();
+      await parcel.getByLabel('Reason for the delivery exception').fill('Address clarification requested.');
+      await parcel.getByRole('button', { name: 'Record delivery exception' }).click();
+      const timeline = parcel.getByRole('list', { name: 'Tracking timeline' });
+      await expect(timeline).toContainText('Address clarification requested.');
+      await expect(timeline).toContainText('Manual staff update');
+      await expect(timeline).toContainText('Recorded');
+      expect((await order(secondOrder)).payment.status).toBe('AWAITING_COLLECTION');
+      await expect(parcel.getByRole('button', { name: 'Check carrier tracking' })).toHaveCount(0);
       await orderOperation(secondOrder, 'order.parcel.tracking', { parcelId, status: 'OUT_FOR_DELIVERY', evidence: slug });
       await orderOperation(secondOrder, 'order.parcel.tracking', { parcelId, status: 'DELIVERED', evidence: slug });
       await orderOperation(secondOrder, 'order.collect', { confirmed: true });

@@ -6,6 +6,7 @@ export type MarketplaceOrderQueue = (typeof marketplaceOrderQueues)[number][0];
 
 export const connectedOrderActions = [
   'order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking', 'order.parcel.receive',
+  'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh',
   'order.cancel', 'order.collect', 'order.case',
 ] as const;
 export type ConnectedOrderAction = (typeof connectedOrderActions)[number];
@@ -32,9 +33,16 @@ export type PurchasedLine = {
 };
 
 type Tracking = { status: string; carrier: string | null; reference: string | null; next: string[]; evidenceRequired: boolean };
-type Parcel = Tracking & {
+type TrackingEvent = {
+  id?: string; status: string; recordedAt: string; evidence: string | null;
+  occurredAt?: string | null; source?: string | null; actor?: string | null; reason?: string | null; applied?: boolean;
+};
+export type ConnectedParcel = Tracking & {
   id: string; warehouse: string; dispatchable: boolean; receivable: boolean; disposition: 'RESTOCK' | 'HOLD' | null;
-  events: { status: string; recordedAt: string; evidence: string | null }[]; lines: PurchasedLine[];
+  splittable?: boolean; editableReference?: boolean; canRecordException?: boolean; trackingRevision?: number;
+  trackingStatus?: string; statusUpdatedAt?: string; canRefresh?: boolean; refreshReason?: string | null; estimatedDeliveryAt?: string | null;
+  lastSyncedAt?: string | null; lastSyncAttemptAt?: string | null; syncError?: string | null;
+  events: TrackingEvent[]; lines: PurchasedLine[];
 };
 
 type CaseSummary = { id: string; kind: string; status: string; updatedAt: string };
@@ -48,7 +56,8 @@ export type ConnectedOrderDetail = {
   payment: { method: string; status: string; dueMinor: number };
   shipping: { name: string; address: string; locality: string; district: string; postalCode: string | null; phone: string; service: string };
   lines: PurchasedLine[]; packable: boolean; pendingCancellation: boolean; requiresCodReview: boolean;
-  next?: string; canCancel: boolean; canCollect: boolean; shipment: Tracking | null; parcels: Parcel[];
+  next?: string; canCancel: boolean; canCollect: boolean;
+  shipment: (Tracking & { events?: TrackingEvent[]; statusUpdatedAt?: string }) | null; parcels: ConnectedParcel[];
   events: { id: string; status: string; kind: string; date: string; actor: string | null }[];
   cases: CaseSummary[];
   sellers: { id: string; name: string; preparation: string; updatedAt: string | null }[];

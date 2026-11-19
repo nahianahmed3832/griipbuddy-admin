@@ -6,7 +6,8 @@ import { has, superAdmin, type Region } from './sections';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
 const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
-const orderProgress = new Set(['order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking']);
+const orderProgress = new Set(['order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking',
+  'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh']);
 
 export function connectedCatalogConfigured() {
   return Boolean(process.env.GRIIP_MAIN_ADMIN_CATALOG_URL || process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET);

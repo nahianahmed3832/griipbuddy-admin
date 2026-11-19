@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ApiError, url, type Session } from '@/lib/api';
 import { connectedCatalog, mayEditConnectedOrder, mayReadConnectedOrders } from '@/lib/connected-catalog';
 import { marketplaceCasesPath, marketplaceOrderQueues, marketplaceOrdersPath, nativeOrderPrefix,
-  type ConnectedOrderDetail, type OrderList, type PurchasedLine } from '@/lib/connected-order-contract';
+  type ConnectedOrderDetail, type ConnectedParcel, type OrderList, type PurchasedLine } from '@/lib/connected-order-contract';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
@@ -73,29 +73,122 @@ export function MarketplacePurchasedLines({ lines, currency }: { lines: readonly
 
 const stepLabels: Record<string, string> = { PACKING: 'Start packing', READY_TO_SHIP: 'Mark ready to ship', SHIPPED: 'Record dispatch', DELIVERED: 'Mark delivered' };
 
-function TrackingFields() {
-  return <><label>Carrier<input name="carrier" maxLength={60} required/></label>
-    <label>Tracking reference<input name="trackingReference" maxLength={80} required/></label></>;
+function TrackingFields({ carrier, reference }: { carrier?: string | null; reference?: string | null } = {}) {
+  return <><label>Carrier<input name="carrier" maxLength={60} defaultValue={carrier ?? ''} required/></label>
+    <label>Tracking reference<input name="trackingReference" maxLength={80} defaultValue={reference ?? ''} required/></label></>;
+}
+
+function TrackingReason({ label = 'Reason for this update' }: { label?: string } = {}) {
+  return <label>{label}<input name="reason" minLength={3} maxLength={200} required/></label>;
 }
 
 export function OrderConfirmation({ children }: { children: string }) {
   return <label className={styles.check}><input type="checkbox" name="confirmed" value="yes" required/>{children}</label>;
 }
 
-function TrackingAction({ orderId, parcelId, tracking, region, mayFlagRefusal }: {
+function TrackingActions({ orderId, parcelId, tracking, region, mayFlagRefusal }: {
   orderId: string; parcelId?: string; tracking: NonNullable<ConnectedOrderDetail['shipment']>; region: Region; mayFlagRefusal: boolean;
 }) {
-  const next = tracking.next.filter(status => mayFlagRefusal || status !== 'REFUSED');
-  if (!next.length) return null;
-  return <MarketplaceOrderAction action={parcelId ? 'order.parcel.tracking' : 'order.tracking'} region={region} input={{ orderId, parcelId }} label="Record tracking update">
-    <label>Delivery status<select name="status" defaultValue="" required><option value="" disabled>Choose a status</option>
-      {next.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
+  const next = tracking.next.filter(status => status !== 'REFUSED');
+  const action = parcelId ? 'order.parcel.tracking' : 'order.tracking';
+  const input = { orderId, parcelId };
+  const evidenceFields = <>
     {tracking.evidenceRequired && <label>Courier evidence reference<input name="evidence" minLength={3} maxLength={200} required/></label>}
-  </MarketplaceOrderAction>;
+    {parcelId && <TrackingReason/>}
+  </>;
+  return <>
+    {next.length > 0 && <MarketplaceOrderAction action={action} region={region} input={input} label="Record tracking update">
+      <label>Delivery status<select name="status" defaultValue="" required><option value="" disabled>Choose a status</option>
+        {next.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
+      {evidenceFields}
+    </MarketplaceOrderAction>}
+    {mayFlagRefusal && tracking.next.includes('REFUSED') && <details className={styles.shipmentAction}>
+      <summary>Confirmed carrier refusal</summary>
+      <p className="muted">A confirmed refusal affects fulfilment and can void unpaid COD. Record warehouse receipt separately.</p>
+      <MarketplaceOrderAction action={action} region={region} input={{ ...input, status: 'REFUSED' }} label="Confirm refusal">
+        {evidenceFields}
+      </MarketplaceOrderAction>
+    </details>}
+  </>;
+}
+
+const eventSources: Record<string, string> = {
+  MANUAL: 'Manual staff update', CARRIER_WEBHOOK: 'Carrier webhook', DEV_SIMULATOR: 'Test courier', SYSTEM: 'Fulfillment system',
+};
+
+function ParcelTrackingDetails({ parcel, input, region, canRefresh, date }: {
+  parcel: ConnectedParcel; input: { orderId: string; parcelId: string }; region: Region; canRefresh: boolean; date: (value: string) => string;
+}) {
+  const visibleSync = parcel.canRefresh !== undefined || parcel.estimatedDeliveryAt || parcel.lastSyncedAt || parcel.lastSyncAttemptAt || parcel.syncError;
+  return <>
+    {visibleSync && <div className={styles.trackingSummary}>
+      <dl className={styles.trackingFacts}>
+        {parcel.statusUpdatedAt && <div><dt>Status updated</dt><dd><time dateTime={parcel.statusUpdatedAt}>{date(parcel.statusUpdatedAt)}</time></dd></div>}
+        <div><dt>Estimated delivery</dt><dd>{parcel.estimatedDeliveryAt ? date(parcel.estimatedDeliveryAt) : 'No carrier estimate'}</dd></div>
+        <div><dt>Last successful sync</dt><dd>{parcel.lastSyncedAt ? date(parcel.lastSyncedAt) : 'No successful sync'}</dd></div>
+        <div><dt>Last sync check</dt><dd>{parcel.lastSyncAttemptAt ? date(parcel.lastSyncAttemptAt) : 'No sync check recorded'}</dd></div>
+      </dl>
+      {parcel.syncError && <p className="notice warn" role="status">Carrier sync issue · {parcel.syncError}</p>}
+      {canRefresh && parcel.canRefresh && <MarketplaceOrderAction action="order.parcel.refresh" region={region} input={input}
+        label="Check carrier tracking" workingLabel="Checking…" success="Carrier tracking checked."/>}
+      {parcel.refreshReason && <p className="muted">{parcel.refreshReason}</p>}
+    </div>}
+    <TrackingTimeline events={parcel.events} date={date}/>
+  </>;
+}
+
+function TrackingTimeline({ events, date }: { events: ConnectedParcel['events']; date: (value: string) => string }) {
+  return <div>
+    <h3>Tracking timeline</h3>
+    {events.length > 0 ? <ol className={styles.timeline} aria-label="Tracking timeline">
+      {events.map((event, index) => <li key={event.id ?? `${event.recordedAt}-${index}`}>
+        <div><strong>{event.status}</strong> <span>{(event.source && eventSources[event.source]) || 'Historical event'}</span></div>
+        {event.source === 'CARRIER_WEBHOOK' && event.applied === false && <div className="muted">Recorded without changing the current status.</div>}
+        {event.occurredAt && <div>Event time <time dateTime={event.occurredAt}>{date(event.occurredAt)}</time></div>}
+        <div>Recorded <time dateTime={event.recordedAt}>{date(event.recordedAt)}</time>{event.actor && ` · ${event.actor}`}</div>
+        {event.reason && <div>Reason · {event.reason}</div>}
+        {event.evidence && <div>Evidence · {event.evidence}</div>}
+      </li>)}
+    </ol> : <p className="muted">No tracking events recorded.</p>}
+  </div>;
+}
+
+function ParcelSetupActions({ parcel, input, region }: {
+  parcel: ConnectedParcel; input: { orderId: string; parcelId: string }; region: Region;
+}) {
+  return <>
+    {parcel.splittable && <details className={styles.shipmentAction}>
+      <summary>Create another parcel</summary>
+      <p className="muted">Move units from this parcel. The new parcel uses the same warehouse allocation.</p>
+      <MarketplaceOrderAction key={parcel.lines.map(line => `${line.id}:${line.quantity}`).join(',')}
+        action="order.parcel.split" region={region} input={input} label="Create parcel" success="Parcel created from the existing allocation.">
+        {parcel.lines.map(line => <label key={line.id}>Units to move for {line.sku}
+          <input name={`quantity:${line.id}`} type="number" min={0} max={line.quantity} step={1} defaultValue={0}/>
+          <span className="muted">{line.quantity} currently in this parcel</span>
+        </label>)}
+        <TrackingReason label="Reason for splitting this parcel"/>
+      </MarketplaceOrderAction>
+    </details>}
+    {parcel.editableReference && parcel.trackingRevision !== undefined && <details className={styles.shipmentAction}>
+      <summary>Edit carrier and tracking reference</summary>
+      <MarketplaceOrderAction key={parcel.trackingRevision} action="order.parcel.reference" region={region}
+        input={{ ...input, expectedRevision: parcel.trackingRevision }} label="Save tracking reference">
+        <TrackingFields carrier={parcel.carrier} reference={parcel.reference}/><TrackingReason/>
+      </MarketplaceOrderAction>
+    </details>}
+    {parcel.canRecordException && <details className={styles.shipmentAction}>
+      <summary>Delivery exception</summary>
+      <p className="muted">Record a delivery issue for follow-up. Stock receipt and payment remain separate actions.</p>
+      <MarketplaceOrderAction action="order.parcel.exception" region={region} input={input} label="Record delivery exception">
+        <TrackingReason label="Reason for the delivery exception"/>
+      </MarketplaceOrderAction>
+    </details>}
+  </>;
 }
 
 function PackingSlip({ order }: { order: ConnectedOrderDetail }) {
-  const groups = order.parcels.length ? order.parcels.map(parcel => ({ id: parcel.id, label: parcel.warehouse, lines: parcel.lines })) :
+  const groups = order.parcels.length ? order.parcels.map((parcel, index) => ({ id: parcel.id,
+    label: `Parcel ${index + 1} · ${parcel.warehouse}`, lines: parcel.lines })) :
     [{ id: order.id, label: 'Pack these items', lines: order.lines }];
   return <article className={styles.sheet} aria-label="Packing slip">
     <h1>GriipBuddy packing slip</h1><p>{order.reference} · {order.marketName}</p>
@@ -114,6 +207,7 @@ export async function MarketplaceOrder({ auth, region, id }: { auth: Session; re
   const canAdvance = mayEditConnectedOrder(auth, 'order.advance');
   const canTrack = mayEditConnectedOrder(auth, 'order.tracking');
   const canReceive = mayEditConnectedOrder(auth, 'order.parcel.receive');
+  const canRefresh = mayEditConnectedOrder(auth, 'order.parcel.refresh');
   const mayReviewCases = mayReadConnectedOrders(auth, true);
   const price = (minor: number) => money(minor / 100, order.currency);
   const date = (value: string) => new Intl.DateTimeFormat(order.locale,
@@ -137,14 +231,20 @@ export async function MarketplaceOrder({ auth, region, id }: { auth: Session; re
             <p>{order.shipping.service}</p>
           </section>
           {order.parcels.map((parcel, index) => <section key={parcel.id} className={`panel padded ${styles.panel} ${styles.stack}`} aria-label={`Parcel ${index + 1}`}>
-            <div><h2>Parcel {index + 1} · {parcel.warehouse}</h2><p>{parcel.status}</p>{parcel.reference && <p>{parcel.carrier} · {parcel.reference}</p>}</div>
+            <div><h2>Parcel {index + 1} · {parcel.warehouse}</h2>
+              <div className={styles.badges}><strong>{parcel.trackingStatus ? statusLabel(parcel.trackingStatus) : parcel.status}</strong>
+                {parcel.reference && <span>{parcel.carrier} · {parcel.reference}</span>}</div>
+            </div>
             <MarketplacePurchasedLines lines={parcel.lines} currency={order.currency}/>
             {parcel.disposition && <p>{parcel.disposition === 'RESTOCK' ? 'Items restored to the original warehouse allocation.' : 'Items held for inspection.'}</p>}
-            {parcel.events.length > 0 && <ol className={styles.list}>{parcel.events.map(event => <li key={event.status}>
-              {event.status} · {date(event.recordedAt)}{event.evidence && ` · ${event.evidence}`}
-            </li>)}</ol>}
-            {canAdvance && parcel.dispatchable && <MarketplaceOrderAction action="order.parcel.dispatch" region={region} input={{ orderId: id, parcelId: parcel.id }} label="Dispatch parcel"><TrackingFields/></MarketplaceOrderAction>}
-            {canTrack && <TrackingAction orderId={id} parcelId={parcel.id} tracking={parcel} region={region} mayFlagRefusal={mayReviewCases}/>}
+            <ParcelTrackingDetails parcel={parcel} date={date} input={{ orderId: id, parcelId: parcel.id }} region={region} canRefresh={canRefresh}/>
+            {canAdvance && <ParcelSetupActions parcel={parcel} input={{ orderId: id, parcelId: parcel.id }} region={region}/>}
+            {canAdvance && parcel.dispatchable && <MarketplaceOrderAction key={parcel.trackingRevision} action="order.parcel.dispatch" region={region}
+              input={{ orderId: id, parcelId: parcel.id }} label="Dispatch parcel">
+              <p className="muted">Record a handoff after this package has been given to the carrier.</p>
+              <TrackingFields carrier={parcel.carrier} reference={parcel.reference}/><TrackingReason label="Reason or proof of handoff"/>
+            </MarketplaceOrderAction>}
+            {canTrack && <TrackingActions orderId={id} parcelId={parcel.id} tracking={parcel} region={region} mayFlagRefusal={mayReviewCases}/>}
             {canReceive && parcel.receivable && <MarketplaceOrderAction action="order.parcel.receive" region={region} input={{ orderId: id, parcelId: parcel.id }} label="Record parcel receipt">
               <label>Stock disposition<select name="disposition" defaultValue="" required><option value="" disabled>Choose after inspection</option>
                 <option value="RESTOCK">Restock complete, sellable items</option><option value="HOLD">Hold for review</option></select></label>
@@ -154,7 +254,9 @@ export async function MarketplaceOrder({ auth, region, id }: { auth: Session; re
           </section>)}
           {order.shipment && <section className={`panel padded ${styles.panel}`}><h2>Courier shipment</h2>
             <p>{statusLabel(order.shipment.status)} · {order.shipment.carrier} · {order.shipment.reference}</p>
-            {canTrack && <TrackingAction orderId={id} tracking={order.shipment} region={region} mayFlagRefusal={mayReviewCases}/>}
+            {order.shipment.statusUpdatedAt && <p>Status updated <time dateTime={order.shipment.statusUpdatedAt}>{date(order.shipment.statusUpdatedAt)}</time></p>}
+            {order.shipment.events && <TrackingTimeline events={order.shipment.events} date={date}/>}
+            {canTrack && <TrackingActions orderId={id} tracking={order.shipment} region={region} mayFlagRefusal={mayReviewCases}/>}
           </section>}
           {order.sellers.length > 0 && <section className={`panel padded ${styles.panel}`}><h2>Seller handoff</h2>
             <ul className={styles.list}>{order.sellers.map(seller => <li key={seller.id}>
