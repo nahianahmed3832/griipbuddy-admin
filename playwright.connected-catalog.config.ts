@@ -13,7 +13,10 @@ export const storefrontOrigin = fixtureOrigin('GRIIP_CONNECTED_TEST_STOREFRONT_O
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['connected-catalog.spec.ts', 'connected-category-parity.spec.ts'],
+  testMatch: [
+    'connected-catalog.spec.ts', 'connected-category-parity.spec.ts',
+    'connected-staff-customer.spec.ts', 'connected-editorial-media.spec.ts',
+  ],
   timeout: 75_000,
   workers: 1,
   reporter: 'list',
