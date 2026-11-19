@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { ChevronLeft, Download, Filter, Plus } from 'lucide-react';
 import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, url, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
+import { connectedCatalogConfigured } from '@/lib/connected-catalog';
+import { nativeOrderId, nativeOrderPrefix } from '@/lib/connected-order-contract';
 import { canOperate } from '@/lib/operations';
 import { canManage } from '@/lib/managed';
 import { canReadHybridReports, getHybridOrder, hybridOrderId, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
@@ -14,6 +16,7 @@ import { WebsiteOrderCreate } from './website-order-create';
 import { WebsiteOrderDetail } from './website-order-detail';
 import { ProductionWebsiteOrders } from './production-website-orders';
 import { ProductionWebsiteOrderDetail } from './production-website-order-detail';
+import { MarketplaceOrder } from './connected-marketplace-orders';
 import editor from './production-website-order-editor.module.css';
 
 const productionPageSizes = ['20', '40', '60', '80', '100', 'all'];
@@ -104,6 +107,11 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
   auth: Session; q: Query; region: Region; id: string; productionLayout?: boolean;
 }) {
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
+  if (id.startsWith(nativeOrderPrefix)) {
+    const native = nativeOrderId(id);
+    if (!native || !connectedCatalogConfigured()) throw new ApiError(404);
+    return MarketplaceOrder({ auth, region, id: native });
+  }
   const hybrid = hybridOrderId(id);
   const source = param(q, 'source');
   const productionOrdersPath = source === 'assigned' ? '/dashboard/assigned-orders'

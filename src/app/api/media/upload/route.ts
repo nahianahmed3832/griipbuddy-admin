@@ -3,6 +3,7 @@ import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
 import { canChangeCategories } from '@/lib/category-workspace';
 import { canEditProduct } from '@/lib/catalog-admin';
 import { requireWrite } from '@/lib/advanced';
+import { connectedCatalogConfigured } from '@/lib/connected-catalog';
 import { requestPinnedAdmin } from '@/lib/pinned-admin-gateway';
 import { localCmsUpload } from '@/lib/production-cms-media';
 
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
   if (!auth) return fail('Sign in to upload media.', 401);
   try {
     const scope = request.nextUrl.searchParams.get('scope');
+    if (connectedCatalogConfigured() && (scope === 'product' || scope === 'category')) {
+      return fail('Upload catalog media from the connected workspace.', 410);
+    }
     if (scope === 'product') {
       if (!canEditProduct('create', auth) && !canEditProduct('edit', auth)) return fail('Upload access denied.', 403);
     } else if (scope === 'category') {

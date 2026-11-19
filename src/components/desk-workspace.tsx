@@ -21,6 +21,8 @@ import { CouponEditor, GlobalOffer, ProductionCouponWorkspace } from '@/componen
 import { CustomerCreatePage, CustomerProfilePage, CustomersPage, canCreateCustomer } from '@/components/customers-page';
 import { PreOrdersPage } from '@/components/preorders-page';
 import { WebsiteOrderCreatePage, WebsiteOrderDetailPage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
+import { MarketplaceOrders } from '@/components/connected-marketplace-orders';
+import { MarketplaceOrderCase, MarketplaceOrderCases } from '@/components/connected-marketplace-cases';
 import { AllBarcodes, BarcodeLogs, GenerateInventoryLabels, ScanToReceive } from '@/components/smart-inventory';
 import { inventoryPath, smartInventoryTabs } from '@/lib/smart-inventory';
 import { AssignedOrders } from '@/components/assigned-orders';
@@ -47,6 +49,9 @@ import { TransactionPage } from '@/components/transactions';
 import { canReadTransactions } from '@/lib/transactions';
 import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
 import { canOperate } from '@/lib/operations';
+import { connectedCatalogConfigured, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { ConnectedStockWorkspace } from './connected-catalog-product/workspace';
+import { ApprovedDevicesWorkspace, CatalogSearchMaintenanceWorkspace } from './connected-catalog-discovery';
 
 export type DeskWorkspaceProps = {
   params: Promise<{ section: string; view?: string[] }>;
@@ -91,6 +96,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const fraud = region === 'BD' && has(auth.staff, 'order.view') && !publicSandbox() && !operationsOnly();
   if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
+  if (sectionId === 'orders' && connectedCatalogConfigured() && mayReadConnectedOrders(auth)) tabs.push(['marketplace', 'Marketplace orders']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout', integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
     else tabs.unshift(['checkout', integrated ? 'Checkout receipts' : 'Checkout methods']);
@@ -170,10 +176,18 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await ContentWorkspace({ auth, region, section: contentViews[active], production: Boolean(production) });
     }
     else if (sectionId === 'content' && region !== 'BD') throw new ApiError(403);
-    else if (sectionId === 'catalog' && active === 'products') content = await ProductWorkspace({ auth, q, region, id: view[1], production: Boolean(production) });
+    else if (sectionId === 'catalog' && view.length === 1 && (active === 'approved-devices' || active === 'search-maintenance')) {
+      if (!connectedCatalogConfigured()) throw new ApiError(404);
+      if (!superAdmin(auth.staff) || !has(auth.staff, 'product.view')) throw new ApiError(403);
+      content = active === 'approved-devices' ? await ApprovedDevicesWorkspace({ auth, q, region })
+        : await CatalogSearchMaintenanceWorkspace({ auth, region });
+    }
+    else if (sectionId === 'catalog' && (active === 'products' || active === 'variants' && connectedCatalogConfigured()))
+      content = await ProductWorkspace({ auth, q, region, id: view[1], production: Boolean(production) });
     else if (sectionId === 'catalog' && active === 'taxonomy') redirect(url('/desk/catalog/categories', {region, record:view[1] ?? param(q,'record')}));
     else if (sectionId === 'catalog' && active === 'categories') {
       if (!has(auth.staff, 'product.view')) throw new ApiError(403);
+      if (param(q, 'connectedOrganization') === '1' && !connectedCatalogConfigured()) throw new ApiError(404);
       const record = view[1] ?? param(q, 'record');
       if (!production && categoryView && (view[0] !== 'categories' || view[1])) {
         redirect(url('/desk/catalog/categories', { region, record, mode: param(q, 'mode') }));
@@ -189,6 +203,14 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
     else if (production && sectionId === 'pos' && active === 'sales' && view.length === 1) content = await ProductionPosRegister({ auth, q, region });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region, production: Boolean(production) });
+    else if (sectionId === 'orders' && active === 'marketplace' && view.length === 1) {
+      if (!connectedCatalogConfigured()) throw new ApiError(404);
+      content = await MarketplaceOrders({ auth, region, query: q });
+    }
+    else if (sectionId === 'orders' && active === 'marketplace-cases' && view.length <= 2) {
+      if (!connectedCatalogConfigured()) throw new ApiError(404);
+      content = view[1] ? await MarketplaceOrderCase({ auth, region, id: view[1] }) : await MarketplaceOrderCases({ auth, region, query: q });
+    }
     else if (sectionId === 'orders' && active === 'orders') content = view[1]
       ? await WebsiteOrderDetailPage({ auth, q, region, id: view[1], productionLayout: Boolean(production) }) : await WebsiteOrdersPage({ auth, q, region, productionLayout: Boolean(production) });
     else if (sectionId === 'orders' && active === 'fraud-check' && view.length === 1 && fraud) {
@@ -204,7 +226,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'inventory' && active === 'generate-barcodes' && view.length === 1) content = GenerateInventoryLabels({ auth, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'scan-to-receive' && view.length === 1) content = await ScanToReceive({ auth, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'barcode-logs' && view.length === 1) content = await BarcodeLogs({ auth, q, region, production: Boolean(production) });
-    else if (sectionId === 'inventory' && active === 'stock' && !view[1]) content = await StockReport({ auth, q, region, production: Boolean(production) });
+    else if (sectionId === 'inventory' && active === 'stock' && !view[1]) content = connectedCatalogConfigured() && param(q, 'catalog') !== 'legacy'
+      ? await ConnectedStockWorkspace({ auth, q, region }) : await StockReport({ auth, q, region, production: Boolean(production) });
     else if (production && sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && !view[1]) {
       content = await ProductionStockHistory({ auth, region, q, mode: active === 'adjustments' ? 'adjustment'
         : production.path === '/dashboard/inventory/transfer-history' ? 'inventory' : 'transfer' });
@@ -241,7 +264,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   }
   if (production) return <ProductionAdminShell staff={{ name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions }}
     region={region} path={production.path} query={production.query}
-    readOnly={publicSandbox()} fraud={fraud}>{content}</ProductionAdminShell>;
+    readOnly={publicSandbox()} fraud={fraud} connectedCatalog={connectedCatalogConfigured()}>{content}</ProductionAdminShell>;
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
     purchaseLinks={purchaseLinks} activePurchase={activePurchase}

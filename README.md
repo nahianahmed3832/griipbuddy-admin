@@ -4,6 +4,14 @@
 
 The editable candidate uses the normal Next.js build from `src/`. All 98 dashboard bookmarks stay on their production URLs and render the editable shell. The checklist distinguishes source route coverage from completed screen and workflow parity. The archived production image is a separate comparison reference. The [route and workflow checklist](evidence/editable-production-parity.md) tracks the remaining screens and acceptance checks.
 
+### Connected catalog
+
+The existing editable dashboard owns category hierarchy, assignments and attributes, product and variant authoring, and market offers and stock. Content Management includes storefront menus, collections and search maintenance. Products includes approved device models and aliases. Website Orders includes the Marketplace order queue, exact purchased lines and packing, parcel and return workflows. The original session and recovered admin permissions still protect these routes.
+
+The connected service uses `src/app/api/connected-catalog/route.ts` and `src/lib/connected-catalog.ts`. Local tests use the isolated recovery API and Marketplace PostgreSQL fixtures. The protected release uses `deploy/editable-devadmin.compose.yaml` and `https://devadmin.griipbuddy.com/admin/sign-in`, with the Marketplace bridge bound to `http://127.0.0.1:4401/marketplace/api/internal/main-admin-catalog`. This lane requires verified isolation and reviewed staff, category and stock mappings before activation. The `deploy/dev` sample installer serves a different workspace.
+
+Use `npx playwright test -c playwright.connected-catalog.config.ts --project=desktop` and rerun with `--project=mobile` in a separate fixture quota window. The configuration requires the loopback admin and Marketplace origins in `GRIIP_CONNECTED_TEST_ADMIN_ORIGIN` and `GRIIP_CONNECTED_TEST_STOREFRONT_ORIGIN`. Use the private recovery fixture to supply `GRIIPBUDDY_TEST_FIXTURE_PASSWORD`.
+
 Use the isolated recovery API for local verification. Set `GRIIP_ADMIN_TARGET=fixture`, point `GRIIP_ADMIN_FIXTURE_PORT` to its loopback port, and set `NEXT_PUBLIC_GRIIP_ADMIN_PREFIX=/admin` both when building and when starting to test the mounted routes. The backend branch `codex/editable-admin-order-paging` supports the numeric production page sizes.
 
 Use `tests/editable-production-routes.mjs` for a fixture HTTP sweep of all 102 route patterns. Set `GRIIP_ADMIN_ROUTE_FIXTURE` to the isolated backend fixture module and `GRIIP_ADMIN_ROUTE_RECORDS` to the JSON mapping printed by the backend’s `recovery/seed-editable-admin-routes.cjs`. Seed both comparison fixtures with their respective API port offsets. This sweep checks reachability and response status.

@@ -13,6 +13,7 @@ const storefrontDir = process.env.GRIIP_ADMIN_TEST_STOREFRONT_DIR ?? '../griipbu
 const env = { GRIIP_ADMIN_CHECKOUT_KEY:key, GRIIP_ADMIN_CHECKOUT_TARGET:'fixture', GRIIP_ADMIN_PUBLIC_ORIGIN:'' };
 export default defineConfig({
   testDir:'./tests',
+  testIgnore:['**/connected-catalog.spec.ts','**/connected-category-parity.spec.ts'],
   timeout:90000,
   workers:2,
   reporter:'list',

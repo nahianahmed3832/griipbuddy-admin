@@ -1,0 +1,15 @@
+.connected-commercial { display: grid; gap: 12px; min-width: 0; }
+.connected-commercial-market { min-width: min(100%, 205px); }
+.connected-commercial-search { display: grid; gap: 5px; width: min(100%, 360px); font-size: .84rem; font-weight: 750; }
+.connected-commercial-search input { min-width: 0; min-height: 42px; padding: 8px 10px; border: 1px solid var(--color-line); border-radius: 7px; }
+.connected-commercial-table { max-width: 100%; min-width: 0; overflow: auto; border: 1px solid var(--color-line); border-radius: 8px; }
+.connected-commercial-table table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.connected-commercial-table :is(th, td) { padding: 8px 10px; text-align: left; vertical-align: middle; }
+.connected-commercial-table thead { background: #f6f2f0; white-space: nowrap; }
+.connected-commercial-table tbody tr + tr { border-top: 1px solid var(--color-line); }
+.connected-commercial-table small { display: block; margin-top: 2px; color: var(--color-muted); }
+.connected-commercial-table .button { min-width: max-content; min-height: 36px; padding: 6px 9px; font-size: .8rem; }
+.connected-commercial-table .taxonomy-actions { display: flex; gap: 5px; }
+details.connected-commercial > summary { cursor: pointer; font-weight: 800; }
+details.connected-commercial[open] > summary { margin-bottom: 9px; }
+details.connected-commercial[open] > .commerce-form { margin-top: 9px; }

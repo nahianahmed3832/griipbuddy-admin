@@ -10,13 +10,15 @@ import {
   UserRoundCog, PanelsTopLeft,
 } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
-import type { Region, Staff } from '@/lib/sections';
+import { catalogBeforeRegionChange } from '@/lib/connected-catalog-client';
+import { superAdmin, type Region, type Staff } from '@/lib/sections';
 import '@/app/sign-in/production-fonts.css';
 import { ProductionFraudChecker } from './production-fraud';
 import styles from './production-admin-shell.module.css';
 
-type Entry = { label: string; path: string; permission?: string };
-const item = (label: string, path: string, permission?: string): Entry => ({ label, path: '/dashboard/' + path, permission });
+type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean };
+const item = (label: string, path: string, permission?: string, connected?: boolean, central?: boolean): Entry =>
+  ({ label, path: '/dashboard/' + path, permission, connected, central });
 const navigation = [
   { title: 'Overview', groups: [
     { label: 'Dashboard', icon: LayoutDashboard, entries: [item('Overview', 'overview'), item('Fraud Checker', 'fraud-checker', 'order.view')] },
@@ -28,7 +30,8 @@ const navigation = [
     ] },
   ] },
   { title: 'Sales & Orders', groups: [
-    { label: 'Website Orders', icon: ShoppingBag, entries: [item('All Orders', 'orders'), item('Create Order', 'create-order')] },
+    { label: 'Website Orders', icon: ShoppingBag, entries: [item('All Orders', 'orders'),
+      item('Marketplace Orders', 'marketplace-orders', 'order.view', true), item('Create Order', 'create-order')] },
     { label: 'Pre-Orders', icon: ClipboardList, entries: [item('All Pre-Orders', 'pre-orders'), item('Create Pre-Order', 'pre-orders/create')] },
   ] },
   { title: 'Inventory', groups: [
@@ -36,6 +39,7 @@ const navigation = [
       item('All Products', 'products'), item('Create Product', 'create-product'), item('Stocks Report', 'check-outlet-stocks'),
       item('Product Reviews', 'product-reviews'), item('Product Faqs', 'product-faqs'), item('Return Policies', 'return-policies'),
       item('All Brands', 'all-brands'), item('Countries & Currency', 'all-countries'),
+      item('Approved Device Models', 'catalog-devices', 'product.view', true, true),
     ] },
     { label: 'Purchases', icon: ShoppingCart, entries: [
       item('All Purchase', 'purchase/all'), item('Default Purchase Rate', 'barcodes/default-rate'), item('Default Purchase List', 'barcodes/default-rate/all'),
@@ -47,6 +51,7 @@ const navigation = [
     { label: 'Categories & Subcategories', icon: Tags, entries: [
       item('All Categories', 'categories'), item('All Subcategories', 'sub-categories'),
       item('Create Category', 'add-new-category'), item('Create Subcategory', 'add-new-sub-category'),
+      item('Category Attributes', 'category-attributes', 'product.view', true),
     ] },
     { label: 'Business Locations', icon: MapPin, entries: [
       item('All Business Locations', 'business-location/all'), item('Add Business Location', 'business-location/create'),
@@ -71,6 +76,8 @@ const navigation = [
       item('Header', 'header'), item('Hero Section', 'hero-section'), item('Global Offer', 'offer-page'),
       item('Shop by Category', 'homepage/shop-by-category'), item('Best Selling', 'homepage/best-selling'),
       item('New Arrivals', 'homepage/new-arrivals'), item('Leather Section', 'homepage/leather-section'),
+      item('Storefront Menus', 'catalog-menus', 'product.view', true), item('Collections', 'catalog-collections', 'product.view', true),
+      item('Search Maintenance', 'catalog-search', 'product.view', true, true),
     ] },
   ] },
   { title: 'Administration', groups: [
@@ -81,6 +88,7 @@ const navigation = [
 ];
 
 function currentMenuPath(path: string) {
+  if (path.startsWith('/dashboard/order-details/native-') || path.startsWith('/dashboard/marketplace-orders/cases')) return '/dashboard/marketplace-orders';
   if (path.startsWith('/dashboard/order-details/')) return '/dashboard/orders';
   if (path.startsWith('/dashboard/product-details/')) return '/dashboard/products';
   return navigation.flatMap(section => section.groups.flatMap(group => group.entries))
@@ -89,8 +97,9 @@ function currentMenuPath(path: string) {
     .sort((a, b) => b.length - a.length)[0] ?? path;
 }
 
-export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud }: {
+export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog }: {
   children: ReactNode; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; path: string; query: string; readOnly: boolean; fraud: boolean;
+  connectedCatalog?: boolean;
 }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -160,6 +169,7 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
   }, []);
 
   function regionChanged(value: string) {
+    if (!window.dispatchEvent(new Event(catalogBeforeRegionChange, { cancelable: true }))) return;
     const params = new URLSearchParams(query);
     if (value === 'INTERNATIONAL') params.set('region', value);
     else params.delete('region');
@@ -197,7 +207,8 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
         {navigation.map(({ title, groups }) => <section className={styles.group} key={title}>
           <div className={styles.groupTitle}>{title}</div>
           {groups.filter(group => group.label !== 'Reports' || hasReports).map(({ label, icon: Icon, entries }) => {
-            const allowed = entries.filter(entry => !entry.permission || grants.has(entry.permission));
+            const allowed = entries.filter(entry => (!entry.permission || grants.has(entry.permission)) &&
+              (!entry.connected || connectedCatalog) && (!entry.central || superAdmin(staff)));
             const selected = allowed.some(entry => entry.path === current);
             const open = expanded[label] ?? selected;
             return <div key={label} className={styles.menugroup}>

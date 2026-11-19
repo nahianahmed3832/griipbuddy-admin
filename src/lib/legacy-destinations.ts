@@ -10,6 +10,9 @@ add('reports/[reportId]', '/desk/reports/[reportId]');
 add('orders', '/desk/orders/orders');
 add('create-order', '/desk/orders/create');
 add('order-details/[id]', '/desk/orders/orders/[id]');
+add('marketplace-orders', '/desk/orders/marketplace');
+add('marketplace-orders/cases', '/desk/orders/marketplace-cases');
+add('marketplace-orders/cases/[id]', '/desk/orders/marketplace-cases/[id]');
 add('orders/edit/[id]', '/desk/orders/orders/[id]', { draft: '1' }, 'Items and payment can be edited for eligible Bangladesh orders before assignment and dispatch.');
 add('assigned-orders', '/desk/orders/assigned', undefined, 'Assignment history is available; verify older role-specific actions.');
 add('fraud-checker', '/desk/orders/fraud-check', undefined, 'Requires a configured courier history provider.');
@@ -28,6 +31,11 @@ add('add-new-category', '/desk/catalog/categories', { mode: 'create' });
 add('add-new-sub-category', '/desk/catalog/subcategories', { mode: 'create-child' });
 add('update-category/[slug]', '/desk/catalog/categories/[slug]', { mode: 'edit' });
 add('update-sub-category/[slug]', '/desk/catalog/subcategories/[slug]', { mode: 'edit' });
+add('category-attributes', '/desk/catalog/categories', { view: 'attributes', connectedOrganization: '1' });
+add('catalog-menus', '/desk/catalog/categories', { view: 'menus', connectedOrganization: '1' });
+add('catalog-collections', '/desk/catalog/categories', { view: 'collections', connectedOrganization: '1' });
+add('catalog-devices', '/desk/catalog/approved-devices');
+add('catalog-search', '/desk/catalog/search-maintenance');
 add('all-brands', '/desk/catalog/brands');
 add('create-brand', '/desk/catalog/brands/new');
 add('update-brand/[id]', '/desk/catalog/brands/[id]');
@@ -111,9 +119,13 @@ add('renew-subscription', '/desk/settings/renew-subscription', undefined, 'Comin
 export const legacyDestinations: Readonly<Record<string, LegacyDestination>> = Object.freeze(entries);
 const patterns = Object.entries(legacyDestinations).map(([name, config]) => ({ parts: name.split('/'), config }));
 const validPart = /^[A-Za-z0-9_-]{1,160}$/;
+const localizedCategorySlug = /^[\p{L}\p{N}][\p{L}\p{M}\p{N}-]{0,119}$/u;
 export function resolveLegacy(parts: string[]) {
   if (!parts.length) return legacyDestinations.overview;
-  if (parts.some(part => !validPart.test(part))) return undefined;
+  const categoryEdit = parts.length === 2 && ['update-category', 'update-sub-category'].includes(parts[0]);
+  if (parts.some((part, index) => !(categoryEdit && index === 1 ? localizedCategorySlug.test(part) || validPart.test(part) : validPart.test(part)))) {
+    return undefined;
+  }
   if (Object.hasOwn(legacyDestinations, parts.join('/'))) return legacyDestinations[parts.join('/')];
   for (const { parts: pattern, config } of patterns) {
     if (pattern.length === parts.length && pattern.every((part, index) => part === parts[index] || part.startsWith('['))) {

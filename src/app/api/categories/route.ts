@@ -1,5 +1,6 @@
 import { ApiError, mongoId, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { canChangeCategories } from '@/lib/category-workspace';
+import { connectedCatalogConfigured } from '@/lib/connected-catalog';
 
 const invalid = (error: string, status = 400) => Response.json({ error }, { status });
 const maxImage = 8 * 1024 * 1024;
@@ -9,6 +10,7 @@ async function mutate(request: Request, method: 'POST' | 'PATCH') {
   try {
     const auth = await session();
     if (!auth) return invalid('Sign in to manage categories.', 401);
+    if (connectedCatalogConfigured()) return invalid('Use the connected category workspace to save this change.', 410);
     const params = new URL(request.url).searchParams;
     const upload = params.get('upload') === '1';
     const reorder = params.get('reorder') === '1';
@@ -72,7 +74,9 @@ export async function DELETE(request: Request) {
   if (!sameOrigin(request)) return invalid('Use the category editor to remove categories.', 403);
   try {
     const auth = await session();
-    if (!auth || !canChangeCategories(auth, 'product.delete')) return invalid('You do not have access to delete categories.', 403);
+    if (!auth) return invalid('Sign in to manage categories.', 401);
+    if (connectedCatalogConfigured()) return invalid('Use the connected category workspace to archive this category.', 410);
+    if (!canChangeCategories(auth, 'product.delete')) return invalid('You do not have access to delete categories.', 403);
     const query = new URL(request.url).searchParams;
     const id = query.get('id') ?? '', depth = query.get('depth') ?? '';
     if (!mongoId(id) || !/^[0-3]$/.test(depth)) return invalid('Choose a valid category.');

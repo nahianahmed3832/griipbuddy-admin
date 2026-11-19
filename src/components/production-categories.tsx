@@ -17,8 +17,8 @@ const childList = '/dashboard/sub-categories';
 const endpoint = '/api/categories';
 const placementLabels = ['Square', 'Horizontal', 'Vertical'];
 
-export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, canDelete }: {
-  nodes: CategoryNode[]; subcategory: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
+export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, canDelete, recovered = false }: {
+  nodes: CategoryNode[]; subcategory: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; recovered?: boolean;
 }) {
   const router = useRouter();
   const pending = useRef(false);
@@ -42,6 +42,7 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
   const editUrl = subcategory ? '/dashboard/update-sub-category/' : '/dashboard/update-category/';
   const columns = subcategory ? ['Index','Image','Name (EN)','Name (BN)','Description (EN)','Description (BN)','Category','Actions']
     : ['Position','Image','Name','Slug','Sub Categories','Status','Actions'];
+  const title = subcategory ? 'All Sub Categories' : 'All Main Categories';
 
   async function change(row: CategoryNode, action: 'delete' | 'publish') {
     if (pending.current) return;
@@ -61,7 +62,7 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
 
   return <section className={styles.page}>
     <header className={styles.header}>
-      <h1>{subcategory ? 'All Sub Categories' : 'All Main Categories'}</h1>
+      {recovered ? <h2>{title}</h2> : <h1>{title}</h1>}
       {canCreate && <Link className={styles.primary} href={createUrl}>{subcategory ? 'Add new Sub Category' : 'Add new Category'}</Link>}
     </header>
     {error && !target && <p className={styles.error} role="alert">{error}</p>}
@@ -71,14 +72,16 @@ export function ProductionCategories({ nodes, subcategory, canCreate, canEdit, c
         <tbody>{rows.map(({ row, index }) => {
           const picture = row.media.find(item => item.size === 'SQUARE')?.image ?? row.media[0]?.image;
           const parentName = names.get(row.ancestors[row.depth - 1] ?? '');
+          const name = recovered ? <Link href={rootList + '?' + new URLSearchParams({ catalog: 'legacy', record: row.id })}>
+            {categoryName(row)}</Link> : row.name_en;
           return <tr key={categoryKey(row)} className={design.categoryRow} data-depth={row.depth}>
             <td>{subcategory ? index : row.position}</td><td><CategoryImage image={picture}/></td>
-            {subcategory ? <><td><div className={design.branchName}>{row.depth > 1 && <CornerDownRight size={16}/>} {row.name_en}</div></td>
+            {subcategory ? <><td><div className={design.branchName}>{row.depth > 1 && <CornerDownRight size={16}/>} {name}</div></td>
               <td lang="bn">{row.name_bn}</td>
               <td className={design.description}>{row.description_en}</td><td className={design.description} lang="bn">{row.description_bn}</td>
               <td><small className={design.root}>{['', 'Root Category', 'Parent Sub', 'Parent Sub-Sub'][row.depth]}</small>
                 {parentName && <span className={design.parentBadge}>{parentName}</span>}</td></>
-              : <><td>{row.name_en}</td><td>{row.slug}</td><td>{(branches.get(categoryKey(row)) ?? []).length}</td>
+              : <><td>{name}</td><td>{row.slug}</td><td>{(branches.get(categoryKey(row)) ?? []).length}</td>
                 <td><label className={design.liveSwitch}>
                   <input type="checkbox" role="switch" aria-label={'Publish ' + categoryName(row)} checked={row.is_published}
                     disabled={!canEdit} onChange={() => void change(row, 'publish')}/>{row.is_published ? 'ACTIVE' : 'INACTIVE'}

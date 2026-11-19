@@ -6,7 +6,11 @@ import { reference } from '@/lib/advanced';
 import { canEditProduct, canEditRegistry, readProduct, readRegistry, registryOptions } from '@/lib/catalog-admin';
 import { currencies, productFields, registries, statusOptions, type Registry } from '@/lib/catalog-edit-fields';
 import { catalogFilters, catalogParams, catalogPath, loadCategoryTree } from '@/lib/catalog-list';
+import { categoryName, type CategoryNode } from '@/lib/category-tree';
 import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
+import { connectedCatalog, connectedCatalogConfigured, mayEditConnectedMerchandising, mayEditConnectedTaxonomy } from '@/lib/connected-catalog';
+import type { CatalogRead } from '@/lib/connected-catalog-contract';
+import { taxonomyHref, type CategoryData } from '@/lib/connected-category-data';
 import { columnText, loadResource, param, type Query } from '@/lib/data';
 import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
 import { ProductionCategories, ProductionCategoryEditor } from './production-categories';
@@ -16,6 +20,7 @@ import { adminPath } from '@/lib/paths';
 import { has, resources, type Region, type Resource } from '@/lib/sections';
 import { CatalogConfirm, CatalogEditForm } from './catalog-edit-form';
 import { CategoryManager } from './category-manager';
+import { ConnectedCategories, type TaxonomyView } from './connected-categories';
 import { PageHeading } from './dashboard';
 import { MarketForm } from './market-form';
 import { OperationActions } from './operation-actions';
@@ -27,6 +32,8 @@ import { ProductionProductDetail } from './production-product-detail';
 import { ProductionReturnPolicies, ProductionReturnPolicyEditor, type ReturnPolicy } from './production-return-policies';
 import { StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { Badge, Table } from './tables';
+import { ConnectedProductWorkspace } from './connected-catalog-product/workspace';
+import catalogStyles from './production-catalog.module.css';
 import productEditorStyles from './production-product-editor.module.css';
 
 type Props = { auth: Session; q: Query; region: Region; id?: string; production?: boolean };
@@ -37,7 +44,70 @@ const asInput = (value: unknown): string => typeof value === 'string' || typeof 
 const asLines = (value: unknown) => arr(value).map(str).join('\n');
 const columns = (data: Record<string,string>) => Object.entries(data).map(([label, fields]) => ({ label, fields }));
 
-export async function CategoryWorkspace({ auth, q, production, subcategory = false }: Props & { subcategory?: boolean }) {
+function RecoveredCategories({ nodes, selected, subcategory, ambiguous }: {
+  nodes: CategoryNode[]; selected?: CategoryNode; subcategory: boolean; ambiguous?: boolean;
+}) {
+  return <div className={catalogStyles.page}>
+    <div className={catalogStyles.header}><div><h1>Recovered category records</h1><p>Read-only Bangladesh catalog reference</p></div>
+      <Link className={catalogStyles.outline} href={taxonomyHref('BD')}>Back to connected categories</Link>
+    </div>
+    {ambiguous && <p role="status">Several recovered categories use this slug. Choose a record by its recovered ID.</p>}
+    {selected && <section><h2>{categoryName(selected)}</h2>
+      <dl><dt>Recovered ID</dt><dd><code>{selected.id}</code></dd><dt>Legacy slug</dt><dd>{selected.slug}</dd>
+        {selected.name_bn && <><dt>Bangla name</dt><dd lang="bn">{selected.name_bn}</dd></>}
+        {selected.description_en && <><dt>English description</dt><dd>{selected.description_en}</dd></>}
+        {selected.description_bn && <><dt>Bangla description</dt><dd lang="bn">{selected.description_bn}</dd></>}
+      </dl>
+    </section>}
+    {!selected && <div className={catalogStyles.headerActions}>
+      <Link className={catalogStyles.outline} href={taxonomyHref('BD', { catalog: 'legacy' })}>Main categories</Link>
+      <Link className={catalogStyles.outline} href="/dashboard/sub-categories?catalog=legacy">Subcategories</Link>
+    </div>}
+    <ProductionCategories nodes={nodes} subcategory={selected ? selected.depth > 0 : subcategory} canCreate={false} canEdit={false} canDelete={false} recovered/>
+  </div>;
+}
+
+export async function CategoryWorkspace({ auth, q, region, production, subcategory = false }: Props & { subcategory?: boolean }) {
+  if (connectedCatalogConfigured()) {
+    const requested = (param(q, 'record') ?? param(q, 'category'))?.normalize('NFC');
+    const mode = param(q, 'mode');
+    const requestedView = param(q, 'view');
+    const view: TaxonomyView = requestedView === 'attributes' || requestedView === 'menus' || requestedView === 'collections' ? requestedView : 'categories';
+    const rawScope = param(q, 'scope');
+    const scope = rawScope === 'direct' || rawScope === 'descendants' || rawScope === 'search' ? rawScope : 'all';
+    const rawPage = Number(param(q, 'page'));
+    const page = Number.isSafeInteger(rawPage) && rawPage >= 1 && rawPage <= 10000 ? rawPage : undefined;
+    const id = requested && /^[\p{L}\p{N}][\p{L}\p{M}\p{N}_-]{0,119}$/u.test(requested) ? requested : undefined;
+    const query = param(q, 'q')?.trim().slice(0, 120);
+    const menuKey = param(q, 'menuKey');
+    const locale = param(q, 'menuLocale');
+    const collectionId = param(q, 'collection');
+    const read: CatalogRead = { read: 'categories', id, q: query, scope, page,
+      menuKey: menuKey && /^[a-z0-9][a-z0-9-]{0,79}$/.test(menuKey) ? menuKey : undefined,
+      locale: locale && /^[A-Za-z0-9-]{1,35}$/.test(locale) ? locale : undefined,
+      collectionId: collectionId && /^[a-z0-9][a-z0-9-]{0,79}$/.test(collectionId) ? collectionId : undefined };
+    let data = await connectedCatalog<CategoryData>(auth, region, read);
+    if (region === 'BD' && view === 'categories' &&
+        (param(q, 'catalog') === 'legacy' || (mode === 'edit' && requested))) {
+      const { nodes } = await loadCategories(auth);
+      const recoveredId = requested && mongoId(requested) ? requested.toLowerCase() : undefined;
+      const byId = nodes.find(node => node.id === recoveredId);
+      const bySlug = byId ? [] : nodes.filter(node => node.slug === requested &&
+        (mode !== 'edit' || (subcategory ? node.depth > 0 : node.depth === 0)));
+      if (bySlug.length > 1) return <RecoveredCategories nodes={nodes} subcategory={subcategory} ambiguous/>;
+      const selected = byId ?? (bySlug.length === 1 ? bySlug[0] : undefined);
+      if (selected && selected.id !== id) data = await connectedCatalog<CategoryData>(auth, region, { ...read, id: selected.id });
+      if (!data.selectedId && (selected || !requested)) {
+        return <RecoveredCategories nodes={nodes} selected={selected} subcategory={subcategory}/>;
+      }
+    }
+    return <ConnectedCategories data={data} region={region} view={view} requested={requested} query={query}
+      mode={mode} assignmentScope={scope} childrenOnly={subcategory} permissions={{
+        create: data.owner && canChangeCategories(auth, 'product.create'),
+        update: data.owner && mayEditConnectedTaxonomy(auth), archive: data.owner && canChangeCategories(auth, 'product.delete'),
+        merchandise: mayEditConnectedMerchandising(auth),
+      }}/>;
+  }
   const data = await loadCategories(auth);
   const ref = param(q, 'record');
   const initial = ref && data.nodes.find(row => row.id === ref || row.slug === ref)?.id;
@@ -85,6 +155,7 @@ function inputValue(record: RecordData, field: string) {
   return asInput(record[field]);
 }
 export async function ProductWorkspace({ auth, q, region, id, production }: Props) {
+  if (connectedCatalogConfigured()) return ConnectedProductWorkspace({ auth, q, region, id });
   if (!id) return ProductCatalog({ auth, q, region, production });
   const lookupSlug = param(q, 'lookup') === 'slug' && !(production && mongoId(id));
   const creating = id === 'new' && !lookupSlug;
