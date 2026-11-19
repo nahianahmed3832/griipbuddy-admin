@@ -16,9 +16,11 @@ import '@/app/sign-in/production-fonts.css';
 import { ProductionFraudChecker } from './production-fraud';
 import styles from './production-admin-shell.module.css';
 
-type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean };
+type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean; homepage?: 'connected' | 'legacy' };
 const item = (label: string, path: string, permission?: string, connected?: boolean, central?: boolean): Entry =>
   ({ label, path: '/dashboard/' + path, permission, connected, central });
+const homepageItem = (label: string, path: string, homepage: NonNullable<Entry['homepage']>, permission?: string): Entry =>
+  ({ ...item(label, path, permission), homepage });
 const navigation = [
   { title: 'Overview', groups: [
     { label: 'Dashboard', icon: LayoutDashboard, entries: [item('Overview', 'overview'), item('Fraud Checker', 'fraud-checker', 'order.view')] },
@@ -74,8 +76,11 @@ const navigation = [
   { title: 'Content', groups: [
     { label: 'Content Management', icon: PanelsTopLeft, entries: [
       item('Header', 'header'), item('Hero Section', 'hero-section'), item('Global Offer', 'offer-page'),
-      item('Shop by Category', 'homepage/shop-by-category'), item('Best Selling', 'homepage/best-selling'),
-      item('New Arrivals', 'homepage/new-arrivals'), item('Leather Section', 'homepage/leather-section'),
+      homepageItem('Homepage', 'homepage', 'connected', 'cms.view'),
+      homepageItem('Shop by Category', 'homepage/shop-by-category', 'legacy'),
+      homepageItem('Best Selling', 'homepage/best-selling', 'legacy'),
+      homepageItem('New Arrivals', 'homepage/new-arrivals', 'legacy'),
+      homepageItem('Leather Section', 'homepage/leather-section', 'legacy'),
       item('Storefront Menus', 'catalog-menus', 'product.view', true), item('Collections', 'catalog-collections', 'product.view', true),
       item('Search Maintenance', 'catalog-search', 'product.view', true, true),
     ] },
@@ -97,9 +102,9 @@ function currentMenuPath(path: string) {
     .sort((a, b) => b.length - a.length)[0] ?? path;
 }
 
-export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog }: {
+export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog, connectedHomepage }: {
   children: ReactNode; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; path: string; query: string; readOnly: boolean; fraud: boolean;
-  connectedCatalog?: boolean;
+  connectedCatalog?: boolean; connectedHomepage?: boolean;
 }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -174,6 +179,7 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
     if (value === 'INTERNATIONAL') params.set('region', value);
     else params.delete('region');
     params.delete('page');
+    if (path.startsWith('/dashboard/homepage')) params.delete('scope');
     const search = params.toString();
     router.push(path + (search ? '?' + search : ''));
   }
@@ -208,7 +214,8 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
           <div className={styles.groupTitle}>{title}</div>
           {groups.filter(group => group.label !== 'Reports' || hasReports).map(({ label, icon: Icon, entries }) => {
             const allowed = entries.filter(entry => (!entry.permission || grants.has(entry.permission)) &&
-              (!entry.connected || connectedCatalog) && (!entry.central || superAdmin(staff)));
+              (!entry.connected || connectedCatalog) && (!entry.central || superAdmin(staff)) &&
+              (!entry.homepage || (entry.homepage === 'connected') === Boolean(connectedHomepage)));
             const selected = allowed.some(entry => entry.path === current);
             const open = expanded[label] ?? selected;
             return <div key={label} className={styles.menugroup}>

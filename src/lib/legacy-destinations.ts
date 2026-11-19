@@ -95,6 +95,7 @@ add('payment-sources', '/desk/payments/sources');
 add('header', '/desk/content/announcements');
 add('hero-section', '/desk/content/hero', undefined, 'Media uploads require staging media storage to be configured.');
 add('offer-page', '/desk/content/offer');
+add('homepage', '/desk/content/homepage');
 add('homepage/shop-by-category', '/desk/content/shop-by-category');
 add('homepage/best-selling', '/desk/content/best-selling');
 add('homepage/new-arrivals', '/desk/content/new-arrivals');

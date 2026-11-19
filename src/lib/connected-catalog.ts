@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import { ApiError, getRegion, obj, workspaceWritesEnabled, type Session } from './api';
-import type { CatalogRequest } from './connected-catalog-contract';
+import { isHomepageRequest, type CatalogRequest } from './connected-catalog-contract';
 import { has, superAdmin, type Region } from './sections';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
@@ -13,9 +13,15 @@ export function connectedCatalogConfigured() {
   return Boolean(process.env.GRIIP_MAIN_ADMIN_CATALOG_URL || process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET);
 }
 
-function connectedCatalogEndpoint() {
-  const raw = process.env.GRIIP_MAIN_ADMIN_CATALOG_URL;
-  const secret = process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET;
+export function connectedHomepageConfigured() {
+  if (process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_ENABLED !== '1') return false;
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || (process.env.GRIIP_ADMIN_TARGET === 'integration' &&
+    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
+}
+
+function connectedCatalogEndpoint(homepage: boolean) {
+  const raw = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_URL : process.env.GRIIP_MAIN_ADMIN_CATALOG_URL;
+  const secret = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_SECRET : process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET;
   const profile = process.env.GRIIP_ADMIN_TARGET;
   const protectedDev = profile === 'integration';
   if (!raw || !secret || Buffer.byteLength(secret, 'utf8') < 32 || !['fixture', 'integration'].includes(profile ?? '')) {
@@ -36,14 +42,19 @@ function connectedCatalogEndpoint() {
   return { endpoint, secret };
 }
 
-export function connectedCatalogMarket(auth: Session, region: Region) {
+export function connectedCatalogMarket(auth: Session, region: Region, homepage = false) {
   const permitted = getRegion(region, auth.staff);
   if (permitted !== region) throw new ApiError(403, 'This operating region is unavailable for your account.');
   if (permitted === 'BD') return 'bd';
-  if (process.env.GRIIP_MAIN_ADMIN_CATALOG_INTERNATIONAL_MARKET !== 'us') {
+  const international = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_INTERNATIONAL_MARKET : process.env.GRIIP_MAIN_ADMIN_CATALOG_INTERNATIONAL_MARKET;
+  if (international !== 'us') {
     throw new ApiError(403, 'This region needs a verified connected catalog market assignment.');
   }
   return 'us';
+}
+
+export function mayEditConnectedHomepage(auth: Session) {
+  return workspaceWritesEnabled() && has(auth.staff, 'cms.view') && has(auth.staff, 'cms.update');
 }
 
 export function mayEditConnectedTaxonomy(auth: Session) {
@@ -135,12 +146,18 @@ function authorizeRequest(auth: Session, request: CatalogRequest) {
 }
 
 export async function connectedCatalog<T = unknown>(auth: Session, region: Region, request: CatalogRequest): Promise<T> {
-  authorizeRequest(auth, request);
-  const marketId = connectedCatalogMarket(auth, region);
+  const homepage = isHomepageRequest(request);
+  if (homepage) {
+    if (!connectedHomepageConfigured()) throw new ApiError(404, 'The connected Homepage is unavailable.');
+    if (!has(auth.staff, 'cms.view') || ('action' in request && !mayEditConnectedHomepage(auth))) {
+      throw new ApiError(403, 'Homepage access is unavailable for your account.');
+    }
+  } else authorizeRequest(auth, request);
+  const marketId = connectedCatalogMarket(auth, region, homepage);
   if (request.input?.marketId !== undefined && request.input.marketId !== marketId) {
     throw new ApiError(409, 'Select the intended operating region before saving.');
   }
-  const { endpoint, secret } = connectedCatalogEndpoint();
+  const { endpoint, secret } = connectedCatalogEndpoint(homepage);
   const body = JSON.stringify({ issuedAt: Date.now(), nonce: randomUUID(), legacyId: auth.staff.id,
     central: superAdmin(auth.staff), marketId, request });
   const signature = createHmac('sha256', secret).update('griip-main-admin-catalog-v1\n').update(body).digest('hex');
@@ -148,7 +165,8 @@ export async function connectedCatalog<T = unknown>(auth: Session, region: Regio
   try {
     const timeout = 'action' in request && request.action === 'search.rebuild' ? 100_000 : 20_000;
     response = await fetch(endpoint, { method: 'POST', body, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(timeout),
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-griip-catalog-signature': signature } });
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-griip-catalog-signature': signature,
+        ...(homepage && { 'x-griip-admin-channel': 'homepage' }) } });
   } catch { throw new ApiError(503, 'The connected catalog could not be reached. Try again.'); }
   const payload = obj(await response.json().catch(() => null));
   if (!response.ok || !Object.hasOwn(payload, 'data')) {

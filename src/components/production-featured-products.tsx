@@ -10,7 +10,7 @@ import styles from './production-content.module.css';
 
 export type FeaturedVariant = { product: string; variant: string; name: string; sku: string; image?: string };
 
-export function ProductionFeaturedProducts({ initial, canAdd, canRemove }: { initial: FeaturedVariant[]; canAdd: boolean; canRemove: boolean }) {
+export function ProductionFeaturedProducts({ initial, canAdd, canRemove, legacyPlacement = false }: { initial: FeaturedVariant[]; canAdd: boolean; canRemove: boolean; legacyPlacement?: boolean }) {
   const [rows, setRows] = useState(initial);
   const [chosen, setChosen] = useState<FeaturedVariant>();
   const [term, setTerm] = useState('');
@@ -48,7 +48,8 @@ export function ProductionFeaturedProducts({ initial, canAdd, canRemove }: { ini
   }
 
   return <section className={styles.page}>
-    <header className={styles.heading}><div><h1>Featured Products</h1></div></header>
+    <header className={styles.heading}><div><h1>{legacyPlacement ? 'Legacy featured variants' : 'Featured Products'}</h1>
+      {legacyPlacement && <p>These variant placements appear in the legacy storefront.</p>}</div></header>
     {canAdd && <section className={styles.bannerCard}>
       <h2>Add New Featured Product</h2>
       <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (!next) { clear(); setTerm(''); } }}>

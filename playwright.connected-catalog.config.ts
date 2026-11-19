@@ -16,6 +16,7 @@ export default defineConfig({
   testMatch: [
     'connected-catalog.spec.ts', 'connected-category-parity.spec.ts',
     'connected-staff-customer.spec.ts', 'connected-editorial-media.spec.ts',
+    ...(process.env.GRIIP_HOMEPAGE_TEST_PRODUCT ? ['connected-homepage.spec.ts'] : []),
   ],
   timeout: 75_000,
   workers: 1,

@@ -1,9 +1,12 @@
 import { connectedOrderActions, marketplaceOrderQueues, orderIdentifier, type MarketplaceOrderQueue } from './connected-order-contract';
 
+const homepageReads = ['homepage-scopes', 'homepage', 'homepage-preview', 'homepage-references', 'homepage-asset'] as const;
+type HomepageReadName = typeof homepageReads[number];
 export type CatalogRead = { read: 'categories' | 'products' | 'product' | 'inventory' | 'warehouses' | 'devices' | 'asset' |
   'category-impact' | 'attribute-impact' | 'collection-products' | 'device' | 'search-status' |
-  'orders' | 'order' | 'order-cases' | 'order-case'; id?: string; q?: string; page?: number;
+  'orders' | 'order' | 'order-cases' | 'order-case' | HomepageReadName; id?: string; q?: string; page?: number;
   menuKey?: string; locale?: string; collectionId?: string; scope?: 'direct' | 'descendants' | 'all' | 'search'; input?: Record<string, unknown>;
+  homepageScope?: string; marketId?: string; previewAt?: string; kind?: 'products' | 'categories' | 'collections' | 'media';
   state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; queue?: MarketplaceOrderQueue; closed?: boolean };
 export type CatalogCommand = { action: string; input: Record<string, unknown> };
 export type CatalogRequest = CatalogRead | CatalogCommand;
@@ -20,8 +23,13 @@ export const catalogActions = new Set([
   'product.translation', 'product.gallery', 'variant.compatibility', 'device.save', 'offer.save',
   'offer.configure', 'inventory.initialize', 'inventory.route', 'inventory.movement', 'inventory.transfer', 'media.upload',
   'inventory.warehouse.create',
+  'homepage.save', 'homepage.publish', 'homepage.restore', 'homepage.inherit', 'homepage.media',
   'search.reconcile', 'search.rebuild', ...connectedOrderActions,
 ]);
+
+export function isHomepageRequest(request: CatalogRequest) {
+  return 'read' in request ? homepageReads.some(read => request.read === read) : request.action.startsWith('homepage.');
+}
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -29,6 +37,23 @@ function object(value: unknown): value is Record<string, unknown> {
 
 export function parseCatalogRequest(value: unknown): CatalogRequest | null {
   if (!object(value)) return null;
+  if (homepageReads.some(read => read === value.read)) {
+    const keys = Object.keys(value);
+    if (value.read === 'homepage-scopes' && keys.length === 1) return { read: 'homepage-scopes' };
+    if (value.read === 'homepage-asset' && keys.every(key => ['read', 'id'].includes(key)) && catalogAssetPath(value.id)) {
+      return { read: 'homepage-asset', id: value.id };
+    }
+    if (typeof value.homepageScope !== 'string' || !/^[a-z][a-z0-9-]{0,15}:[a-zA-Z0-9-]{1,35}$/.test(value.homepageScope)) return null;
+    if (value.read === 'homepage' && keys.every(key => ['read', 'homepageScope'].includes(key))) return value as CatalogRead;
+    if (value.read === 'homepage-preview' && keys.every(key => ['read', 'homepageScope', 'marketId', 'locale', 'previewAt'].includes(key)) &&
+        typeof value.marketId === 'string' && /^[a-z][a-z0-9-]{0,15}$/.test(value.marketId) &&
+        typeof value.locale === 'string' && /^[a-zA-Z0-9-]{1,35}$/.test(value.locale) &&
+        (value.previewAt === undefined || typeof value.previewAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.previewAt))) return value as CatalogRead;
+    if (value.read === 'homepage-references' && keys.every(key => ['read', 'homepageScope', 'kind', 'q'].includes(key)) &&
+        ['products', 'categories', 'collections', 'media'].some(kind => kind === value.kind) &&
+        (value.q === undefined || typeof value.q === 'string' && value.q.length <= 120 && !/[\u0000-\u001f\u007f]/.test(value.q))) return value as CatalogRead;
+    return null;
+  }
   if (value.read === 'asset' && Object.keys(value).every(key => ['read', 'id'].includes(key)) && catalogAssetPath(value.id)) {
     return { read: 'asset', id: value.id };
   }

@@ -57,12 +57,12 @@ export async function SaleWorkspace({ auth, id, region, production = false }: { 
   </>;
 }
 
-export async function ContentWorkspace({ auth, section, region, production = false }: { auth: Session; section?: string; region: Region; production?: boolean }) {
+export async function ContentWorkspace({ auth, section, region, production = false, connectedHomepage = false }: { auth: Session; section?: string; region: Region; production?: boolean; connectedHomepage?: boolean }) {
   if (region !== 'BD' || !has(auth.staff, 'cms.view')) throw new ApiError(403);
   if (production && section === 'featured_products') {
     const variants = await api('/cms/admin/featured-variants', auth.token) as FeaturedVariant[];
     const writable = advancedEnabled() && canWrite(auth.staff);
-    return <ProductionFeaturedProducts initial={variants}
+    return <ProductionFeaturedProducts initial={variants} legacyPlacement={connectedHomepage}
       canAdd={writable && has(auth.staff, 'cms.create') && has(auth.staff, 'product.view')}
       canRemove={writable && has(auth.staff, 'cms.delete')}/>;
   }
@@ -87,13 +87,13 @@ export async function ContentWorkspace({ auth, section, region, production = fal
   if (production && section === 'banners') return <ProductionBannerEditor doc={doc}
     writable={writable} allowUploads={allowUploads} allowProducts={allowProducts} products={products}/>;
   if (production) return <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories}
-    carouselEnabled={false} production allowProductSearch={allowProducts} allowUploads={allowUploads} writable={writable} productOptions={products}/>;
+    carouselEnabled={false} connectedHomepage={connectedHomepage} production allowProductSearch={allowProducts} allowUploads={allowUploads} writable={writable} productOptions={products}/>;
   return <>
-    <PageHeading eyebrow="STOREFRONT / CONTENT" title={section ? ({hero_section:carouselEnabled ? 'Homepage carousel' : 'Hero section', 'homepage.shop_by_category':'Shop by category', 'homepage.best_selling':'Best selling', 'homepage.new_arrivals':'New arrivals', 'homepage.leather_section':'Leather section', banners:'Banners', featured_products:'Featured products'}[section] ?? 'Storefront content') : 'Content and SEO'}
+    <PageHeading eyebrow="STOREFRONT / CONTENT" title={section ? ({hero_section:carouselEnabled ? 'Homepage carousel' : 'Hero section', 'homepage.shop_by_category':'Shop by category', 'homepage.best_selling':'Best selling', 'homepage.new_arrivals':'New arrivals', 'homepage.leather_section':'Leather section', banners:'Banners', featured_products:connectedHomepage ? 'Featured banners' : 'Featured products'}[section] ?? 'Storefront content') : 'Content and SEO'}
       description="Edit store content and homepage merchandising.">
       <Link className="button secondary" prefetch={false} href={url("/desk/content/" + (section ? (Object.entries(contentViews).find(([, key]) => key === section)?.[0] ?? "workspace") : "workspace"), {region, refresh: String(Date.now())})}>Refresh</Link>
     </PageHeading>
-    <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories} carouselEnabled={carouselEnabled}
+    <ContentEditor key={str(doc.updatedAt)} doc={doc} initialSection={section} categories={categories} carouselEnabled={carouselEnabled} connectedHomepage={connectedHomepage}
       allowProductSearch={has(auth.staff, 'product.view')} allowUploads={allowUploads} writable={writable}/>
   </>;
 }

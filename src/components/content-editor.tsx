@@ -5,6 +5,7 @@ import { Check, ChevronDown, GripVertical, Plus, RefreshCcw, Save, Trash2 } from
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
+import { legacyHomepageSections } from '@/lib/homepage-merchandising';
 import { productionCmsPreview } from '@/lib/production-cms-media';
 import { contentProductImage, type ContentProduct } from '@/lib/content-products';
 import { ContentProductPicker, ProductReferences } from './content-product-picker';
@@ -157,9 +158,10 @@ function ContentSelect({ label, value, change, options, placeholder }: {
   </Select.Root>;
 }
 
-export function ContentEditor({ doc, writable, initialSection, allowProductSearch, allowUploads, categories, carouselEnabled, production = false, productOptions = [] }: { doc: Row; writable: boolean; initialSection?: string; allowProductSearch: boolean; allowUploads: boolean; categories: Category[]; carouselEnabled: boolean; production?: boolean; productOptions?: ContentProduct[] }) {
-  const availableSections = production ? sections.map(productionSection)
-    : carouselEnabled ? sections.map(item => item.id === carousel.id ? carousel : item) : sections;
+export function ContentEditor({ doc, writable, initialSection, allowProductSearch, allowUploads, categories, carouselEnabled, production = false, productOptions = [], connectedHomepage = false }: { doc: Row; writable: boolean; initialSection?: string; allowProductSearch: boolean; allowUploads: boolean; categories: Category[]; carouselEnabled: boolean; production?: boolean; productOptions?: ContentProduct[]; connectedHomepage?: boolean }) {
+  const availableSections = (production ? sections.map(productionSection)
+    : carouselEnabled ? sections.map(item => item.id === carousel.id ? carousel : item) : sections)
+    .filter(item => !connectedHomepage || !legacyHomepageSections.has(item.id));
   const initial = availableSections.find(item => item.id === initialSection) ?? availableSections[0];
   const [section, setSection] = useState(initial);
   const isCarousel = carouselEnabled && section.id === carousel.id;
@@ -314,7 +316,7 @@ export function ContentEditor({ doc, writable, initialSection, allowProductSearc
     </header>}
     {(!initialSection || bannerTabs) && <div className={bannerTabs ? styles.tabs : 'tabs'} aria-label="Content sections">{sectionTabs.map(item =>
       <button className={'button ' + (section.id === item.id ? 'primary' : 'subtle')} key={item.id} type="button"
-        aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{bannerTabs && item.id === 'featured_products' ? 'Featured Banners' : production ? copies[item.id]?.title ?? item.label : item.label}</button>)}</div>}
+        aria-pressed={section.id === item.id} disabled={busy || uploading} onClick={() => switchSection(item)}>{(bannerTabs || connectedHomepage) && item.id === 'featured_products' ? 'Featured Banners' : production ? copies[item.id]?.title ?? item.label : item.label}</button>)}</div>}
     <form id={formId} className={production ? `${styles.form} stack-form${(productionHero || productionCategories) ? ' ' + styles.heroGrid : productionBestSellers ? ' ' + styles.bestGrid : ''}` : 'stack-form'} onSubmit={save}>
       {(!copy || bannerTabs || section.id === 'homepage.leather_section') && <h2>{section.id === 'homepage.leather_section' && production ? 'Section Settings' : copy?.title ?? section.label}</h2>}
       {isCarousel && <p>Add up to five slides. {allowUploads && 'Upload a photo (JPG, PNG, WebP or AVIF, up to 6 MB) or video (MP4 or WebM, up to 24 MB), or '}use a direct media URL. A video may have a cover photo.</p>}

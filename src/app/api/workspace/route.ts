@@ -1,5 +1,7 @@
 import { ApiError, arr, getRegion, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { bulkHandover, requireWrite, saveSale } from '@/lib/advanced';
+import { connectedHomepageConfigured } from '@/lib/connected-catalog';
+import { legacyHomepageSections } from '@/lib/homepage-merchandising';
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return new Response('Origin denied', { status: 403 });
@@ -21,6 +23,9 @@ export async function POST(request: Request) {
     if (body.action === 'content') {
       requireWrite(auth, 'cms.view', 'cms.update');
       const values = obj(body.values);
+      if (connectedHomepageConfigured() && legacyHomepageSections.has(str(values.section))) {
+        return new Response('Edit these sections in Homepage merchandising.', { status: 409 });
+      }
       if (values.section === 'hero_section' && new URL(request.url).searchParams.get('view') === 'production' &&
           arr(values.value).some(item => !str(obj(item).video_url).trim())) {
         return new Response('Add a video to every hero entry.', { status: 400 });

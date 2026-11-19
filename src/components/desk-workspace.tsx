@@ -49,7 +49,9 @@ import { TransactionPage } from '@/components/transactions';
 import { canReadTransactions } from '@/lib/transactions';
 import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
 import { canOperate } from '@/lib/operations';
-import { connectedCatalogConfigured, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { connectedCatalogConfigured, connectedHomepageConfigured, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { homepageAdminPath, homepageDeskPath, legacyHomepageViews } from '@/lib/homepage-merchandising';
+import { ConnectedHomepage } from './connected-homepage';
 import { ConnectedStockWorkspace } from './connected-catalog-product/workspace';
 import { ApprovedDevicesWorkspace, CatalogSearchMaintenanceWorkspace } from './connected-catalog-discovery';
 
@@ -80,6 +82,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const sectionResources = Object.entries(resources[sectionId] ?? {})
     .filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
   const integrated = integratedCheckoutEnabled();
+  const connectedHomepage = connectedHomepageConfigured();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const transactions = canReadTransactions(auth);
   const managed = new Map(managedViewsFor(auth.staff, sectionId));
@@ -89,9 +92,14 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     ['staff', 'Staff directory'], ['roles', 'Roles and permissions'], ['activity', 'Access activity']);
   const inventoryTabs = smartInventoryTabs(auth);
   if (sectionId === 'customers' && canCreateCustomer(auth)) tabs.splice(1, 0, ['create', 'Create customer']);
-  if (sectionId === 'content' && region === 'BD' && has(auth.staff, 'cms.view')) {
-    tabs.push(['hero', process.env.GRIIP_ADMIN_TARGET === 'integration' ? 'Homepage carousel' : 'Hero section'], ['offer','Global offer'], ['shop-by-category','Shop by category'], ['best-selling', 'Best selling'],
-      ['new-arrivals', 'New arrivals'], ['leather-section', 'Leather section'], ['featured-products', 'Featured products'], ['workspace','Content and SEO']);
+  if (sectionId === 'content' && has(auth.staff, 'cms.view')) {
+    if (connectedHomepage) tabs.push(['homepage', 'Homepage']);
+    if (region === 'BD') {
+      tabs.push(['hero', process.env.GRIIP_ADMIN_TARGET === 'integration' ? 'Homepage carousel' : 'Hero section'], ['offer','Global offer']);
+      if (!connectedHomepage) tabs.push(['shop-by-category','Shop by category'], ['best-selling', 'Best selling'],
+        ['new-arrivals', 'New arrivals'], ['leather-section', 'Leather section']);
+      tabs.push(['featured-products', connectedHomepage ? 'Featured banners' : 'Featured products'], ['workspace','Content and SEO']);
+    }
   }
   const fraud = region === 'BD' && has(auth.staff, 'order.view') && !publicSandbox() && !operationsOnly();
   if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
@@ -171,9 +179,18 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (production && sectionId === 'content' && active === 'announcements' && !view[1]) {
       content = await ProductionHeaderPage({ auth, region });
     }
+    else if (sectionId === 'content' && view.length === 1 && active === 'homepage') {
+      if (!connectedHomepage) throw new ApiError(404);
+      if (!has(auth.staff, 'cms.view')) throw new ApiError(403);
+      content = await ConnectedHomepage({ auth, q, region, production: Boolean(production) });
+    }
+    else if (connectedHomepage && sectionId === 'content' && view.length === 1 && legacyHomepageViews.some(value => active === value)) {
+      if (!has(auth.staff, 'cms.view')) throw new ApiError(403);
+      redirect(url(production ? homepageAdminPath : homepageDeskPath, { region, scope: param(q, 'scope') }));
+    }
     else if (sectionId === 'content' && active === 'offer' && view.length === 1) content = await GlobalOffer({ auth, region, production: Boolean(production) });
     else if (sectionId === 'content' && active && (active === 'workspace' || Object.hasOwn(contentViews, active)) && view.length <= 1) {
-      content = await ContentWorkspace({ auth, region, section: contentViews[active], production: Boolean(production) });
+      content = await ContentWorkspace({ auth, region, section: contentViews[active], production: Boolean(production), connectedHomepage });
     }
     else if (sectionId === 'content' && region !== 'BD') throw new ApiError(403);
     else if (sectionId === 'catalog' && view.length === 1 && (active === 'approved-devices' || active === 'search-maintenance')) {
@@ -264,7 +281,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   }
   if (production) return <ProductionAdminShell staff={{ name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions }}
     region={region} path={production.path} query={production.query}
-    readOnly={publicSandbox()} fraud={fraud} connectedCatalog={connectedCatalogConfigured()}>{content}</ProductionAdminShell>;
+    readOnly={publicSandbox()} fraud={fraud} connectedCatalog={connectedCatalogConfigured()} connectedHomepage={connectedHomepage}>{content}</ProductionAdminShell>;
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
     purchaseLinks={purchaseLinks} activePurchase={activePurchase}

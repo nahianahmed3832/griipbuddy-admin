@@ -1,0 +1,23 @@
+.homepage-workspace .homepage-fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; min-width: 0; }
+.homepage-workspace .homepage-row { min-width: 0; margin: 0; }
+.homepage-row legend { max-width: 100%; padding-inline: .45rem; font-weight: 800; overflow-wrap: anywhere; }
+.homepage-workspace .homepage-checkbox { display: flex; align-items: center; gap: 8px; }
+.homepage-scope-form { align-items: end; }
+.homepage-scope-form label, .homepage-reference label { display: grid; gap: 5px; font-size: .86rem; font-weight: 700; }
+.homepage-scope-form select, .homepage-reference input { border: 1px solid var(--taxonomy-outline); border-radius: 8px; min-height: 43px;
+  max-width: 100%; background: var(--color-paper); color: var(--color-ink); padding: 8px 10px; }
+.homepage-workspace .homepage-fieldset > label, .homepage-reference { display: grid; gap: 6px; justify-items: start; font-size: .86rem; font-weight: 700; }
+.homepage-workspace .homepage-fieldset :is(input,textarea,select) { max-width: 100%; }
+.homepage-workspace .homepage-fields textarea { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--taxonomy-outline);
+  border-radius: 8px; color: var(--color-ink); background: var(--color-paper); }
+.homepage-inherited summary { cursor: pointer; font-weight: 750; }
+.homepage-reference-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; width: min(100%, 720px); }
+.homepage-reference-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; min-width: 0;
+  padding: 6px 8px; border: 1px solid var(--taxonomy-outline); border-radius: 8px; overflow-wrap: anywhere; }
+.homepage-picker { display: grid; gap: 6px; width: min(100%, 720px); }
+.homepage-picker .homepage-reference-list { max-height: 300px; overflow: auto; }
+.homepage-picker .homepage-asset { width: 70px; }
+.homepage-preview-content { display: grid; gap: 10px; min-width: 0; }
+.homepage-preview-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(110px, 100%), 1fr)); gap: 10px; }
+.homepage-preview-tiles > div { border: 1px solid var(--taxonomy-outline); border-radius: 8px; padding: 7px; min-width: 0; }
+.homepage-asset { width: min(100%, 270px); height: auto; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 8px; }
