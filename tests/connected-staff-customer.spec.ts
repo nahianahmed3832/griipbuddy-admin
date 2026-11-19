@@ -268,7 +268,7 @@ test('one main-admin catalog reaches the storefront, purchases, packing, cancell
       const variantPhoto = buyer.getByRole('img', { name: variantImage.alt, exact: true }).first();
       await expect(variantPhoto).toBeVisible();
       await expect.poll(() => variantPhoto.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-      const search = buyer.getByRole('searchbox', { name: /Search products|Search for items or shops/ });
+      const search = buyer.getByRole('combobox', { name: /Search products|Search for items or shops/ });
       await search.fill(modelB);
       await search.press('Enter');
       await expect(product).toHaveCount(1);
