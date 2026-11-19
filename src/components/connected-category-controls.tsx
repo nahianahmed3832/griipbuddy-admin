@@ -64,12 +64,14 @@ export function ImageFields({ name, title, src, alt, required, region, canUpload
   const [description, setDescription] = useState(alt ?? '');
   const [working, setWorking] = useState(false);
   const [issue, setIssue] = useState('');
+  const pathInput = useRef<HTMLInputElement>(null);
   async function upload(file: File) {
     setIssue('');
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > catalogUploadLimit) {
       setIssue('Choose a JPEG, PNG or WebP image up to 4 MB.');
       return;
     }
+    pathInput.current?.setCustomValidity('Wait for the image to finish uploading.');
     setWorking(true);
     try {
       const data = await new Promise<string>((resolve, reject) => {
@@ -78,20 +80,24 @@ export function ImageFields({ name, title, src, alt, required, region, canUpload
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const result = await catalogRequest<{ src: string }>({ action: 'media.upload', input: { data, contentType: file.type } }, region);
+      const result = await catalogRequest<{ src: string }>({ action: 'media.upload', input: { data, contentType: file.type, purpose: 'editorial' } }, region);
       setPath(result.src);
       onUpload();
     } catch (error) { setIssue(error instanceof Error ? error.message : 'The image could not be uploaded.'); }
-    finally { setWorking(false); }
+    finally {
+      pathInput.current?.setCustomValidity('');
+      setWorking(false);
+    }
   }
   return <div className={styles.fields}>
-    <label>{title} path<input name={name} value={path} onChange={event => setPath(event.target.value)} maxLength={100} required={required}/></label>
+    <label>{title} path<input ref={pathInput} name={name} value={path} onChange={event => setPath(event.target.value)} maxLength={100} required={required}/></label>
     <label>{title} alternative text<input name={name + 'Alt'} value={description} maxLength={180} required={required || Boolean(path)}
       onChange={event => setDescription(event.target.value)}/></label>
     {canPreview && catalogAssetPath(path) && <Image className={styles.image} src={adminPath('/api/connected-catalog?' + new URLSearchParams({ asset: path, region }))}
       alt={description || title + ' preview'} width={76} height={64} unoptimized/>}
-    {canUpload && <label>{working ? 'Uploading image…' : 'Upload ' + title.toLowerCase()}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={working}
+    {canUpload && <label>{'Upload ' + title.toLowerCase()}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={working}
       onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = ''; }}/></label>}
+    {working && <p role="status">Uploading image…</p>}
     {issue && <p role="alert" className={styles.error}>{issue}</p>}
   </div>;
 }
