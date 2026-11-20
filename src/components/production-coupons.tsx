@@ -21,13 +21,20 @@ const couponPath = '/dashboard/coupons';
 export type CouponChoice = { id: string; label: string };
 export type CouponSummary = { id: string; code: string; type: string; discount: string; used: number; active: boolean; expires: string };
 const regionParams = (region: Region) => ({ region: region === 'INTERNATIONAL' ? region : undefined });
-const scope = (path: string, region: Region) => path + (region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '');
+function scope(path: string, region: Region, mode?: string) {
+  const params = new URLSearchParams();
+  if (region === 'INTERNATIONAL') params.set('region', region);
+  if (mode) params.set('mode', mode);
+  return path + (params.size ? '?' + params : '');
+}
 const date = (value: string) => Number.isFinite(Date.parse(value))
   ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'Asia/Dhaka' }).format(new Date(value)) : 'N/A';
 
-export function ProductionCouponList({ rows, limit, total, page, hasNext, region, canCreate, canEdit, canDelete }: {
+export function ProductionCouponList({ rows, limit, total, page, hasNext, region, canCreate, canEdit, canDelete,
+  listPath = couponPath, createPath = '/dashboard/create-coupon', query }: {
   rows: CouponSummary[]; limit: string; total: number; page: number; hasNext: boolean; region: Region;
-  canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  canCreate: boolean; canEdit: boolean; canDelete: boolean; listPath?: string; createPath?: string;
+  query?: { q: string; filter: string };
 }) {
   const router = useRouter();
   const { submit, pending, result } = usePromotionSave();
@@ -37,17 +44,31 @@ export function ProductionCouponList({ rows, limit, total, page, hasNext, region
     if (number !== 1) params.set('page', String(number));
     if (limit !== '20') params.set('limit', limit);
     if (region === 'INTERNATIONAL') params.set('region', region);
-    return couponPath + (params.size ? '?' + params : '');
+    if (query?.q) params.set('q', query.q);
+    if (query?.filter) params.set('filter', query.filter);
+    return listPath + (params.size ? '?' + params : '');
   };
   return <section className={styles.page}>
     <header className={styles.header}><h1>All Coupons ({total})</h1>
-      {canCreate && <Link className={styles.primary} href={scope('/dashboard/create-coupon', region)}>Create Coupon</Link>}
+      {canCreate && <Link className={styles.primary} href={scope(createPath, region)}>Create Coupon</Link>}
     </header>
     <PromotionResult result={result}/>
+    {query && <form className="panel filters" action={adminPath(listPath)}>
+      <input type="hidden" name="limit" value={limit}/>
+      {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
+      <label>Coupon code<input type="search" name="q" maxLength={80} defaultValue={query.q}/></label>
+      <label>Coupon status<select name="filter" defaultValue={query.filter}>
+        <option value="">All</option><option value="true">Active</option><option value="false">Inactive</option>
+      </select></label>
+      <button className={styles.primary}>Apply filters</button>
+      <Link className={styles.outline} href={scope(listPath, region)}>Clear filters</Link>
+    </form>}
     <div className={design.list}><table className={styles.table}>
       <thead><tr>{['SL NO:', 'Code', 'Type', 'DiscountValue', 'Used', 'Status', 'Expire', 'Actions'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => <tr key={row.id}>
-        <td>{String(index + 1).padStart(2, '0')}</td><td>{row.code}</td><td>{row.type}</td><td>{row.discount}</td><td>{row.used}</td>
+        <td>{String(index + 1).padStart(2, '0')}</td>
+        <td>{query ? <Link className="table-link" href={scope(listPath + '/' + row.id, region)}>{row.code}</Link> : row.code}</td>
+        <td>{row.type}</td><td>{row.discount}</td><td>{row.used}</td>
         <td><span className={details.policyStatus}>
           {canEdit && <input className={details.policyToggle} type="checkbox" role="switch" checked={row.active} disabled={pending}
             aria-label={'Active status for ' + row.code} onChange={async () => {
@@ -55,13 +76,14 @@ export function ProductionCouponList({ rows, limit, total, page, hasNext, region
             }}/>}{row.active ? 'Active' : 'Inactive'}
         </span></td>
         <td>{date(row.expires)}{Date.parse(row.expires) < Date.now() && <small className={design.expired}>Expired</small>}</td>
-        <td><div className={details.tableActions}><Link className={styles.outline} href={scope(couponPath + '/' + row.id, region)} aria-label={'View ' + row.code}><Eye size={16}/></Link>
+        <td><div className={details.tableActions}><Link className={styles.outline}
+          href={scope(listPath + '/' + row.id, region, query ? 'details' : undefined)} aria-label={'View ' + row.code}><Eye size={16}/></Link>
           {canDelete && <ProductionCatalogActions label="Open menu" title="Actions">{close => <button type="button" onClick={() => { close(); setDeleteTarget(row); }}>Delete Coupon</button>}</ProductionCatalogActions>}
         </div></td>
       </tr>)}{rows.length === 0 && <tr><td colSpan={8} className={styles.empty}>No data found!</td></tr>}</tbody>
     </table></div>
     <nav className={details.pages} aria-label="Pages">
-      <RegistryPageSize current={limit} choices={couponPageSizes} path={couponPath} params={regionParams(region)}/>
+      <RegistryPageSize current={limit} choices={couponPageSizes} path={listPath} params={{ ...regionParams(region), ...query }}/>
       {page > 1 ? <Link className={styles.outline} href={href(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
       {hasNext ? <Link className={styles.outline} href={href(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
     </nav>
@@ -134,8 +156,8 @@ function useCouponProducts(region: Region, query: string, product: string) {
   return { products, variants, error };
 }
 
-export function ProductionCouponCreate({ tree, region, starts, expires, openedAt }: {
-  tree: CategoryOption[]; region: Region; starts: string; expires: string; openedAt: number;
+export function ProductionCouponCreate({ tree, region, starts, expires, openedAt, initialActive = true, listPath = couponPath }: {
+  tree: CategoryOption[]; region: Region; starts: string; expires: string; openedAt: number; initialActive?: boolean; listPath?: string;
 }) {
   const router = useRouter();
   const { submit, pending, result } = usePromotionSave();
@@ -163,17 +185,17 @@ export function ProductionCouponCreate({ tree, region, starts, expires, openedAt
       maxDiscountAmount: type === 'FLAT' ? discount : data.get('maxDiscountAmount'), startAt, expireAt,
       categoryIds: subcategory.length || subsub.length ? [] : ids(category),
       subcategoryIds: subsub.length ? [] : ids(subcategory), sub_subcategoryIds: ids(subsub), productIds: variants.length ? [] : ids(product), variant: ids(variants) };
-    if (await submit('create-coupon', values)) { router.push(scope(couponPath, region)); router.refresh(); }
+    if (await submit('create-coupon', values)) { router.push(scope(listPath, region)); router.refresh(); }
   }
   return <section className={styles.page + ' ' + editor.editor}>
-    <header className={editor.pageHeading}><Link className={editor.back} href={scope(couponPath, region)} aria-label="Back to coupons"><ChevronLeft size={16}/></Link><h1>Create Coupon</h1></header>
+    <header className={editor.pageHeading}><Link className={editor.back} href={scope(listPath, region)} aria-label="Back to coupons"><ChevronLeft size={16}/></Link><h1>Create Coupon</h1></header>
     <form className={editor.form} onSubmit={save}>
       <ProductEditorPanel>
         <label className={editor.field}>Coupon Code<input name="code" placeholder="NEWYEAR2026" required maxLength={40}/></label>
         <div className={editor.pairedFields}>
           <label className={editor.field}>Discount Type<select name="discountType" value={type} onChange={event => setType(event.target.value)}>
             <option value="PERCENTAGE">Percentage</option><option value="FLAT">Flat Amount</option></select></label>
-          <ProductEditorSwitch name="isActive" label="Active Status" hint="Enable this coupon" initial/>
+          <ProductEditorSwitch name="isActive" label="Active Status" hint="Enable this coupon" initial={initialActive}/>
           <label className={editor.field}>Discount Value<input name="discountValue" type="number" min="0.01" max={type === 'PERCENTAGE' ? '100' : '99999999'}
             step=".01" value={discount} required onChange={event => setDiscount(event.target.value)}/></label>
           <label className={editor.field}>Max Discount Amount{type === 'FLAT' ? <input type="number" value={discount} disabled/>
@@ -220,9 +242,14 @@ export function ProductionCouponCreate({ tree, region, starts, expires, openedAt
   </section>;
 }
 
-export function ProductionCouponDetail({ coupon, region }: { coupon: CouponSummary & { description: string; starts: string; created: string; details: [string,string][]; targeting: [string,string[]][] }; region: Region }) {
+export function ProductionCouponDetail({ coupon, region, listPath = couponPath, editUrl }: {
+  coupon: CouponSummary & { description: string; starts: string; created: string; details: [string,string][]; targeting: [string,string[]][] };
+  region: Region; listPath?: string; editUrl?: string;
+}) {
   return <section className={styles.page}>
-    <header className={editor.pageHeading}><Link className={styles.outline} href={scope(couponPath, region)} aria-label="Back to coupons"><ChevronLeft size={16}/></Link><h1>Coupon Details</h1></header>
+    <header className={editor.pageHeading}><Link className={styles.outline} href={scope(listPath, region)} aria-label="Back to coupons"><ChevronLeft size={16}/></Link><h1>Coupon Details</h1>
+      {editUrl && <Link className={styles.primary} href={editUrl}>Edit coupon</Link>}
+    </header>
     <div className={design.hero}><div><p><Ticket size={18}/> {coupon.code} <span className={styles.activeBadge} data-active={coupon.active}>{coupon.active ? 'Active' : 'Inactive'}</span></p>
       <strong>{coupon.discount}{coupon.type === 'PERCENTAGE' ? '%' : ''}</strong><span>OFF DISCOUNT</span><p>{coupon.description}</p></div></div>
     <div className={design.detailGrid}>

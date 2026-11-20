@@ -30,12 +30,14 @@ async function records(path: string, rowKey: string, params: Record<string, stri
   return rows;
 }
 
-export async function ProductionStockHistory({ auth, q, region, mode }: { auth: Session; q: Query; region: Region; mode: 'adjustment' | 'transfer' | 'inventory' }) {
+export async function ProductionStockHistory({ auth, q, region, mode, route }: {
+  auth: Session; q: Query; region: Region; mode: 'adjustment' | 'transfer' | 'inventory'; route?: string;
+}) {
   if (!has(auth.staff, 'stock.view')) throw new ApiError(403);
   const adjustment = mode === 'adjustment';
   const inventory = mode === 'inventory';
   const endpoint = adjustment ? '/stocks/adjustment' : inventory ? '/stocks/admin/inventory-transfer-history' : '/stocks/admin/transfer-history';
-  const path = '/dashboard/' + (adjustment ? 'stock-adjustment/all' : inventory ? 'inventory/transfer-history' : 'stock-transfer/all');
+  const path = route ?? '/dashboard/' + (adjustment ? 'stock-adjustment/all' : inventory ? 'inventory/transfer-history' : 'stock-transfer/all');
   const requested = param(q, 'limit') ?? '';
   const limit = pageSizes.includes(requested) ? requested : '20';
   const regionQuery = region === 'INTERNATIONAL' ? region : undefined;

@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
 import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, operationsEnabled, operationsOnly, publicSandbox, session, url } from '@/lib/api';
+import { usesPurpleAdminLayout } from '@/lib/admin-layout';
+import { advancedEnabled } from '@/lib/advanced';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
@@ -23,6 +25,7 @@ import { PreOrdersPage } from '@/components/preorders-page';
 import { WebsiteOrderCreatePage, WebsiteOrderDetailPage, WebsiteOrdersPage, canCreateWebsiteOrder } from '@/components/website-orders-page';
 import { MarketplaceOrders } from '@/components/connected-marketplace-orders';
 import { MarketplaceOrderCase, MarketplaceOrderCases } from '@/components/connected-marketplace-cases';
+import { MarketplaceWorkspace, marketplaceWorkspaceAvailable } from '@/components/marketplace-workspace';
 import { AllBarcodes, BarcodeLogs, GenerateInventoryLabels, ScanToReceive } from '@/components/smart-inventory';
 import { inventoryPath, smartInventoryTabs } from '@/lib/smart-inventory';
 import { AssignedOrders } from '@/components/assigned-orders';
@@ -38,6 +41,7 @@ import { ProductionPosReport } from '@/components/production-pos-report';
 import { ProductionPosRegister } from '@/components/production-pos-register';
 import { ProductionHeaderPage } from '@/components/production-header';
 import { StockChangesPage } from '@/components/stock-changes-page';
+import { canAccessStockChanges, stockChangeTitle, type StockChangeMode } from '@/lib/stock-changes';
 import { ProductionStockHistory } from '@/components/production-stock-history';
 import { StockReport } from '@/components/stock-report';
 import { LocationsPage } from '@/components/locations-page';
@@ -51,6 +55,7 @@ import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
 import { canOperate } from '@/lib/operations';
 import { connectedCatalogConfigured, connectedHomepageConfigured, mayReadConnectedOrders } from '@/lib/connected-catalog';
 import { homepageAdminPath, homepageDeskPath, legacyHomepageViews } from '@/lib/homepage-merchandising';
+import { marketplaceWorkspacePath } from '@/lib/connected-marketplace-contract';
 import { ConnectedHomepage } from './connected-homepage';
 import { ConnectedStockWorkspace } from './connected-catalog-product/workspace';
 import { ApprovedDevicesWorkspace, CatalogSearchMaintenanceWorkspace } from './connected-catalog-discovery';
@@ -59,6 +64,13 @@ export type DeskWorkspaceProps = {
   params: Promise<{ section: string; view?: string[] }>;
   searchParams: Promise<Query>;
 };
+
+const stockWorkspaceLinks: [StockChangeMode, string][] = [
+  ['adjustment', 'adjustments/create'],
+  ['transfer', 'transfers/create'],
+  ['outlet-update', 'outlet-update'],
+  ['warehouse-update', 'warehouse-update'],
+];
 
 export async function DeskWorkspace({ params, searchParams, production }: DeskWorkspaceProps & {
   production?: { path: string; query: string };
@@ -78,6 +90,12 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
+  const purple = usesPurpleAdminLayout();
+  const bangladeshDesk = purple && region === 'BD';
+  const marketplaceAvailable = purple && marketplaceWorkspaceAvailable(auth);
+  const stockHistoryAvailable = purple && has(auth.staff, 'stock.view');
+  const stockActions = purple && advancedEnabled() && canWrite(auth.staff);
+  const newPosSale = bangladeshDesk && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.view') && has(auth.staff, 'pos.create');
   const categoryView = sectionId === 'catalog' && ['categories', 'subcategories', 'taxonomy'].includes(view[0] ?? '');
   const sectionResources = Object.entries(resources[sectionId] ?? {})
     .filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
@@ -105,6 +123,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
   if (sectionId === 'orders' && connectedCatalogConfigured() && mayReadConnectedOrders(auth)) tabs.push(['marketplace', 'Marketplace orders']);
+  if (sectionId === 'markets' && marketplaceAvailable) tabs.push(['marketplace', 'Marketplace operations']);
+  if (sectionId === 'inventory' && stockHistoryAvailable) tabs.push(['transfer-history', 'Inventory transfer history']);
   if (allowCheckout) {
     if (sectionId === 'markets') tabs.push(['checkout', integrated ? 'Step 9 checkout settings' : 'Storefront controls']);
     else tabs.unshift(['checkout', integrated ? 'Checkout receipts' : 'Checkout methods']);
@@ -116,6 +136,13 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   if (sectionId === 'payments' && accounting) tabs.push(['accounting', 'Accounting']);
   const active = categoryView ? 'categories' : view[0] ?? tabs[0]?.[0];
   const inSmartInventory = sectionId === 'inventory' && inventoryTabs.some(([key]) => key === active);
+  const inventoryActions = stockActions ? stockWorkspaceLinks
+    .filter(([mode]) => canAccessStockChanges(auth.staff, mode))
+    .map(([mode, path]) => ({ label: stockChangeTitle[mode], path: inventoryPath + '/' + path })) : [];
+  const workflowShortcuts = [
+    ...(sectionId === 'inventory' ? inventoryActions : []),
+    ...(sectionId === 'pos' && newPosSale ? [{ label: 'New POS sale', path: '/desk/pos/editor' }] : []),
+  ];
   const purchaseLinks = [
     ...(has(auth.staff, 'purchase.view') ? [{ id: 'all', label: 'All Purchases', href: url(purchasePath, { region }) }] : []),
     ...(canOperate(auth.staff, 'purchase-rate') ? [{ id: 'new', label: 'Default Purchase Rate', href: url(rateFormPath, { region }) }] : []),
@@ -139,7 +166,15 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     ...managedViewsFor(auth.staff,item.id)
       .map(([key,label]) => ({label,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
     ...(item.id === 'payments' && accounting ? [{label:'Accounting', href:url('/desk/payments/accounting', {region}), description:'Regional journals and HQ statements'}] : []),
-    ...(item.id === 'inventory' ? inventoryTabs.map(([key, label]) => ({label, href: url(inventoryPath + '/' + key, { region }), description: 'Smart Inventory'})) : []),
+    ...(item.id === 'markets' && marketplaceAvailable ? [{label:'Marketplace operations', href:url(marketplaceWorkspacePath, {region}), description:'Market settings, sellers and listing review'}] : []),
+    ...(item.id === 'pos' && newPosSale ? [{label:'New POS sale', href:url('/desk/pos/editor', {region}), description:'Point of sale'}] : []),
+    ...(item.id === 'inventory' ? [
+      ...inventoryTabs.map(([key, label]) => ({label, href: url(inventoryPath + '/' + key, { region }), description: 'Smart Inventory'})),
+      ...inventoryActions.map(({ label, path }) => ({ label, href: url(path, { region }), description: 'Inventory' })),
+      ...(stockHistoryAvailable ? [{label:'Inventory transfer history', href:url('/desk/inventory/transfer-history', {region}), description:'Inventory'}] : []),
+    ] : []),
+    ...(purple && item.id === 'content' && connectedHomepage && has(auth.staff, 'cms.view') ?
+      [{label:'Homepage', href:url(homepageDeskPath, {region}), description:'Storefront content and merchandising'}] : []),
   ]).concat(purchaseLinks.map(link => ({ ...link, description: 'Purchases' })))
     .map(destination => [destination.href, destination])).values()];
   const resource = active && resources[sectionId]?.[active];
@@ -153,7 +188,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'overview' && view.length === 1 && view[0] === 'classic') content = production ? await ProductionClassicOverview({auth,q,region}) : await ClassicDashboard({auth,q,region});
     else if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region,production:Boolean(production)});
     else if (sectionId === 'reports' && view.length < 2) content = await Reports({ auth, id: view[0], q, region, production: Boolean(production) });
-    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q}/>;
+    else if (sectionId === 'workflows' && !view.length) content = <WorkflowLibrary auth={auth} q={q} region={purple ? region : undefined}/>;
     else if (sectionId === 'settings' && view.length === 1 && ['current-plan','renew-subscription'].includes(view[0]) && (production || superAdmin(auth.staff))) {
       const title = view[0] === 'current-plan' ? 'Current Plan' : 'Renew Subscription';
       content = production ? <ProductionSubscription name={title}/> : <><PageHeading eyebrow="ADMINISTRATION / SUBSCRIPTION" title={title} description="Feature coming soon."/>
@@ -165,6 +200,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (sectionId === 'payments' && active === 'transactions' && transactions) content = await TransactionPage({ auth, q, region, id: view[1] });
     else if (sectionId === 'payments' && active === 'accounting' && view.length <= 1) content = await AccountingPage({ auth, q, region });
+    else if (marketplaceAvailable && sectionId === 'markets' && active === 'marketplace' && view.length === 1)
+      content = await MarketplaceWorkspace({ auth, region, q });
     else if (allowCheckout && active === 'checkout' && view.length < 2) {
       if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});
       else if (sectionId === 'markets') content = <>
@@ -176,7 +213,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         <CommerceReceipts key={param(q, 'receipt')} writable={canWrite(auth.staff)} initial={param(q, 'receipt')}/>
       </>;
     }
-    else if (production && sectionId === 'content' && active === 'announcements' && !view[1]) {
+    else if ((production || bangladeshDesk) && sectionId === 'content' && active === 'announcements' && !view[1]) {
       content = await ProductionHeaderPage({ auth, region });
     }
     else if (sectionId === 'content' && view.length === 1 && active === 'homepage') {
@@ -215,10 +252,16 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await CatalogRegistry({ auth, q, region, id: view[1], kind: active, production: Boolean(production) });
     }
     else if (sectionId === 'markets' && active === 'countries') content = await CatalogRegistry({ auth, q, region, id: view[1], kind: 'countries', production: Boolean(production) });
-    else if (sectionId === 'marketing' && active === 'coupons' && production) content = await ProductionCouponWorkspace({ auth, region, id: view[1], q });
+    else if (sectionId === 'marketing' && active === 'coupons' &&
+      (production || bangladeshDesk && (!view[1] || view[1] === 'new' || param(q, 'mode') === 'details')))
+      content = await ProductionCouponWorkspace({ auth, region, id: view[1], q, desk: !production });
     else if (sectionId === 'marketing' && active === 'coupons' && view[1]) content = await CouponEditor({ auth, region, id: view[1] === 'new' ? undefined : view[1] });
-    else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
-    else if (production && sectionId === 'pos' && active === 'sales' && view.length === 1) content = await ProductionPosRegister({ auth, q, region });
+    else if ((production || bangladeshDesk) && sectionId === 'pos' && active === 'report' && view.length === 1)
+      content = await ProductionPosReport({ auth, q, region, path: production ? undefined : '/desk/pos/report' });
+    else if ((production || bangladeshDesk) && sectionId === 'pos' && active === 'sales' && view.length === 1)
+      content = await ProductionPosRegister({ auth, q: production ? q : { ...q, saleSerialId: param(q, 'saleSerialId') ?? param(q, 'q') },
+        region, path: production ? undefined : '/desk/pos/sales',
+        editPath: production ? undefined : '/desk/pos/editor' });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region, production: Boolean(production) });
     else if (sectionId === 'orders' && active === 'marketplace' && view.length === 1) {
       if (!connectedCatalogConfigured()) throw new ApiError(404);
@@ -245,9 +288,14 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'inventory' && active === 'barcode-logs' && view.length === 1) content = await BarcodeLogs({ auth, q, region, production: Boolean(production) });
     else if (sectionId === 'inventory' && active === 'stock' && !view[1]) content = connectedCatalogConfigured() && param(q, 'catalog') !== 'legacy'
       ? await ConnectedStockWorkspace({ auth, q, region }) : await StockReport({ auth, q, region, production: Boolean(production) });
-    else if (production && sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && !view[1]) {
-      content = await ProductionStockHistory({ auth, region, q, mode: active === 'adjustments' ? 'adjustment'
-        : production.path === '/dashboard/inventory/transfer-history' ? 'inventory' : 'transfer' });
+    else if (sectionId === 'inventory' && !view[1] && (
+      active === 'adjustments' && (production || stockHistoryAvailable && has(auth.staff, 'business_locations.view')) ||
+      active === 'transfers' && (production || stockHistoryAvailable) ||
+      active === 'transfer-history' && stockHistoryAvailable
+    )) {
+      const inventoryHistory = active === 'transfer-history' || production?.path === '/dashboard/inventory/transfer-history';
+      content = await ProductionStockHistory({ auth, region, q, mode: active === 'adjustments' ? 'adjustment' : inventoryHistory ? 'inventory' : 'transfer',
+        route: production ? undefined : inventoryPath + '/' + active });
     }
     else if (sectionId === 'inventory' && (active === 'adjustments' || active === 'transfers') && view[1] === 'create') {
       content = await StockChangesPage({ auth, region, mode: active === 'adjustments' ? 'adjustment' : 'transfer', production: Boolean(production) });
@@ -279,13 +327,14 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       description={denied ? 'Your account does not have access to this view or operating region.' : 'The recovery API could not load this view.'}/>
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
-  if (production) return <ProductionAdminShell staff={{ name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions }}
+  if (production && !purple) return <ProductionAdminShell staff={{ name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions }}
     region={region} path={production.path} query={production.query}
     readOnly={publicSandbox()} fraud={fraud} connectedCatalog={connectedCatalogConfigured()} connectedHomepage={connectedHomepage}>{content}</ProductionAdminShell>;
   return <Shell section={section} nav={nav} staff={{name:auth.staff.name,role:auth.staff.role}} region={region}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
     purchaseLinks={purchaseLinks} activePurchase={activePurchase}
-    regionPath={activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
+    regionPath={production?.path ?? (activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : ''))}
+    regionSearch={production?.query} purple={purple}
     readOnly={publicSandbox()} environment={connection().name} fraud={fraud} international={has(auth.staff,'international.access')} destinations={destinations}>
     {!!tabs.length && !activePurchase && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active || (key === 'barcodes' && inSmartInventory) ? 'page' : undefined}>{label}</Link>)}</nav>}
@@ -293,6 +342,10 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       {inventoryTabs.map(([key, label]) => <Link key={key} href={url(inventoryPath + '/' + key, { region })}
         aria-current={key === active ? 'page' : undefined}>{label}</Link>)}
       {has(auth.staff, 'purchase.view') && <Link href={url(inventoryPath + '/purchases', { region })}>All Purchases</Link>}
+    </nav>}
+    {!!workflowShortcuts.length && <nav className="tabs" aria-label={section.label + ' actions'}>
+      {workflowShortcuts.map(({ label, path }) => <Link key={path} href={url(path, { region })}
+        aria-current={path === '/desk/' + sectionId + '/' + view.join('/') ? 'page' : undefined}>{label}</Link>)}
     </nav>}
     {content}
   </Shell>;

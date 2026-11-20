@@ -54,9 +54,9 @@ export function PosRangeFilter({ from, to, range, today }: { from: string; to: s
 type Dialog = { row: PosRegisterRow; action: 'return' | 'delete'; detail?: PosReturnDetails };
 const optionalColumns: ReadonlySet<PosColumn> = new Set(['due', 'note', 'paymentNote']);
 
-export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, canSeeProfit, canEdit, canDelete }: {
+export function PosRegisterTable({ rows, total, active, page, size, path = posRegisterPath, editPath = '/dashboard/pos/edit', canSeeCost, canSeeProfit, canEdit, canDelete }: {
   rows: PosRegisterRow[]; total: number; active: Record<string, string>; page: number; size: PosPageSize; canSeeCost: boolean;
-  canSeeProfit: boolean; canEdit: boolean; canDelete: boolean;
+  canSeeProfit: boolean; canEdit: boolean; canDelete: boolean; path?: string; editPath?: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<PosColumn[]>([]);
@@ -68,7 +68,7 @@ export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, 
   const shown = columns.filter(([key]) => !optionalColumns.has(key) || selected.includes(key));
   const actions = canEdit || canDelete;
   const perPage = size === 'all' ? Math.max(1, total) : size;
-  const route = (params: Record<string, string>, path = posRegisterPath) => adminPath(path) + '?' +
+  const route = (params: Record<string, string>, destination = path) => adminPath(destination) + '?' +
     new URLSearchParams(Object.entries({ ...active, ...params }).filter(([, value]) => value)).toString();
   async function show(row: PosRegisterRow, action: Dialog['action']) {
     setError('');
@@ -125,7 +125,7 @@ export function PosRegisterTable({ rows, total, active, page, size, canSeeCost, 
             <Popover.Trigger aria-label={'Actions for sale ' + row.serial}><MoreHorizontal size={18}/></Popover.Trigger>
             <Popover.Portal><Popover.Content className={styles.rowActions} align="start" sideOffset={4} collisionPadding={8}
               aria-label={'Sale ' + row.serial + ' actions'}>
-              {canEdit && <Popover.Close asChild><a href={adminPath('/dashboard/pos/edit/' + row.id)}><Pencil size={14}/> Edit</a></Popover.Close>}
+              {canEdit && <Popover.Close asChild><a href={adminPath(editPath + '/' + row.id)}><Pencil size={14}/> Edit</a></Popover.Close>}
               {canEdit && <Popover.Close onClick={() => void show(row, 'return')}><RotateCcw size={14}/> Sale Return</Popover.Close>}
               {canDelete && <Popover.Close className={styles.dangerText} onClick={() => void show(row, 'delete')}><Trash2 size={14}/> Delete</Popover.Close>}
             </Popover.Content></Popover.Portal>

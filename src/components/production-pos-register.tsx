@@ -14,7 +14,9 @@ const metrics = [
   ['discount', 'TOTAL DISCOUNT GIVEN', BadgePercent], ['due', 'AMOUNT DUE', Clock3], ['count', 'NUMBER OF SALES', BarChart3],
 ] as const;
 
-export async function ProductionPosRegister({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
+export async function ProductionPosRegister({ auth, q, region, path = posRegisterPath, editPath = '/dashboard/pos/edit' }: {
+  auth: Session; q: Query; region: Region; path?: string; editPath?: string;
+}) {
   if (region !== 'BD') throw new ApiError(404);
   const filters = await posRegisterFilters(q, auth);
   const [{ rows, total, tooMany }, totals, staff] = await Promise.all([
@@ -31,7 +33,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
     <h1>Sales Reports{from && <> for <strong>{posRegisterTitle(filters)}</strong></>}</h1>
     <details className={styles.filter} open>
       <summary><Filter size={19}/> Filter</summary>
-      <PosRegisterFilterForm>
+      <PosRegisterFilterForm path={path}>
         <input type="hidden" name="size" value={size}/>
         <label>Business Location<select name="businessLocation" defaultValue={location} disabled={Boolean(filters.assigned)} aria-label="Business Location">
           <option value="">All</option>
@@ -44,7 +46,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
         </select></label>}
         <PosRangeFilter key={JSON.stringify([range, from, to])} from={from} to={to} range={range} today={today}/>
         <div className={styles.filterButtons}>
-          <a className={styles.primary} href={adminPath(url(posRegisterPath, { size: String(size) }))}>Clear Filter</a>
+          <a className={styles.primary} href={adminPath(url(path, { size: String(size) }))}>Clear Filter</a>
         </div>
       </PosRegisterFilterForm>
     </details>
@@ -54,7 +56,7 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
       {metrics.filter(([key]) => Object.hasOwn(totals, key)).map(([key, label, Icon]) => <article key={key} data-metric={key}>
         <span><Icon size={15}/></span><div>{label}</div><strong>{key !== 'count' && '৳ '}{posMoney(totals[key] ?? 0)}</strong></article>)}
     </div>
-    <PosRegisterTable rows={rows} total={total} active={active} page={page} size={size} canSeeCost={filters.canSeeCost}
+    <PosRegisterTable rows={rows} total={total} active={active} page={page} size={size} path={path} editPath={editPath} canSeeCost={filters.canSeeCost}
       canSeeProfit={filters.canSeeProfit} canEdit={writable && has(auth.staff, 'pos.update')}
       canDelete={writable && has(auth.staff, 'pos.delete')}/>
   </section>;

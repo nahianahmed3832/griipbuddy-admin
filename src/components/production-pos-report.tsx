@@ -7,7 +7,6 @@ import { has, superAdmin, type Region } from '@/lib/sections';
 import { PosRangeFilter, PosRegisterFilterForm } from './production-pos-register-controls';
 import styles from './production-pos-report.module.css';
 
-const path = '/dashboard/pos/report';
 const metrics = [
   ['Total Sales', 'totalSales', DollarSign],
   ['Total Profit', 'totalProfit', TrendingUp],
@@ -17,7 +16,9 @@ const metrics = [
   ['Number of Sales', 'numberOfSales', BarChart3],
 ] as const;
 
-export async function ProductionPosReport({ auth, q, region }: { auth: Session; q: Query; region: Region }) {
+export async function ProductionPosReport({ auth, q, region, path = '/dashboard/pos/report' }: {
+  auth: Session; q: Query; region: Region; path?: string;
+}) {
   if (region !== 'BD' || !['pos.view', 'purchase.price.view', 'potential.profit.view'].every(permission => has(auth.staff, permission))) throw new ApiError(403);
   const today = posDay();
   const fromQuery = param(q, 'from');

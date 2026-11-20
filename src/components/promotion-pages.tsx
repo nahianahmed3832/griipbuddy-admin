@@ -21,16 +21,20 @@ function summary(row: RecordData): CouponSummary {
     used: Number(row.usedCount) || 0, active: row.isActive === true, expires: str(row.expireAt) };
 }
 
-export async function ProductionCouponWorkspace({ auth, region, id, q }: { auth: Session; region: Region; id?: string; q: Query }) {
+export async function ProductionCouponWorkspace({ auth, region, id, q, desk = false }: {
+  auth: Session; region: Region; id?: string; q: Query; desk?: boolean;
+}) {
   if (!has(auth.staff, 'coupon.view')) throw new ApiError(403);
   const writable = canWrite(auth.staff);
   const canCreate = writable && has(auth.staff, 'coupon.create');
+  const listPath = desk ? '/desk/marketing/coupons' : undefined;
   if (id === 'new') {
     if (!canCreate) throw new ApiError(403);
     const tree = has(auth.staff, 'product.view') ? await loadCategoryTree(auth) : [];
     const now = Date.now();
     const day = new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC' });
-    return <ProductionCouponCreate region={region} tree={tree} starts={day.format(now)} expires={day.format(now + 7 * 86400000)} openedAt={now}/>;
+    return <ProductionCouponCreate region={region} tree={tree} starts={day.format(now)} expires={day.format(now + 7 * 86400000)} openedAt={now}
+      listPath={listPath} initialActive={!desk}/>;
   }
   if (id) {
     if (!mongoId(id)) throw new ApiError(404);
@@ -41,15 +45,21 @@ export async function ProductionCouponWorkspace({ auth, region, id, q }: { auth:
       .map((key, index) => [amounts[index], row[key] == null || row[key] === 0 ? '—' : String(row[key])]);
     detail.push(['First Order Only', row.firstOrderOnly === true ? 'Yes' : 'No']);
     const targeting = ['Categories','Sub Categories','Sub-Sub Categories','Specific Products','Variants'];
-    return <ProductionCouponDetail region={region} coupon={{ ...summary(row), description: str(row.description), starts: str(row.startAt), created: str(row.createdAt), details: detail,
+    const editUrl = listPath && writable && has(auth.staff, 'coupon.update') ? url(listPath + '/' + id, { region }) : undefined;
+    return <ProductionCouponDetail region={region} listPath={listPath} editUrl={editUrl}
+      coupon={{ ...summary(row), description: str(row.description), starts: str(row.startAt), created: str(row.createdAt), details: detail,
       targeting: couponScopes.slice(0, 5).map(([key], index) => [targeting[index], arr(row[key]).map(item => str(obj(item).name) || str(obj(item).name_en) || str(obj(item).sku) || reference(item)).filter(Boolean)]) }}/>;
   }
   const requested = param(q, 'limit') ?? '';
   const limit = couponPageSizes.includes(requested) ? requested : '20';
   const all = limit === 'all';
-  const list = await loadResource(resources.marketing.coupons, auth, all ? { page: '1' } : q, region, all ? 10000 : Number(limit));
+  const listQuery = all ? { ...(desk ? q : {}), page: '1' } : q;
+  const list = await loadResource(resources.marketing.coupons, auth, listQuery, region, all ? 10000 : Number(limit));
+  const filter = param(q, 'filter');
+  const query = desk ? { q: list.search, filter: filter === 'true' || filter === 'false' ? filter : '' } : undefined;
   return <ProductionCouponList rows={list.rows.map(summary).filter(row => mongoId(row.id))} region={region} limit={limit} total={list.total ?? list.rows.length}
-    page={list.page} hasNext={!all && list.hasNext} canCreate={canCreate} canEdit={writable && has(auth.staff, 'coupon.update')} canDelete={writable && has(auth.staff, 'coupon.delete')}/>;
+    page={list.page} hasNext={!all && list.hasNext} canCreate={canCreate} canEdit={writable && has(auth.staff, 'coupon.update')} canDelete={writable && has(auth.staff, 'coupon.delete')}
+    listPath={listPath} createPath={listPath ? listPath + '/new' : undefined} query={query}/>;
 }
 export async function CouponEditor({ auth, region, id }: { auth: Session; region: Region; id?: string }) {
   const allowed = canWrite(auth.staff);

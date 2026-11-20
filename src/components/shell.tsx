@@ -6,6 +6,8 @@ import Image from 'next/image';
 import icon from '@/app/icon.png';
 import { ArrowRight, Bell, Check, ChevronDown, Command, LogOut, Menu, Search, ShoppingCart, X } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
+import { catalogBeforeRegionChange } from '@/lib/connected-catalog-client';
+import { homepageAdminPath, homepageDeskPath } from '@/lib/homepage-merchandising';
 import type { Region, Section, Staff } from '@/lib/sections';
 import { SectionIcon } from './icons';
 
@@ -17,10 +19,10 @@ export function Brand() {
   return <span className="brand"><Image className="brand-icon" src={icon} width={38} height={38} alt="" unoptimized/><span>GriipBuddy<small>Commerce Admin</small></span></span>;
 }
 
-export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, fraud, international, destinations, reportLinks, activeReport, purchaseLinks, activePurchase, children }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[];
+export function Shell({ section, nav, staff, region, regionPath, regionSearch, environment, readOnly, fraud, international, destinations, reportLinks, activeReport, purchaseLinks, activePurchase, purple, children }: {
+  section: Nav; nav: Nav[]; staff: Pick<Staff,'name'|'role'>; region: Region; regionPath: string; regionSearch?: string; environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[];
   reportLinks: (Destination & {id:string})[]; activeReport?: string;
-  purchaseLinks: (Destination & {id:string})[]; activePurchase?: string; children: ReactNode;
+  purchaseLinks: (Destination & {id:string})[]; activePurchase?: string; purple?: boolean; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -35,6 +37,17 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
   const hasOverview = nav.some(item => item.id === 'overview');
   const alerts = hasOverview ? '/desk/overview' + regionQuery + '#work-queue' : '/desk/operations/queue' + regionQuery;
+
+  function regionHref(value: Region) {
+    const params = new URLSearchParams(regionSearch);
+    if (value === 'INTERNATIONAL') params.set('region', value);
+    else params.delete('region');
+    if (value !== region) {
+      params.delete('page');
+      if (regionPath.startsWith(homepageAdminPath) || regionPath === homepageDeskPath) params.delete('scope');
+    }
+    return regionPath + (params.size ? '?' + params : '');
+  }
 
   function openSearch() {
     setQuery('');
@@ -75,7 +88,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
     return () => { window.removeEventListener('griip-admin-saved', saved); clearTimeout(timeout); };
   }, []);
 
-  return <div className="shell">
+  return <div className="shell" data-admin-layout={purple ? 'purple' : undefined}>
     <a className="skip-link" href="#main">Skip to content</a>
     {open && <div className="nav-overlay" aria-hidden="true" onClick={() => setOpen(false)} />}
     <aside ref={sidebar} className={'sidebar ' + (open ? 'sidebar-open' : '')} id="navigation" role={open ? 'dialog' : undefined}
@@ -122,8 +135,13 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
         <div className="header-actions">
           {international ? <details className="header-menu"><summary aria-label={'Operating region: ' + (region === 'BD' ? 'Bangladesh' : 'International')}><SectionIcon name="markets" size={16}/><span className="market-label">{region === 'BD' ? 'Bangladesh' : 'International'}</span><ChevronDown size={14}/></summary>
             <div className="header-pop"><strong>Operating region</strong>{(['BD', 'INTERNATIONAL'] as const).map(value => <Link key={value}
-              href={regionPath + (value === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '')} aria-current={region === value ? 'true' : undefined}
-              onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{value === 'BD' ? 'Bangladesh' : 'International'}</Link>)}</div>
+              href={regionHref(value)} aria-current={region === value ? 'true' : undefined}
+              onClick={event => {
+                if (purple && (value === region || !window.dispatchEvent(new Event(catalogBeforeRegionChange, { cancelable: true })))) {
+                  event.preventDefault();
+                }
+                event.currentTarget.closest('details')?.removeAttribute('open');
+              }}>{value === 'BD' ? 'Bangladesh' : 'International'}</Link>)}</div>
           </details> : <span className="market-chip"><SectionIcon name="markets" size={16}/><span className="market-label">Bangladesh</span></span>}
           {fraud && <Link className="icon-button notification" aria-label="Fraud checker" title="Fraud checker" href="/desk/orders/fraud-check"><Search size={17}/></Link>}
           <Link className="icon-button notification" aria-label="Operational alerts" href={alerts}><Bell size={18}/></Link>
@@ -135,7 +153,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
         </div>
       </header>
       <main id="main" className="main-content" tabIndex={-1}>{readOnly && <p className="notice">Public preview · Read-only sample data</p>}{children}</main>
-      <footer className="workspace-footer"><span>GriipBuddy Admin</span><span>{environment} · synthetic records</span></footer>
+      <footer className="workspace-footer"><span>GriipBuddy Admin</span><span>{environment}{(!purple || readOnly) && ' · synthetic records'}</span></footer>
     </div>
     <div aria-live="polite" aria-atomic="true" className="workspace-toast">{notice && <><Check size={17} aria-hidden/><span>{notice}</span>
       <button type="button" className="icon-button" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={15} aria-hidden/></button></>}</div>

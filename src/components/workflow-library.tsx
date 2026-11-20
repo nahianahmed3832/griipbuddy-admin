@@ -1,28 +1,31 @@
 import Link from 'next/link';
 import { BookOpen, LockKeyhole, Search } from 'lucide-react';
-import { type Session } from '@/lib/api';
+import { url, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { workflowRoutes } from '@/lib/workflows';
+import type { Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { Empty } from './tables';
 
-export function WorkflowLibrary({ auth, q }: { auth: Session; q: Query }) {
+export function WorkflowLibrary({ auth, q, region }: { auth: Session; q: Query; region?: Region }) {
   const search = (param(q,'q') ?? '').trim().toLowerCase().slice(0,80);
   const entries = workflowRoutes(auth.staff);
   const matches = entries.filter(entry => (entry.name + ' ' + entry.group).toLowerCase().includes(search));
   const groups = [...new Set(matches.map(entry => entry.group))];
+  const regionParams = { region: region === 'INTERNATIONAL' ? region : undefined };
   return <>
     <PageHeading eyebrow="ADMINISTRATION / COMPATIBILITY" title="Workflow library" description="Find current destinations for routes from the previous admin."/>
     <div className="notice"><BookOpen size={17}/> For record pages, open the directory and choose a record. Routes with an outstanding dependency or an unverified workflow are marked below.</div>
     <form className="panel filters" action={adminPath('/desk/workflows')}><label className="search-input"><Search size={16}/><input name="q" defaultValue={search} aria-label="Search workflows" placeholder="Search routes or modules"/></label>
-      <button className="button primary">Search</button><Link href="/desk/workflows" className="button subtle">Reset</Link><span className="muted">{matches.length} routes</span></form>
+      {regionParams.region && <input type="hidden" name="region" value={regionParams.region}/>}
+      <button className="button primary">Search</button><Link href={url('/desk/workflows', regionParams)} className="button subtle">Reset</Link><span className="muted">{matches.length} routes</span></form>
     {groups.map(group => <section className="panel workflow-panel" key={group}>
       <div className="panel-header"><div><h2>{group}</h2><p>{matches.filter(entry => entry.group === group).length} routes</p></div></div>
       <div className="workflow-grid">{matches.filter(entry => entry.group === group).map(entry =>
         <div key={entry.name} className="workflow-row"><div><span>{entry.name.replaceAll('-', ' ')}</span>
           {entry.pending && <p className="muted"><small>{entry.pending}</small></p>}</div>
-          {entry.href ? <Link href={entry.href}>{entry.dynamic ? 'Open directory' : 'Open workspace'}</Link> : <small>Not available</small>}
+          {entry.href ? <Link href={url(entry.href, regionParams)}>{entry.dynamic ? 'Open directory' : 'Open workspace'}</Link> : <small>Not available</small>}
         </div>)}</div>
     </section>)}
     {!matches.length && <Empty title="No workflows match" detail="Try another search or check your staff permissions."/>}
