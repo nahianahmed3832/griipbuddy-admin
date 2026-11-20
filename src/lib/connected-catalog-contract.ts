@@ -1,11 +1,12 @@
 import { connectedOrderActions, marketplaceOrderQueues, orderIdentifier, type MarketplaceOrderQueue } from './connected-order-contract';
+import { connectedMarketplaceActions, sellerSearchLimit } from './connected-marketplace-contract';
 import { isMarketId, type MarketId } from '../components/connected-catalog-product/markets';
 
 const homepageReads = ['homepage-scopes', 'homepage', 'homepage-preview', 'homepage-references', 'homepage-asset'] as const;
 type HomepageReadName = typeof homepageReads[number];
 export type CatalogRead = { read: 'categories' | 'products' | 'product' | 'inventory' | 'warehouses' | 'devices' | 'asset' |
   'category-impact' | 'attribute-impact' | 'collection-products' | 'device' | 'search-status' |
-  'orders' | 'order' | 'order-cases' | 'order-case' | HomepageReadName; id?: string; q?: string; page?: number;
+  'orders' | 'order' | 'order-cases' | 'order-case' | 'marketplace-workspace' | HomepageReadName; id?: string; q?: string; page?: number;
   menuKey?: string; locale?: string; collectionId?: string; scope?: 'direct' | 'descendants' | 'all' | 'search'; input?: Record<string, unknown>;
   homepageScope?: string; marketId?: string; previewAt?: string; kind?: 'products' | 'categories' | 'collections' | 'media';
   state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; offerMarketId?: MarketId; queue?: MarketplaceOrderQueue; closed?: boolean };
@@ -17,6 +18,9 @@ export const catalogMediaLimit = 6 * 1024 * 1024;
 
 const reads = new Set(['categories', 'products', 'product', 'inventory', 'warehouses', 'devices', 'category-impact', 'attribute-impact', 'collection-products',
   'device', 'search-status', 'orders', 'order', 'order-cases', 'order-case']);
+const marketplaceActions = new Set<string>(connectedMarketplaceActions);
+const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
+const orderActions = new Set<string>(connectedOrderActions);
 export const catalogActions = new Set([
   'category.save', 'category.move', 'category.archive', 'category.reorder', 'category.translation',
   'category.presentation', 'category.attribute', 'attribute.save', 'menu.save', 'collection.save',
@@ -25,11 +29,19 @@ export const catalogActions = new Set([
   'offer.configure', 'inventory.initialize', 'inventory.route', 'inventory.movement', 'inventory.transfer', 'media.upload',
   'inventory.warehouse.create',
   'homepage.save', 'homepage.publish', 'homepage.restore', 'homepage.inherit', 'homepage.media',
-  'search.reconcile', 'search.rebuild', ...connectedOrderActions,
+  'search.reconcile', 'search.rebuild', ...connectedOrderActions, ...marketplaceActions,
 ]);
 
 export function isHomepageRequest(request: CatalogRequest) {
   return 'read' in request ? homepageReads.some(read => request.read === read) : request.action.startsWith('homepage.');
+}
+
+export function isMarketplaceRequest(request: CatalogRequest) {
+  return 'read' in request ? request.read === 'marketplace-workspace' : marketplaceActions.has(request.action);
+}
+
+export function isConnectedMarketplaceOrderRequest(request: CatalogRequest) {
+  return 'read' in request ? orderReads.has(request.read) : orderActions.has(request.action);
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -38,6 +50,12 @@ function object(value: unknown): value is Record<string, unknown> {
 
 export function parseCatalogRequest(value: unknown): CatalogRequest | null {
   if (!object(value)) return null;
+  if (value.read === 'marketplace-workspace') {
+    if (Object.keys(value).some(key => !['read', 'q', 'page'].includes(key)) ||
+      (value.q !== undefined && (typeof value.q !== 'string' || value.q.length > sellerSearchLimit || /[\u0000-\u001f\u007f]/.test(value.q))) ||
+      (value.page !== undefined && (typeof value.page !== 'number' || !Number.isSafeInteger(value.page) || value.page < 1 || value.page > 10000))) return null;
+    return value as CatalogRead;
+  }
   if (homepageReads.some(read => read === value.read)) {
     const keys = Object.keys(value);
     if (value.read === 'homepage-scopes' && keys.length === 1) return { read: 'homepage-scopes' };

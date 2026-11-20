@@ -1,6 +1,6 @@
 import { ApiError, obj, sameOrigin, session } from '@/lib/api';
-import { connectedCatalog, connectedCatalogConfigured, connectedHomepageConfigured } from '@/lib/connected-catalog';
-import { catalogAssetPath, catalogMediaLimit, catalogRequestLimit, isHomepageRequest, parseCatalogRequest } from '@/lib/connected-catalog-contract';
+import { connectedCatalog, connectedCatalogConfigured, connectedHomepageConfigured, connectedMarketplaceConfigured } from '@/lib/connected-catalog';
+import { catalogAssetPath, catalogMediaLimit, catalogRequestLimit, isConnectedMarketplaceOrderRequest, isHomepageRequest, isMarketplaceRequest, parseCatalogRequest } from '@/lib/connected-catalog-contract';
 
 const headers = { 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex, nofollow' };
 const fail = (message: string, status: number) => Response.json({ error: message }, { status, headers });
@@ -37,12 +37,13 @@ export async function POST(request: Request) {
   try {
     const auth = await session();
     if (!auth) return fail('Sign in to manage the catalog.', 401);
-    if (!connectedCatalogConfigured() && !connectedHomepageConfigured()) return fail('The connected catalog is unavailable.', 404);
+    if (!connectedCatalogConfigured() && !connectedHomepageConfigured() && !connectedMarketplaceConfigured()) return fail('The connected catalog is unavailable.', 404);
     const payload = await readPayload(request);
     const catalog = parseCatalogRequest(payload.request);
     if (!catalog || ('read' in catalog && ['asset', 'homepage-asset'].includes(catalog.read)) || Object.keys(payload).some(key => !['region', 'request'].includes(key)) ||
         (payload.region !== 'BD' && payload.region !== 'INTERNATIONAL')) return fail('Choose a catalog command and region.', 400);
-    if (!isHomepageRequest(catalog) && !connectedCatalogConfigured()) return fail('The connected catalog is unavailable.', 404);
+    if (!isHomepageRequest(catalog) && !isMarketplaceRequest(catalog) && !connectedCatalogConfigured() &&
+        !(connectedMarketplaceConfigured() && isConnectedMarketplaceOrderRequest(catalog))) return fail('The connected catalog is unavailable.', 404);
     return Response.json({ data: await connectedCatalog(auth, payload.region, catalog) }, { headers });
   } catch (error) {
     if (error instanceof ApiError) return fail(error.message, error.status);

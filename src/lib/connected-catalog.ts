@@ -1,11 +1,11 @@
 import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import { ApiError, getRegion, obj, workspaceWritesEnabled, type Session } from './api';
-import { isHomepageRequest, type CatalogRequest } from './connected-catalog-contract';
+import { isConnectedMarketplaceOrderRequest, isHomepageRequest, isMarketplaceRequest, type CatalogRequest } from './connected-catalog-contract';
+import { isProtectedDevAdminOrigin } from './dev-admin-profile';
 import { has, superAdmin, type Region } from './sections';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
-const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
 const orderProgress = new Set(['order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking',
   'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh']);
 
@@ -16,18 +16,30 @@ export function connectedCatalogConfigured() {
 export function connectedHomepageConfigured() {
   if (process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_ENABLED !== '1') return false;
   return process.env.GRIIP_ADMIN_TARGET === 'fixture' || (process.env.GRIIP_ADMIN_TARGET === 'integration' &&
-    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
+    isProtectedDevAdminOrigin());
 }
 
-function connectedCatalogEndpoint(homepage: boolean) {
-  const raw = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_URL : process.env.GRIIP_MAIN_ADMIN_CATALOG_URL;
-  const secret = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_SECRET : process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET;
+export function connectedMarketplaceConfigured() {
+  return process.env.GRIIP_MAIN_ADMIN_MARKETPLACE_ENABLED === '1' && connectedHomepageConfigured() &&
+    (process.env.GRIIP_ADMIN_TARGET === 'fixture' || process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://admindev.griipbuddy.com');
+}
+
+export function connectedMarketplaceOrdersConfigured() {
+  return connectedCatalogConfigured() || connectedMarketplaceConfigured();
+}
+
+type BridgeChannel = 'catalog' | 'homepage' | 'marketplace';
+
+function connectedCatalogEndpoint(channel: BridgeChannel) {
+  const raw = channel === 'catalog' ? process.env.GRIIP_MAIN_ADMIN_CATALOG_URL : process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_URL;
+  const secret = channel === 'marketplace' ? process.env.GRIIP_MAIN_ADMIN_MARKETPLACE_SECRET
+    : channel === 'homepage' ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_SECRET : process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET;
   const profile = process.env.GRIIP_ADMIN_TARGET;
   const protectedDev = profile === 'integration';
   if (!raw || !secret || Buffer.byteLength(secret, 'utf8') < 32 || !['fixture', 'integration'].includes(profile ?? '')) {
     throw new ApiError(503, 'The connected catalog is unavailable in this workspace.');
   }
-  if (protectedDev && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN !== 'https://devadmin.griipbuddy.com') {
+  if (protectedDev && !isProtectedDevAdminOrigin()) {
     throw new ApiError(503, 'The connected catalog requires the protected development admin origin.');
   }
   let endpoint: URL;
@@ -57,6 +69,14 @@ export function mayEditConnectedHomepage(auth: Session) {
   return workspaceWritesEnabled() && has(auth.staff, 'cms.view') && has(auth.staff, 'cms.update');
 }
 
+export function mayReadConnectedMarketplace(auth: Session) {
+  return superAdmin(auth.staff);
+}
+
+export function mayManageConnectedMarketplace(auth: Session) {
+  return mayReadConnectedMarketplace(auth) && workspaceWritesEnabled();
+}
+
 export function mayEditConnectedTaxonomy(auth: Session) {
   return superAdmin(auth.staff) && workspaceWritesEnabled() && has(auth.staff, 'product.update');
 }
@@ -82,6 +102,11 @@ export function mayReadConnectedOrders(auth: Session, returns = false) {
   return has(auth.staff, 'order.view') && (!returns || (superAdmin(auth.staff) && has(auth.staff, 'order.return')));
 }
 
+export function mayUseConnectedMarketplaceOrders(auth: Session, returns = false) {
+  return mayReadConnectedOrders(auth, returns) &&
+    (connectedCatalogConfigured() || (connectedMarketplaceConfigured() && mayReadConnectedMarketplace(auth)));
+}
+
 export function mayEditConnectedOrder(auth: Session, action: string) {
   const { staff } = auth;
   if (!workspaceWritesEnabled() || !mayReadConnectedOrders(auth)) return false;
@@ -94,7 +119,7 @@ export function mayEditConnectedOrder(auth: Session, action: string) {
 
 function authorizeRequest(auth: Session, request: CatalogRequest) {
   if ('read' in request) {
-    if (orderReads.has(request.read)) {
+    if (isConnectedMarketplaceOrderRequest(request)) {
       if (!mayReadConnectedOrders(auth, request.read === 'order-cases' || request.read === 'order-case')) {
         throw new ApiError(403, 'Order access is unavailable.');
       }
@@ -147,26 +172,39 @@ function authorizeRequest(auth: Session, request: CatalogRequest) {
 
 export async function connectedCatalog<T = unknown>(auth: Session, region: Region, request: CatalogRequest): Promise<T> {
   const homepage = isHomepageRequest(request);
-  if (homepage) {
+  const marketplaceManagement = isMarketplaceRequest(request);
+  const marketplaceOrder = !connectedCatalogConfigured() && connectedMarketplaceConfigured() && isConnectedMarketplaceOrderRequest(request);
+  const marketplace = marketplaceManagement || marketplaceOrder;
+  if (marketplaceManagement) {
+    if (!connectedMarketplaceConfigured()) throw new ApiError(404, 'Marketplace management is unavailable.');
+    if (!mayReadConnectedMarketplace(auth) || ('action' in request && !mayManageConnectedMarketplace(auth))) {
+      throw new ApiError(403, 'Central owner access is required for Marketplace management.');
+    }
+  } else if (marketplaceOrder) {
+    if (!mayUseConnectedMarketplaceOrders(auth)) throw new ApiError(403, 'Marketplace order access is unavailable.');
+    authorizeRequest(auth, request);
+  } else if (homepage) {
     if (!connectedHomepageConfigured()) throw new ApiError(404, 'The connected Homepage is unavailable.');
     if (!has(auth.staff, 'cms.view') || ('action' in request && !mayEditConnectedHomepage(auth))) {
       throw new ApiError(403, 'Homepage access is unavailable for your account.');
     }
   } else authorizeRequest(auth, request);
-  const marketId = connectedCatalogMarket(auth, region, homepage);
+  const marketId = connectedCatalogMarket(auth, region, homepage || marketplace);
   if (request.input?.marketId !== undefined && request.input.marketId !== marketId) {
     throw new ApiError(409, 'Select the intended operating region before saving.');
   }
-  const { endpoint, secret } = connectedCatalogEndpoint(homepage);
+  const channel = marketplace ? 'marketplace' : homepage ? 'homepage' : 'catalog';
+  const { endpoint, secret } = connectedCatalogEndpoint(channel);
   const body = JSON.stringify({ issuedAt: Date.now(), nonce: randomUUID(), legacyId: auth.staff.id,
     central: superAdmin(auth.staff), marketId, request });
-  const signature = createHmac('sha256', secret).update('griip-main-admin-catalog-v1\n').update(body).digest('hex');
+  const signature = createHmac('sha256', secret).update(marketplace ? 'griip-main-admin-marketplace-v1\n' : 'griip-main-admin-catalog-v1\n')
+    .update(body).digest('hex');
   let response: Response;
   try {
     const timeout = 'action' in request && request.action === 'search.rebuild' ? 100_000 : 20_000;
     response = await fetch(endpoint, { method: 'POST', body, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(timeout),
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-griip-catalog-signature': signature,
-        ...(homepage && { 'x-griip-admin-channel': 'homepage' }) } });
+        ...(channel !== 'catalog' && { 'x-griip-admin-channel': channel }) } });
   } catch { throw new ApiError(503, 'The connected catalog could not be reached. Try again.'); }
   const payload = obj(await response.json().catch(() => null));
   if (!response.ok || !Object.hasOwn(payload, 'data')) {
