@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { catalogRequest } from '@/lib/connected-catalog-client';
-import { homepageSectionLabels, type HomepagePreviewData, type HomepageScope } from '@/lib/homepage-merchandising';
+import { homepageSectionLabels, homepageTileLayouts, type HomepagePreviewData, type HomepageScope } from '@/lib/homepage-merchandising';
 import type { Region } from '@/lib/sections';
 import { HomepageAsset } from './connected-homepage-reference';
 
@@ -11,6 +11,7 @@ export function ConnectedHomepagePreview({ scope, region, disabled }: { scope: H
   const market = scope.previews.find(option => option.marketId === marketId);
   const [locale, setLocale] = useState(market?.defaultLocale ?? '');
   const [previewAt, setPreviewAt] = useState('');
+  const [viewport, setViewport] = useState<'desktop' | 'mobile'>('desktop');
   const [data, setData] = useState<HomepagePreviewData>();
   const [error, setError] = useState('');
   const [waiting, setWaiting] = useState(false);
@@ -50,15 +51,36 @@ export function ConnectedHomepagePreview({ scope, region, disabled }: { scope: H
     {waiting && <p role="status">Finding eligible content for this market…</p>}
     {data && <div className="homepage-preview-content" aria-live="polite">
       <p>Draft preview · {market?.label} · {data.locale} · {data.currency}</p>
+      <div className="taxonomy-actions" role="group" aria-label="Preview viewport">
+        <button type="button" className="taxonomy-button" aria-pressed={viewport === 'desktop'} onClick={() => setViewport('desktop')}>Desktop</button>
+        <button type="button" className="taxonomy-button" aria-pressed={viewport === 'mobile'} onClick={() => setViewport('mobile')}>Mobile</button>
+      </div>
       {!data.sections.length && <p>No shopping sections have eligible content in this preview.</p>}
-      {data.sections.map(section => <article className="taxonomy-card" key={section.id}>
+      <div className="homepage-preview-frame" data-viewport={viewport}>{data.sections.map(section => <article className="taxonomy-card" key={section.id}>
         <h3>{section.title}</h3>
-        <p className="taxonomy-muted">{homepageSectionLabels[section.type]}</p>
+        <p className="taxonomy-muted">{section.tileLayout ? homepageTileLayouts[section.tileLayout] : homepageSectionLabels[section.type]}</p>
         {section.description && <p>{section.description}</p>}
         {section.image && <HomepageAsset image={section.image} region={region} />}
         {section.destination && <p className="taxonomy-muted">Destination {typeof section.destination === 'string'
           ? section.destination : section.destination.label ?? section.destination.href}</p>}
-        <div className="homepage-preview-tiles">
+        {section.tiles?.length ? <ul className="homepage-preview-showcase" data-layout={section.tileLayout}>
+          {section.tiles.map(tile => {
+            const mobile = viewport === 'mobile';
+            const image = mobile ? tile.mobileImage ?? tile.image : tile.image;
+            const focalPoint = mobile ? tile.mobileFocalPoint ?? tile.focalPoint : tile.focalPoint;
+            return <li key={tile.id}>
+              <div className="homepage-preview-tile">
+                {image && <div className="homepage-preview-tile-image"><HomepageAsset image={image} region={region} focalPoint={focalPoint} cover /></div>}
+                <div className="homepage-preview-tile-copy">
+                  <strong>{tile.title}</strong>
+                  {section.tileLayout !== 'SHORTCUTS' && <span>{tile.ctaLabel}</span>}
+                  {tile.product && <span>{new Intl.NumberFormat(data.locale, { style: 'currency', currency: data.currency }).format(tile.product.amountMinor / 100)}</span>}
+                </div>
+              </div>
+              <code className="homepage-preview-destination">{tile.href}</code>
+            </li>;
+          })}
+        </ul> : <div className="homepage-preview-tiles">
           {[...(section.categories ?? []), ...(section.collections ?? []), ...(section.products ?? [])].map(item => <div key={`${'amountMinor' in item ? 'product' : 'reference'}:${item.id}`} >
             {item.image && <HomepageAsset image={item.image} region={region} />}
             <strong>{item.name}</strong>
@@ -66,8 +88,8 @@ export function ConnectedHomepagePreview({ scope, region, disabled }: { scope: H
               currency: data.currency, style: 'currency',
             }).format(item.amountMinor / 100)}</p>}
           </div>)}
-        </div>
-      </article>)}
+        </div>}
+      </article>)}</div>
     </div>}
   </section>;
 }

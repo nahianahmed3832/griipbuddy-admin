@@ -5,17 +5,17 @@ import { useRef, useState, type FormEvent } from 'react';
 import { catalogBeforeRegionChange, catalogRequest } from '@/lib/connected-catalog-client';
 import { catalogUploadLimit } from '@/lib/connected-catalog-contract';
 import { adminPath } from '@/lib/paths';
-import { homepageSectionLabels, type HomepageDraft, type HomepageEditorData, type HomepageReference,
+import { homepageSectionLabels, homepageTileKinds, type HomepageDraft, type HomepageEditorData, type HomepageReference,
   type HomepageReferenceKind, type HomepageScope, type HomepageSection, type HomepageSectionType } from '@/lib/homepage-merchandising';
 import type { Region } from '@/lib/sections';
 import { TaxonomyFeedback, useTaxonomyDirty } from './connected-catalog-product/taxonomy-controls';
 import { ConnectedHomepagePreview } from './connected-homepage-preview';
 import { HomepageAsset, HomepageReferencePicker } from './connected-homepage-reference';
+import { HomepageTilesEditor, homepageMediaTypes, type UploadHomepageImage } from './connected-homepage-tiles';
 
-const authorable: HomepageSectionType[] = ['DEPARTMENTS', 'CURATED', 'COLLECTIONS', 'CATEGORY_SPOTLIGHT', 'NEW', 'DEALS'];
+const authorable: HomepageSectionType[] = ['DEPARTMENTS', 'TILES', 'CURATED', 'COLLECTIONS', 'CATEGORY_SPOTLIGHT', 'NEW', 'DEALS'];
 const byPosition = (a: HomepageSection, b: HomepageSection) => a.position - b.position || a.key.localeCompare(b.key);
 const mainHero = 'hero';
-const mediaTypes = ['image/jpeg', 'image/png', 'image/webp'];
 const catalogDestinations = { categories: 'Category page', collections: 'Collection page', products: 'Product page' } as const;
 const standaloneDestinations = { '/shop': 'Shop all', '/gifts': 'Gift registry' } as const;
 type DestinationKind = '' | keyof typeof catalogDestinations | keyof typeof standaloneDestinations;
@@ -51,15 +51,20 @@ function fileData(file: File): Promise<string> {
 function materialPayload(draft: HomepageDraft): HomepageDraft {
   return { hiddenSections: draft.hiddenSections, sections: draft.sections.map(section => {
     if (section.key === mainHero) return section;
-    const { description, bannerImage, ...rest } = section;
+    const { description, bannerImage, tileLayout, tiles, ...rest } = section;
+    const layout = tileLayout ?? 'PORTRAIT';
+    if (section.type === 'TILES' && (!tiles?.length || tiles.some(tile => !tile.referenceId || !homepageTileKinds[layout].includes(tile.kind)))) {
+      throw new Error(`Choose a valid destination for every tile in ${section.title}.`);
+    }
     return { ...rest, ...(description?.trim() ? { description: description.trim() } : {}),
-      ...(bannerImage?.src ? { bannerImage } : {}) };
+      ...(bannerImage?.src ? { bannerImage } : {}), ...(section.type === 'TILES' && { tileLayout: layout,
+        tiles: tiles?.map(tile => ({ ...tile, title: tile.title?.trim() || undefined, ctaLabel: tile.ctaLabel?.trim() || undefined })) }) };
   }) };
 }
 
 function SectionFields({ section, region, scope, refData, disabled, onEdit, onAsset }: {
   section: HomepageSection; region: Region; scope: HomepageScope; refData: HomepageEditorData['references']; disabled: boolean;
-  onEdit: (fields: Partial<HomepageSection>) => void; onAsset: (file: File) => void;
+  onEdit: (fields: Partial<HomepageSection>) => void; onAsset: UploadHomepageImage;
 }) {
   const [picked, setPicked] = useState<HomepageReference[]>([]);
   const market = scope.key.startsWith('global:') ? undefined : scope.previews[0];
@@ -82,7 +87,9 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         const type = event.target.value as HomepageSectionType;
         setDestination('');
         onEdit({ type, productIds: undefined, categoryIds: undefined, categoryId: undefined, collectionIds: undefined,
-          collection: undefined, budget: undefined, fallbackIds: undefined, link: undefined });
+          collection: undefined, budget: undefined, fallbackIds: undefined, link: undefined,
+          tileLayout: type === 'TILES' ? 'PORTRAIT' : undefined, tiles: undefined,
+          limit: type === 'TILES' ? undefined : section.limit });
       }}>{(authorable.includes(kind) ? authorable : [...authorable, kind]).map(type =>
         <option key={type} value={type}>{homepageSectionLabels[type]}</option>)}</select></label>
       <label>Display order<input type="number" required min={2} max={100} value={section.position || ''}
@@ -95,11 +102,13 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         onChange={event => onEdit({ startsLocal: event.target.value || undefined })} /></label>
       <label>Ends in market local time<input type="datetime-local" value={section.endsLocal ?? ''}
         onChange={event => onEdit({ endsLocal: event.target.value || undefined })} /></label>
-      <label>Maximum items<input type="number" min={1} max={12} value={section.limit ?? ''}
-        onChange={event => onEdit({ limit: event.target.value ? Number(event.target.value) : undefined })} /></label>
+      {kind !== 'TILES' && <label>Maximum items<input type="number" min={1} max={12} value={section.limit ?? ''}
+        onChange={event => onEdit({ limit: event.target.value ? Number(event.target.value) : undefined })} /></label>}
       <label className="homepage-checkbox"><input type="checkbox" checked={section.enabled !== false}
         onChange={event => onEdit({ enabled: event.target.checked })} /> Enabled</label>
     </div>
+    {kind === 'TILES' && <HomepageTilesEditor section={section} region={region} scope={scope} refData={refData}
+      disabled={disabled} onEdit={onEdit} onUpload={onAsset} />}
     {['CURATED', 'FEATURED', 'BANNER'].includes(kind) && refs('products', 'Products', section.productIds ?? [], 16, productIds => onEdit({ productIds }))}
     {kind === 'DEPARTMENTS' && refs('categories', 'Categories', section.categoryIds ?? [], 12, categoryIds => onEdit({ categoryIds: categoryIds.length ? categoryIds : undefined }))}
     {kind === 'CATEGORY_SPOTLIGHT' && refs('categories', 'Spotlight category', section.categoryId ? [section.categoryId] : [], 1, values => onEdit({ categoryId: values[0] }))}
@@ -136,8 +145,8 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
       {section.bannerImage && <HomepageAsset image={section.bannerImage} region={region} />}
       {refs('media', 'Approved image', section.bannerImage?.src ? [section.bannerImage.src] : [], 1, ([src], ref) =>
         onEdit({ bannerImage: src ? { src, alt: ref?.image?.alt ?? '' } : undefined }))}
-      <label>Upload section image<input type="file" accept={mediaTypes.join(',')} aria-label="Upload section image"
-        onChange={event => { const file = event.target.files?.[0]; if (file) onAsset(file); event.target.value = ''; }} /></label>
+      <label>Upload section image<input type="file" accept={homepageMediaTypes.join(',')} aria-label="Upload section image"
+        onChange={event => { const file = event.target.files?.[0]; if (file) onAsset(file, bannerImage => onEdit({ bannerImage })); event.target.value = ''; }} /></label>
       {section.bannerImage?.src && <label>Image alternative text<input maxLength={130} value={section.bannerImage.alt}
         onChange={event => onEdit({ bannerImage: { src: section.bannerImage!.src, alt: event.target.value } })} /></label>}
     </div>
@@ -214,15 +223,15 @@ export function ConnectedHomepageEditor({ scope, data, region, writable }: { sco
       router.refresh();
     }, action === 'homepage.inherit' ? 'Published template now uses inherited content.' : 'Homepage publication updated.');
   }
-  function upload(file: File, key: string) {
-    void operation('Uploading section image…', async () => {
-      if (!mediaTypes.includes(file.type) || file.size > catalogUploadLimit) throw new Error('Choose a JPEG, PNG or WebP image no larger than 4 MB.');
+  const upload: UploadHomepageImage = (file, assignImage) => {
+    void operation('Uploading image…', async () => {
+      if (!homepageMediaTypes.includes(file.type) || file.size > catalogUploadLimit) throw new Error('Choose a JPEG, PNG or WebP image no larger than 4 MB.');
       const { src } = await catalogRequest<{ src: string }>({ action: 'homepage.media', input: {
         homepageScope: scope.key, contentType: file.type, data: await fileData(file),
       } }, region);
-      edit(key, { bannerImage: { src, alt: '' } });
+      assignImage({ src, alt: '' });
     }, 'Image uploaded. Add alternative text and save the draft.');
-  }
+  };
   return <>
     <section className="taxonomy-card" aria-labelledby="homepage-sections">
       <div className="taxonomy-card-heading"><h2 id="homepage-sections">Shopping sections</h2>
@@ -248,7 +257,7 @@ export function ConnectedHomepageEditor({ scope, data, region, writable }: { sco
           {rows.map((section, index) => <fieldset className="taxonomy-card homepage-row" key={section.key}>
             <legend>{section.title || 'Untitled section'}</legend>
             <SectionFields section={section} region={region} scope={scope} refData={data.references}
-              disabled={!writable || Boolean(busy)} onEdit={fields => edit(section.key, fields)} onAsset={file => upload(file, section.key)} />
+              disabled={!writable || Boolean(busy)} onEdit={fields => edit(section.key, fields)} onAsset={upload} />
             <div className="taxonomy-actions">
               <button type="button" disabled={index === 0} className="taxonomy-button" onClick={() => move(index, -1)}>Move section up</button>
               <button type="button" disabled={index + 1 === rows.length} className="taxonomy-button" onClick={() => move(index, 1)}>Move section down</button>
