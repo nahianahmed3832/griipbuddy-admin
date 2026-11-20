@@ -178,10 +178,14 @@ export async function connectedCatalog<T = unknown>(auth: Session, region: Regio
   const data = payload.data;
   if ('read' in request && request.read === 'product' && !has(auth.staff, 'stock.view')) {
     const product = obj(data);
-    if (product.commerce) {
-      return { ...product, commerce: { ...obj(product.commerce), warehouses: [], pools: [], movements: [], allocations: [],
-        hasRestrictedPools: false } } as T;
-    }
+    const history = Array.isArray(product.history) ? product.history.filter(entry => {
+      const { stock, label } = obj(entry);
+      // Older Marketplace revisions identify stock rows by label.
+      return stock !== true && !(typeof label === 'string' && label.startsWith('Stock '));
+    }) : [];
+    const commerce = product.commerce ? { ...obj(product.commerce), warehouses: [], pools: [], movements: [], allocations: [],
+      hasRestrictedPools: false } : product.commerce;
+    return { ...product, history, commerce } as T;
   }
   if ('read' in request && request.read === 'order' && !mayReadConnectedOrders(auth, true)) {
     return { ...obj(data), cases: [] } as T;

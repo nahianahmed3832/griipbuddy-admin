@@ -61,7 +61,7 @@ export type ProductWorkspace = {
   shared: ProductWorkspaceProduct | null; categories: ProductCategoryChoice[];
   readiness: { ready: boolean; issues: string[] } | null;
   history: { id: string; createdAt: string; label: string; actorName: string; market?: MarketId;
-    locale?: string; publication?: string; fields?: string }[];
+    locale?: string; publication?: string; fields?: string; warehouse?: string }[];
   commerce: ProductWorkspaceCommerceData | null; uploadEnabled: boolean;
 };
 

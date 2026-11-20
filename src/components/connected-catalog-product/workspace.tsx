@@ -108,7 +108,7 @@ export async function ConnectedStockWorkspace({ auth, q, region }: Props) {
       <label className="filter-label">Search warehouse stock<input name="q" type="search" maxLength={120} defaultValue={search} /></label>
       <button className="button secondary">Search</button>
     </form>
-    <div className="panel table-scroll">
+    <div className="panel table-scroll" role="region" aria-label="Warehouse stock table" tabIndex={0}>
       <table aria-label="Physical warehouse stock"><thead><tr><th scope="col">SKU</th><th scope="col">Warehouse</th>
         <th scope="col">Stock owner</th><th scope="col">On hand</th><th scope="col">Reserved</th><th scope="col">Available</th></tr></thead>
         <tbody>{data.rows.map(row => <tr key={row.id}>
@@ -186,11 +186,11 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
         </>}
         {shared && <section id="history" className="taxonomy-card" aria-labelledby="product-history">
           <h2 id="product-history">Change history</h2>
-          {data.history.length ? <div className="taxonomy-scroll"><table className="taxonomy-table">
+          {data.history.length ? <div className="taxonomy-scroll" role="region" aria-label="Product history table" tabIndex={0}><table className="taxonomy-table">
             <thead><tr><th scope="col">When (UTC)</th><th scope="col">Change</th><th scope="col">Actor</th></tr></thead>
             <tbody>{data.history.map(entry => <tr key={entry.id}>
               <td><time dateTime={entry.createdAt}>{time.format(new Date(entry.createdAt))}</time></td>
-              <td>{[entry.label, entry.market?.toUpperCase(), entry.locale, entry.publication, entry.fields].filter(Boolean).join(" · ")}</td>
+              <td>{[entry.label, entry.market?.toUpperCase(), entry.warehouse, entry.locale, entry.publication, entry.fields].filter(Boolean).join(" · ")}</td>
               <td>{entry.actorName}</td>
             </tr>)}</tbody>
           </table></div> : <p>No catalog changes recorded.</p>}

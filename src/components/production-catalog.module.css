@@ -1,8 +1,8 @@
 .page {
   --catalog-border: oklch(92% .004 286.32);
-  --catalog-muted: oklch(55.2% .016 285.938);
+  --catalog-muted: var(--production-muted, oklch(49% .016 285.938));
   --catalog-background: oklch(96.7% .001 286.375);
-  --catalog-primary: var(--production-primary, oklch(60% .15 162));
+  --catalog-primary: var(--production-primary, oklch(51% .13 162));
   --catalog-danger: oklch(57.7% .245 27.325);
   min-width: 0;
   display: flex;

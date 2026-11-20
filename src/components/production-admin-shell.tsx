@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   BarChart3, Boxes, ChevronDown, ChevronRight, ClipboardList, Coins, LayoutDashboard,
   MapPin, Package, PanelLeft, ShoppingBag, ShoppingCart, Tags, Truck, Users,
@@ -102,6 +102,15 @@ function currentMenuPath(path: string) {
     .sort((a, b) => b.length - a.length)[0] ?? path;
 }
 
+const desktopViewport = '(min-width: 768px)';
+function subscribeViewport(update: () => void) {
+  const media = window.matchMedia(desktopViewport);
+  media.addEventListener('change', update);
+  return () => media.removeEventListener('change', update);
+}
+const isNarrowViewport = () => !window.matchMedia(desktopViewport).matches;
+const isServerNarrowViewport = () => false;
+
 export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog, connectedHomepage }: {
   children: ReactNode; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; path: string; query: string; readOnly: boolean; fraud: boolean;
   connectedCatalog?: boolean; connectedHomepage?: boolean;
@@ -114,6 +123,12 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
   const [notice, setNotice] = useState('');
   const trigger = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  const narrow = useSyncExternalStore(subscribeViewport, isNarrowViewport, isServerNarrowViewport);
+  const closeNavigation = useCallback(() => {
+    restoreFocus.current = true;
+    setMobile(false);
+  }, []);
   const current = currentMenuPath(path);
   const grants = new Set(staff.permissions);
   const canSwitchRegion = grants.has('international.access');
@@ -133,14 +148,18 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
 
   useEffect(() => {
     if (mobile) close.current?.focus();
+    else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      trigger.current?.focus();
+    }
     function key(event: KeyboardEvent) {
       if (!mobile) return;
       if (event.key === 'Escape') {
-        setMobile(false);
-        trigger.current?.focus();
+        closeNavigation();
       }
       if (event.key !== 'Tab') return;
-      const focusable = document.querySelectorAll<HTMLElement>('#production-navigation a, #production-navigation button, #production-navigation select');
+      const focusable = [...document.querySelectorAll<HTMLElement>('#production-navigation a, #production-navigation button, #production-navigation select')]
+        .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length > 0);
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -151,7 +170,7 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
         first?.focus();
       }
     }
-    const media = window.matchMedia('(min-width: 768px)');
+    const media = window.matchMedia(desktopViewport);
     function resize() { if (media.matches) setMobile(false); }
     media.addEventListener('change', resize);
     window.addEventListener('keydown', key);
@@ -159,7 +178,7 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
       media.removeEventListener('change', resize);
       window.removeEventListener('keydown', key);
     };
-  }, [mobile]);
+  }, [mobile, closeNavigation]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -185,21 +204,15 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
   }
 
   return <div className={styles.shell} data-collapsed={collapsed} data-mobile-open={mobile} data-region={region}>
-    <a className="skip-link" href="#main">Skip to content</a>
-    {mobile && <div className={styles.overlay} aria-hidden="true" onClick={() => {
-      setMobile(false);
-      trigger.current?.focus();
-    }}/>}
+    <a className="skip-link" href="#main" inert={mobile}>Skip to content</a>
+    {mobile && <div className={styles.overlay} aria-hidden="true" onClick={closeNavigation}/>}
     <aside className={styles.sidebar} id="production-navigation" aria-label={mobile ? 'Navigation' : 'Sidebar'} role={mobile ? 'dialog' : undefined}
       aria-modal={mobile || undefined} inert={collapsed && !mobile}>
       <div className={styles.brand}>
         <Link href={'/dashboard/overview' + regionQuery} onClick={() => setMobile(false)}>
           <Image src={adminPath('/production-admin/griipbuddy-wordmark.png')} alt="GriipBuddy" width={300} height={100} unoptimized priority/>
         </Link>
-        <button ref={close} className={styles.mobileClose} aria-label="Close navigation" onClick={() => {
-          setMobile(false);
-          trigger.current?.focus();
-        }}>×</button>
+        <button ref={close} className={styles.mobileClose} aria-label="Close navigation" onClick={closeNavigation}>×</button>
       </div>
       {canSwitchRegion && <label className={styles.market}>
         <span className={styles.srOnly}>Operating region</span>
@@ -238,8 +251,8 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
       <header className={styles.header}>
         <div className={styles.greeting}>
           <button ref={trigger} className={styles.toggle} aria-label="Toggle Sidebar" title="Toggle Sidebar"
-            aria-controls="production-navigation" aria-expanded={mobile || !collapsed} onClick={() => {
-              if (window.matchMedia('(min-width: 768px)').matches) setCollapsed(value => !value);
+            aria-controls="production-navigation" aria-expanded={narrow ? mobile : !collapsed} onClick={() => {
+              if (!narrow) setCollapsed(value => !value);
               else setMobile(value => !value);
             }}><PanelLeft size={16} aria-hidden="true"/></button>
           <p>Hi, {staff.name} <span>({staff.role.toLowerCase()})</span></p>

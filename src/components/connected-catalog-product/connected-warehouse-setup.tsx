@@ -19,7 +19,7 @@ export function ConnectedWarehouseSetup({ data, marketId, region, canCreate }: {
   return <TaxonomyPendingChanges><section className="taxonomy-workspace taxonomy-card" aria-labelledby="dispatch-warehouses">
     <h2 id="dispatch-warehouses">Dispatch warehouses</h2>
     <p>{markets[marketId].name}</p>
-    {data.locations.length ? <div className="table-scroll"><table aria-label="Dispatch warehouses in this market">
+    {data.locations.length ? <div className="table-scroll" role="region" aria-label="Dispatch warehouses table" tabIndex={0}><table aria-label="Dispatch warehouses in this market">
       <thead><tr><th scope="col">Warehouse</th><th scope="col">Owner</th><th scope="col">Home market</th>
         <th scope="col">Priority</th><th scope="col">Status</th></tr></thead>
       <tbody>{data.locations.map(location => <tr key={location.id}>

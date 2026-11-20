@@ -41,6 +41,7 @@
 .form label.check { display: flex; align-items: center; gap: 8px; }
 .error { color: var(--catalog-danger) !important; overflow-wrap: anywhere; }
 .scroll { overflow-x: auto; }
+.scroll:focus-visible { outline: 2px solid var(--catalog-primary); outline-offset: 2px; }
 .treeName { display: inline-flex; align-items: center; gap: 6px; }
 .treeName[data-depth='1'] { padding-inline-start: 14px; }
 .treeName[data-depth='2'] { padding-inline-start: 28px; }

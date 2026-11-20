@@ -148,7 +148,7 @@ const historyDate = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeSty
 function MerchandisingHistory({ title, rows, market }: { title: string; rows?: MerchandisingHistoryEntry[]; market: string }) {
   if (!rows) return null;
   return <section className={css.panel} aria-label={title}><h2>{title}</h2>
-    {!rows.length ? <p>No recorded changes.</p> : <div className={css.scroll}>
+    {!rows.length ? <p>No recorded changes.</p> : <div className={css.scroll} role="region" aria-label={`${title} table`} tabIndex={0}>
       <table className={catalog.table}><thead><tr>
         <th scope="col">Change</th><th scope="col">Staff</th><th scope="col">Scope</th>
         <th scope="col">Revision</th><th scope="col">Time (UTC)</th>

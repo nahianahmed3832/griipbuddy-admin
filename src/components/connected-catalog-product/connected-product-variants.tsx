@@ -223,7 +223,8 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const selectable = draft.variants.filter(row => checked.includes(row.id));
   const issued = new Set(draft.issuedVariantIds);
-  const activeForAttributes = draft.variants.filter(row => row.active);
+  const activeForAttributes = draft.variants.filter(row => row.active &&
+    (templates.length > 0 || Object.keys(row.attributeValues).length > 0));
   const attributeRow = activeForAttributes.find(row => row.id === selectedAttributeVariant) ?? activeForAttributes[0];
 
   function updateRows(variants: DraftVariant[]) {
@@ -312,7 +313,7 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
         <button type="button" className={button} disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Next variants</button>
       </div>
     </> : <p className="taxonomy-muted">{draft.variants.length ? "No variants match this search." : "Add the physical variants you sell to start editing this table."}</p>}
-    {!!templates.length && activeForAttributes.length > 0 && attributeRow && <div className="taxonomy-card">
+    {attributeRow && <div className="taxonomy-card">
       <h3>Variant attributes</h3>
       <label>Variant for attributes<select value={attributeRow.id} onChange={event => setSelectedAttributeVariant(event.target.value)}>
         {activeForAttributes.map(row => <option key={row.id} value={row.id}>{row.sku} · {variantTuple(draft.options, row.selections)}</option>)}
