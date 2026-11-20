@@ -1,4 +1,4 @@
-import { api, ApiError, integratedCheckoutEnabled, mongoId, obj, requestApi, str, type Session } from './api';
+import { api, ApiError, arr, integratedCheckoutEnabled, mongoId, obj, requestApi, str, type Session, type VerifiedMarketScope } from './api';
 import { has, superAdmin, type Staff } from './sections';
 
 const managedViews = {
@@ -70,6 +70,7 @@ const writeActions = {
   'purchase-receive': { method: 'POST', path: (_: string, id: string) => '/inventory/purchases/' + id + '/receipts', permission: 'purchase.update' },
   'purchase-cancel': { method: 'POST', path: (_: string, id: string) => '/inventory/purchases/' + id + '/cancel', permission: 'purchase.update' },
   'source-map': { method: 'POST', path: () => '/global/admin/sources', permission: 'supplier.update' },
+  'order-cancel-batch': { method: 'POST', path: () => '/global/admin/orders/cancel-batch', permission: 'order.update' },
   'shipment-new': { method: 'POST', path: () => '/global/admin/shipments', permission: 'order.update' },
   'shipment-action': { method: 'POST', path: (_: string, id: string, step: string) => '/global/admin/shipments/' + id + '/' + step, permission: 'order.update' },
   'refund-reconcile': { method: 'POST', path: (_: string, id: string, step: string) => '/global/admin/payments/' + id + '/refunds/' + step + '/reconcile', permission: 'order.update' },
@@ -92,12 +93,14 @@ const recordActions: ManagedAction[] = ['list-update', 'price-versions', 'campai
 const keyedActions: ManagedAction[] = ['purchase-new','purchase-receive'];
 const shipSteps = ['pick','pack','cancel','dispatch','tracking','sync','return','receive'];
 const paymentSteps = ['review','collect','reconcile','refunds','disputes/notes'];
+const scopedCommerceActions = new Set<ManagedAction>(['order-cancel-batch','shipment-new', 'shipment-action', 'payment-action', 'refund-reconcile']);
 
-export function canManageAction(auth: Session, action: ManagedAction) {
+export function canManageAction(auth: Session, action: ManagedAction, step?: string) {
   const required = writeActions[action].permission;
   return canManage(auth.staff) && has(auth.staff, required)
     && !(action === 'coverage' && integratedCheckoutEnabled())
-    && (required !== 'order.update' || has(auth.staff, 'order.view'));
+    && (required !== 'order.update' || has(auth.staff, 'order.view'))
+    && (action !== 'shipment-action' || !['return', 'receive'].includes(step ?? '') || has(auth.staff, 'order.return'));
 }
 
 async function managedResult(response: Response) {
@@ -115,8 +118,17 @@ async function managedResult(response: Response) {
   throw new ApiError(status, message);
 }
 
-export async function writeManaged(action: ManagedAction, market: string, id: string, step: string, values: Record<string, unknown>, auth: Session, key: string) {
-  if (!canManageAction(auth, action)) throw new ApiError(403);
+export async function managedMarketScope(market: string, auth: Session): Promise<VerifiedMarketScope> {
+  if (!marketCode(market)) throw new ApiError(400, 'Choose a configured operating market.');
+  const countries = arr(await api('/country/all', auth.token)).map(obj);
+  const currency = str(countries.find(country => country.code === market)?.currency);
+  if (!/^[A-Z]{3}$/.test(currency)) throw new ApiError(400, 'Choose a configured operating market.');
+  return { marketId: market.toLowerCase(), currency };
+}
+
+export async function writeManaged(action: ManagedAction, market: string, id: string, step: string, values: Record<string, unknown>, auth: Session,
+  key: string, scope?: VerifiedMarketScope) {
+  if (!canManageAction(auth, action, step)) throw new ApiError(403, 'Your staff account cannot perform this operation.');
   if (!marketCode(market) || (recordActions.includes(action) && !mongoId(id))
     || (action === 'collection' && !managedSlug(id))
     || (action === 'listing-transition' && !['submit','approve','publish','reopen','archive'].includes(step))
@@ -139,13 +151,16 @@ export async function writeManaged(action: ManagedAction, market: string, id: st
     delete body.currency;
   }
   if (action === 'lot-bin' && !body.bin) body.bin = null;
-  if (action === 'shipment-new' || action === 'shipment-action' && step === 'return' || action === 'payment-action' && step === 'refunds') {
+  if (action === 'order-cancel-batch' || action === 'shipment-new' || action === 'shipment-action' && step === 'return' || action === 'payment-action' && step === 'refunds') {
     if (!/^[a-f0-9-]{36}$/i.test(key)) throw new ApiError(400, 'A retry reference is required.');
     body.key = key;
   }
+  if (!scope && scopedCommerceActions.has(action)) {
+    scope = await managedMarketScope(market, auth);
+  }
   return managedResult(await requestApi(path, auth.token, {
     method: route.method, body: JSON.stringify(body),
-  }, keyedActions.includes(action) ? key : undefined));
+  }, keyedActions.includes(action) ? key : undefined, scope));
 }
 
 export async function uploadSupplier(supplier: string, form: FormData, key: string, auth: Session) {
@@ -165,7 +180,7 @@ export async function uploadAsset(file: File, auth: Session) {
   return id;
 }
 
-export async function managedRead(path: string, auth: Session) {
+export async function managedRead(path: string, auth: Session, scope?: VerifiedMarketScope) {
   if (!canManage(auth.staff)) throw new ApiError(403);
-  return api(path, auth.token);
+  return api(path, auth.token, undefined, scope);
 }

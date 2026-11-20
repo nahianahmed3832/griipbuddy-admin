@@ -1,7 +1,15 @@
+.workspace {
+  --catalog-border: var(--workspace-line, #e4e1ea);
+  --catalog-muted: var(--workspace-muted, #5d6276);
+  --catalog-background: var(--workspace-accent-soft, #eeebf6);
+  --catalog-primary: var(--workspace-accent, #583c94);
+  gap: 14px;
+}
+.workspace h1 { font-size: clamp(1.5rem, 3vw, 2.05rem); font-weight: 700; line-height: 1.12; letter-spacing: -.045em; }
 .panel {
   min-width: 0;
   border: 1px solid var(--catalog-border);
-  border-radius: 12px;
+  border-radius: var(--workspace-radius, 14px);
   padding: clamp(16px, 3vw, 24px);
   background: #fff;
   display: grid;

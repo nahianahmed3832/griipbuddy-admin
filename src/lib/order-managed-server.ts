@@ -1,4 +1,4 @@
-import { api, ApiError, arr, mongoId, obj, str, type Session } from './api';
+import { api, ApiError, arr, mongoId, obj, str, type Session, type VerifiedMarketScope } from './api';
 import { marketCode } from './managed';
 import type { ManagedOrder, ManagedPayment } from './order-managed';
 
@@ -11,7 +11,13 @@ export async function managedOrderContext(id: string, auth: Session) {
   const context = obj(managedValue);
   const paymentId = str(order.managed_payment_id);
   const payment = arr(context.payments).map(obj).find(row => row.id === paymentId);
-  return { order, shipments: arr(context.shipments) as ManagedOrder['shipments'], paymentId, payment };
+  const recordedMarket = str(context.market);
+  const destination = str(obj(order.delivery_address).country).toUpperCase();
+  const market = recordedMarket || (marketCode(destination) ? destination : order.region === 'BD' ? 'BD' : '');
+  const currency = str(context.currency) || str(order.currency);
+  const scope = marketCode(market) && /^[A-Z]{3}$/.test(currency)
+    ? { marketId: market.toLowerCase(), currency } : undefined;
+  return { order, shipments: arr(context.shipments) as ManagedOrder['shipments'], paymentId, payment, market, scope };
 }
 
 export function canEditManagedOrderContact({ order, shipments }: Awaited<ReturnType<typeof managedOrderContext>>) {
@@ -20,8 +26,8 @@ export function canEditManagedOrderContact({ order, shipments }: Awaited<ReturnT
     !order.is_return_product_scan && shipments.length === 0;
 }
 
-async function readManagedPayment(id: string, auth: Session): Promise<ManagedPayment> {
-  const details = await api('/global/admin/payments/' + id, auth.token) as ManagedPayment & { events?: unknown[] };
+async function readManagedPayment(id: string, auth: Session, scope?: VerifiedMarketScope): Promise<ManagedPayment> {
+  const details = await api('/global/admin/payments/' + id, auth.token, undefined, scope) as ManagedPayment & { events?: unknown[] };
   const transaction = arr(details.events).map(obj).reverse().find(event => {
     const fact = obj(event.details);
     return event.kind === 'collected' || event.kind === 'staff_review' && fact.decision === 'approve' ||
@@ -32,19 +38,21 @@ async function readManagedPayment(id: string, auth: Session): Promise<ManagedPay
     transactionReference: str(obj(transaction?.details).reference) };
 }
 
-export async function readManagedOrder(id: string, auth: Session): Promise<ManagedOrder> {
+export async function readManagedOrder(id: string, auth: Session, requestedMarket?: string): Promise<ManagedOrder> {
+  if (requestedMarket !== undefined && !marketCode(requestedMarket)) throw new ApiError(400, 'Choose a supported market.');
   const context = await managedOrderContext(id, auth);
-  const { order, shipments, paymentId, payment } = context;
+  const { order, shipments, paymentId, payment, market, scope } = context;
+  if (requestedMarket !== undefined && (requestedMarket !== market || !scope)) {
+    throw new ApiError(409, 'This order belongs to a different operating market.');
+  }
   const address = obj(order.delivery_address);
-  const country = str(address.country).toUpperCase();
-  const market = marketCode(country) ? country : order.region === 'INTERNATIONAL' ? '' : 'BD';
   const destination = (str(address.state) || str(address.district)).toUpperCase();
   const status = str(order.status);
   const mayPlan = market && ['PLACED', 'IN_TRANSIT', 'PARTIAL'].includes(status) && !order.inventory_packed_at &&
     !order.is_assigned_to_business_location && !order.transfer_to_courier && ['authorized', 'captured'].includes(str(payment?.status)) &&
     (payment?.provider === 'cod' || Number(payment?.captured) > 0) && !payment?.reconciliation;
   const [details, settings, locations] = await Promise.all([
-    mongoId(paymentId) ? readManagedPayment(paymentId, auth) : undefined,
+    mongoId(paymentId) ? readManagedPayment(paymentId, auth, scope) : undefined,
     mayPlan ? api('/global/admin/shipment-services/' + market, auth.token).catch(error => {
       if (error instanceof ApiError && [404, 422].includes(error.status)) return undefined;
       throw error;

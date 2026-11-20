@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Suspense, type ReactNode } from 'react';
+import { Suspense, useId, type ReactNode } from 'react';
 import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
 import { ArrowRight, BellRing, Boxes, ChevronRight, CircleAlert, ClipboardList, Info, Package, RefreshCw, ShoppingBag, TrendingUp, Truck, Wallet } from 'lucide-react';
 import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
@@ -14,6 +14,7 @@ import { TrendChart } from './trend-chart';
 import { ProductionReportChart } from './production-report-chart';
 import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
+import { WorkspaceEmpty, WorkspaceHeading } from './workspace-screen';
 import './production-overview.css';
 
 export function PageHeading({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) {
@@ -35,6 +36,7 @@ function Metric({ title, value, detail, current, prior, lowerIsBetter = false, d
   title: string; value: string; detail?: string; current?: unknown; prior?: unknown; lowerIsBetter?: boolean;
   definition?: string; estimated?: string; href?: string; production?: boolean; tone?: MetricTone;
 }) {
+  const helpId = useId();
   const baseline = number(prior);
   const actual = number(current);
   const change = baseline && actual !== undefined ? (actual - baseline) / Math.abs(baseline) : undefined;
@@ -43,12 +45,12 @@ function Metric({ title, value, detail, current, prior, lowerIsBetter = false, d
   const body = <>
     <div className="overview-metric-title">{name}
       {definition && <span className="overview-metric-help">
-        <button type="button" aria-label="What does this mean?"><Info size={14} aria-hidden="true"/></button>
-        <span role="tooltip">{definition}</span>
+        <button type="button" aria-label={title + ' definition'} aria-describedby={helpId}><Info size={14} aria-hidden="true"/></button>
+        <span id={helpId} role="tooltip">{definition}</span>
       </span>}
       {estimated && <span className="overview-metric-help">
-        <button type="button" className="overview-estimated">Estimated</button>
-        <span role="tooltip">{estimated}</span>
+        <button type="button" className="overview-estimated" aria-describedby={helpId + '-estimated'}>Estimated</button>
+        <span id={helpId + '-estimated'} role="tooltip">{estimated}</span>
       </span>}
     </div><div className="overview-value"><strong>{value}</strong>
       {change !== undefined && <span className={'overview-delta ' + (neutralChange ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
@@ -95,7 +97,7 @@ function SalesChart({ points, currency, unit, production }: { points: Point[]; c
     ]}/> : <TrendChart label="Booked value and delivered sales by period" lines={['Booked value','Delivered sales']} format={money}
       points={points.map(point => ({key:point.key,label:point.key,tick:point.key.length === 10 ? point.key.slice(5) : point.key,
         values:[point.booked, point.delivered]}))}/>}
-    {!production && points.length > 0 && <details className="chart-values"><summary>View chart data</summary>
+    {points.length > 0 && <details className="chart-values"><summary>View chart data</summary>
       <div className="chart-values-scroll"><table><thead><tr><th scope="col">Period</th><th scope="col">Booked</th><th scope="col">Delivered</th></tr></thead>
         <tbody>{points.map(point => <tr key={point.key}><th scope="row">{point.key}</th><td>{money(point.booked)}</td><td>{money(point.delivered)}</td></tr>)}</tbody>
       </table></div>
@@ -181,7 +183,11 @@ export async function Dashboard({ auth, q, region, production = false }: { auth:
         <LoadedOverviewSection {...common} request={combined[index]} sales={sales}/>
       </Suspense>;
     });
-    return renderDashboard({ auth, region, query, locations, production, sections, sales });
+    const headline = <Suspense key={scopeKey} fallback={<div className="overview-metrics overview-headline overview-section-loading"
+      role="status" aria-label="Loading sales summary" aria-busy="true"><div/><div/><div/></div>}>
+      <ProductionOverviewHeadline auth={auth} region={region} query={query} sales={sales}/>
+    </Suspense>;
+    return renderDashboard({ auth, region, query, locations, production, sections, sales, headline });
   }
   const paymentScope = { region, from: scope.from, to: scope.to, currency: scope.currency };
   const showPayments = !production && authorized && !scope.locations && canReadTransactions(auth);
@@ -244,6 +250,16 @@ async function LoadedOverviewSection({ request, sales, ...props }: PanelRequest 
   return renderDashboard({ ...props, production: true, payload: { [props.section]: data }, sales });
 }
 
+async function ProductionOverviewHeadline({ auth, region, query, sales }: {
+  auth: Session; region: Region; query: OverviewQuery; sales: OverviewResponse;
+}) {
+  const data = await sales;
+  if (!data) return <section className="overview-headline-unavailable" aria-label="Trading snapshot">
+    <WorkspaceEmpty title="Sales summary unavailable" detail="Retry the sales section below to load figures for this period."/>
+  </section>;
+  return renderDashboard({ auth, region, query, production: true, section: 'headline', payload: { sales: data } });
+}
+
 function overviewReportDate(value: unknown) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z')) : '';
@@ -257,7 +273,7 @@ async function OverviewHeaderMeta({ sales, query, region, asOf }: {
     const date = str(meta.generated_at);
     return date && Number.isFinite(Date.parse(date)) ? <time dateTime={date}>Data as of {
       new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Dhaka' }).format(new Date(date))
-    }</time> : null;
+    } Dhaka</time> : null;
   }
   const { scope } = query;
   const currency = str(meta.currency) || scope.currency || (region === 'BD' ? 'BDT' : 'USD');
@@ -276,10 +292,10 @@ async function ProductionAdSpend({ sales, details, spending }: {
   return <Metric {...details} detail={delivered && spend !== undefined ? percent(spend / delivered) + ' of delivered sales' : undefined}/>;
 }
 
-function renderDashboard({ auth, region, query, production, payload = {}, locations = [], payments, failed, section, sections, sales: salesResource }: {
+function renderDashboard({ auth, region, query, production, payload = {}, locations = [], payments, failed, section, sections, sales: salesResource, headline }: {
   auth: Session; region: Region; query: OverviewQuery; production: boolean; payload?: Partial<Record<OverviewSection, RecordData | null>>;
-  locations?: Awaited<ReturnType<typeof loadLocations>>; payments?: PaymentResult[]; failed?: boolean; section?: OverviewSection;
-  sections?: ReactNode; sales?: OverviewResponse;
+  locations?: Awaited<ReturnType<typeof loadLocations>>; payments?: PaymentResult[]; failed?: boolean; section?: OverviewSection | 'headline';
+  sections?: ReactNode; sales?: OverviewResponse; headline?: ReactNode;
 }) {
   const count = (value: unknown) => formatCount(value, production);
   const counted = (value: unknown, singular: string, plural = singular + 's') => count(value) + ' ' + (value === 1 ? singular : plural);
@@ -304,8 +320,10 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const formatMoney = (value: unknown, code: string) => {
     const amount = number(value);
     if (production && amount !== undefined) {
-      return new Intl.NumberFormat(code === 'BDT' ? 'en-IN' : 'en-US', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol',
-        maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(amount));
+      try {
+        return new Intl.NumberFormat(code === 'BDT' ? 'en-BD' : 'en-US', { style: 'currency', currency: code, currencyDisplay: 'code',
+          maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(amount);
+      } catch { return 'Unavailable'; }
     }
     return printable(value, 'money', code) || '—';
   };
@@ -387,10 +405,10 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
       level:queueLevel(Number(courier.returnRequested || 0) + Number(courier.pendingReturn || 0)), href:orderQueue('returns','RETURN_REQUESTED,PENDING_RETURN'),
       notes:[count(courier.returnRequested) + ' requested by customers', count(courier.pendingReturn) + ' on the way back'] },
     { title:'Out of stock', value:stock.outOfStock, level:Number(stock.outOfStockWithDemand) > 0 ? 'urgent' : queueLevel(stock.outOfStock),
-      href:link('low-stock','low_stock','Stock alerts')?.href ?? '/dashboard/check-outlet-stocks', images:depleted.slice(0,4),
+      href:link('low-stock','low_stock','Stock alerts')?.href ?? (grant('stock.view') ? url('/dashboard/check-outlet-stocks', {region}) : undefined), images:depleted.slice(0,4),
       notes:[...(Number(stock.outOfStockWithDemand) > 0 ? [count(stock.outOfStockWithDemand) + ' with orders waiting'] : []),
         count(stock.lowStock) + ' running low (under 7 days of stock)', ...(depleted[0] ? ['e.g. ' + str(depleted[0].sku)] : [])] },
-    ...(actions?.preorders ? [{ title:'Pre-orders to act on', value:preActions.total, level:queueLevel(preActions.total), href:'/dashboard/pre-orders',
+    ...(actions?.preorders && region === 'BD' && grant('pre_order.view') ? [{ title:'Pre-orders to act on', value:preActions.total, level:queueLevel(preActions.total), href:'/dashboard/pre-orders',
       notes:[...(Number(preActions.notQuoted) > 0 ? [count(preActions.notQuoted) + ' waiting for a quote'] : []),
         ...(Number(preActions.awaitingAdvance) > 0 ? [count(preActions.awaitingAdvance) + ' quoted, no advance yet'] : []),
         ...(Number(preActions.notShipped) > 0 ? [count(preActions.notShipped) + ' arrived, not shipped'] : [])] }]
@@ -423,20 +441,33 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const description = [region === 'BD' ? 'Bangladesh' : 'International',currency,current,previous && 'compared with ' + previous].filter(Boolean).join(' · ');
   const asOfTime = asOf && Number.isFinite(Date.parse(asOf))
     ? new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'Asia/Dhaka' }).format(new Date(asOf)) : undefined;
-  const header = !section && (production ? <header className="production-overview-header">
-      <div><h1>Overview</h1>{salesResource ? <Suspense fallback={<p>{description}</p>}>
+  const header = !section && (production ? <WorkspaceHeading title="Overview" detail={salesResource ? <Suspense fallback={<p>{description}</p>}>
         <OverviewHeaderMeta sales={salesResource} query={query} region={region}/>
-      </Suspense> : <p>{description}</p>}</div>
+      </Suspense> : description}>
       {authorized && <div className="production-overview-actions">
         <Link href={url('/dashboard/overview', { view: 'classic', region: region === 'BD' ? undefined : region })}>Previous overview</Link>
         {salesResource && <Suspense><OverviewHeaderMeta sales={salesResource} query={query} region={region} asOf/></Suspense>}
         <Link prefetch={false} className="production-overview-refresh" href={url(overviewPath, { ...scope, period, refresh: '1' })}><RefreshCw size={16}/> Refresh</Link>
       </div>}
-    </header> : <PageHeading eyebrow="WORKSPACE / OPERATIONS" title="Commerce overview" description={description}>
+    </WorkspaceHeading> : <PageHeading eyebrow="WORKSPACE / OPERATIONS" title="Commerce overview" description={description}>
       {authorized && <Link className="button subtle" href={url("/desk/overview/classic", { ...scope, period })}>Previous overview</Link>}
       {authorized && asOfTime && <time className="muted" dateTime={asOf}>Data as of {asOfTime} Dhaka</time>}
       {authorized && <Link prefetch={false} className="button secondary" href={url('/desk/overview',{...scope,period,refresh:'1'})}><RefreshCw size={15}/> Refresh</Link>}
     </PageHeading>);
+  const headlineMetrics = sales && <>
+    <Metric title="Orders placed" value={count(bookings.orders)} current={bookings.orders} prior={obj(bookings.previous).orders}
+      detail={money(bookings.orderValue) + ' including delivery'}
+      {...productionMetric('Count of orders placed in the selected market, currency and date range.',
+        grant('order.view') ? url('/dashboard/orders', { region, from: scope.from, to: scope.to }) : undefined)}/>
+    <Metric title="Booked value" value={money(bookings.productValue)} current={bookings.productValue} prior={obj(bookings.previous).productValue}
+      detail={'Average ' + money(bookings.avgProductValue) + ' per order'}
+      {...productionMetric('Product value of orders placed during the selected period.')}/>
+    <Metric title="Delivered sales" value={money(delivered.productValue)} current={delivered.productValue} prior={obj(delivered.previous).productValue}
+      detail={count(delivered.orders) + ' orders · ' + count(delivered.units) + ' units · ' + money(delivered.deliveryIncome) + ' delivery income'}
+      estimated={production && estimatedDelivery ? count(estimatedDelivery.affected) + ' of ' + count(estimatedDelivery.total) + ' delivered orders have no recorded delivery time; their last update time is used.' : undefined}
+      {...productionMetric('Product value of orders delivered during the selected period.')}/>
+  </>;
+  if (section === 'headline') return <section aria-label="Trading snapshot" className="overview-metrics overview-headline">{headlineMetrics}</section>;
   const content = <>
       {actions && <Panel id="work-queue" title="Needs attention" production={production}
         detail={production ? 'Live counts, independent of the selected period. Click a tile to open the list.' : 'Current queues are independent of the selected period. Open a tile to review matching records.'}
@@ -465,14 +496,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
         detail={production ? 'Orders placed (demand) and orders delivered (revenue) are counted separately.' : 'Bookings track orders placed. Delivered sales track product value on delivered orders.'}
         tone="sales" icon={production ? <TrendingUp size={20}/> : <ShoppingBag size={23}/>} link={link('sales-summary','sales_summary','Sales report', production ? {period} : {})}>
         <div className="overview-metrics">
-          <Metric title="Orders placed" value={count(bookings.orders)} current={bookings.orders} prior={obj(bookings.previous).orders} detail={money(bookings.orderValue) + (production ? ' incl. delivery' : ' including delivery')}
-            {...productionMetric('Orders placed during the selected period.', grant('order.view') ? '/dashboard/orders' : undefined)}/>
-          <Metric title="Booked value" value={money(bookings.productValue)} current={bookings.productValue} prior={obj(bookings.previous).productValue} detail={(production ? 'Avg ' : 'Average ') + money(bookings.avgProductValue) + ' per order'}
-            {...productionMetric('Product value of orders placed during the selected period.')}/>
-          <Metric title="Delivered sales" value={money(delivered.productValue)} current={delivered.productValue} prior={obj(delivered.previous).productValue}
-            detail={count(delivered.orders) + ' orders · ' + count(delivered.units) + ' units · ' + (production ? '+' : '') + money(delivered.deliveryIncome) + ' delivery income'}
-            estimated={production && estimatedDelivery ? count(estimatedDelivery.affected) + ' of ' + count(estimatedDelivery.total) + ' delivered orders have no recorded delivery time; their last update time is used.' : undefined}
-            {...productionMetric('Product value on orders delivered during the selected period.')}/>
+          {!production && headlineMetrics}
           <Metric title="Average order value" value={money(delivered.avgOrderValue)} current={delivered.avgOrderValue} prior={obj(delivered.previous).avgOrderValue} detail={production ? undefined : 'Delivered orders'}
             {...productionMetric('Average order value for delivered orders.')}/>
           <Metric title="Cancelled before dispatch" value={production && number(bookings.cancellationRate) !== undefined ? (Number(bookings.cancellationRate) * 100).toFixed(1) + '%' : percent(bookings.cancellationRate)} current={bookings.cancellationRate} prior={obj(bookings.previous).cancellationRate}
@@ -593,6 +617,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
     {authorized ? <>
       <OverviewFilters key={production ? region : JSON.stringify([period,scope])} region={region} period={period} from={scope.from} to={scope.to} compare={scope.compare !== 'none'}
         selected={scope.locations?.split(',') ?? []} currency={currency} locations={locations} production={production}/>
+      {headline}
       {failed && <div className="notice warn"><CircleAlert size={17}/> Some overview sections could not load.</div>}
       {sections ?? content}
       {production && scope.locations && <p className="overview-location-note">The location filter applies to dispatch, delivery, stock and purchases. Orders that haven’t been dispatched have no location yet.</p>}

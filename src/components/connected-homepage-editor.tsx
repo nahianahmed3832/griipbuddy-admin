@@ -5,7 +5,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { catalogBeforeRegionChange, catalogRequest } from '@/lib/connected-catalog-client';
 import { catalogUploadLimit } from '@/lib/connected-catalog-contract';
 import { adminPath } from '@/lib/paths';
-import { homepageSectionLabels, homepageTileKinds, type HomepageDraft, type HomepageEditorData, type HomepageReference,
+import { benefitDestinations, homepageSectionLabels, homepageTileKinds, type HomepageBenefit, type HomepageDraft, type HomepageEditorData, type HomepageReference,
   type HomepageReferenceKind, type HomepageScope, type HomepageSection, type HomepageSectionType } from '@/lib/homepage-merchandising';
 import type { Region } from '@/lib/sections';
 import { TaxonomyFeedback, useTaxonomyDirty } from './connected-catalog-product/taxonomy-controls';
@@ -13,7 +13,7 @@ import { ConnectedHomepagePreview } from './connected-homepage-preview';
 import { HomepageAsset, HomepageReferencePicker } from './connected-homepage-reference';
 import { HomepageTilesEditor, homepageMediaTypes, type UploadHomepageImage } from './connected-homepage-tiles';
 
-const authorable: HomepageSectionType[] = ['DEPARTMENTS', 'TILES', 'CURATED', 'COLLECTIONS', 'CATEGORY_SPOTLIGHT', 'NEW', 'DEALS'];
+const authorable: HomepageSectionType[] = ['DEPARTMENTS', 'TILES', 'CURATED', 'COLLECTIONS', 'CATEGORY_SPOTLIGHT', 'NEW', 'DEALS', 'FEATURED', 'BESTSELLERS', 'BANNER', 'BENEFITS'];
 const byPosition = (a: HomepageSection, b: HomepageSection) => a.position - b.position || a.key.localeCompare(b.key);
 const mainHero = 'hero';
 const catalogDestinations = { categories: 'Category page', collections: 'Collection page', products: 'Product page' } as const;
@@ -28,14 +28,15 @@ function destinationKind(href?: string): DestinationKind {
   return '';
 }
 
-export function HomepageScopeForm({ path, scopes, scope, region }: { path: string; scopes: HomepageScope[]; scope: HomepageScope; region: Region }) {
+export function HomepageScopeForm({ path, scopes, scope, region, editorial }: { path: string; scopes: HomepageScope[]; scope: HomepageScope; region: Region; editorial?: boolean }) {
   return <form method="get" action={adminPath(path)} className="taxonomy-actions homepage-scope-form"
     onSubmit={event => { if (!window.dispatchEvent(new Event(catalogBeforeRegionChange, { cancelable: true }))) event.preventDefault(); }}>
     <input type="hidden" name="region" value={region} />
+    {editorial && <input type="hidden" name="panel" value="editorial" />}
     <label>Market and language<select name="scope" defaultValue={scope.key}>
       {scopes.map(row => <option key={row.key} value={row.key}>{row.label}</option>)}
     </select></label>
-    <button className="taxonomy-button" type="submit">Open template</button>
+    <button className="taxonomy-button" type="submit">{editorial ? 'Open market content' : 'Open template'}</button>
   </form>;
 }
 
@@ -56,6 +57,8 @@ function materialPayload(draft: HomepageDraft): HomepageDraft {
     if (section.type === 'TILES' && (!tiles?.length || tiles.some(tile => !tile.referenceId || !homepageTileKinds[layout].includes(tile.kind)))) {
       throw new Error(`Choose a valid destination for every tile in ${section.title}.`);
     }
+    if (section.type === 'BANNER' && !bannerImage?.src) throw new Error(`Choose an image for ${section.title}.`);
+    if (section.type === 'BENEFITS' && !section.benefits?.length) throw new Error(`Add a benefit to ${section.title}.`);
     return { ...rest, ...(description?.trim() ? { description: description.trim() } : {}),
       ...(bannerImage?.src ? { bannerImage } : {}), ...(section.type === 'TILES' && { tileLayout: layout,
         tiles: tiles?.map(tile => ({ ...tile, title: tile.title?.trim() || undefined, ctaLabel: tile.ctaLabel?.trim() || undefined })) }) };
@@ -70,6 +73,7 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
   const market = scope.key.startsWith('global:') ? undefined : scope.previews[0];
   const kind = section.type;
   const linked = section.link;
+  const benefits = section.benefits ?? [];
   const [destination, setDestination] = useState<DestinationKind>(() => destinationKind(linked?.href));
   const isCatalogDestination = destination === 'categories' || destination === 'collections' || destination === 'products';
   function refs(resource: HomepageReferenceKind, label: string, ids: string[], max: number,
@@ -81,15 +85,19 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         update(newIds, ref);
       }} />;
   }
+  function editBenefit(index: number, fields: Partial<HomepageBenefit>) {
+    onEdit({ benefits: benefits.map((item, itemIndex) => itemIndex === index ? { ...item, ...fields } : item) });
+  }
   return <>
     <div className="taxonomy-fields homepage-fields">
       <label>Section type<select value={section.type} onChange={event => {
         const type = event.target.value as HomepageSectionType;
         setDestination('');
         onEdit({ type, productIds: undefined, categoryIds: undefined, categoryId: undefined, collectionIds: undefined,
-          collection: undefined, budget: undefined, fallbackIds: undefined, link: undefined,
+          collection: undefined, budget: undefined, fallbackIds: undefined, link: undefined, benefits: undefined,
+          bannerImage: type === 'BENEFITS' ? undefined : section.bannerImage,
           tileLayout: type === 'TILES' ? 'PORTRAIT' : undefined, tiles: undefined,
-          limit: type === 'TILES' ? undefined : section.limit });
+          limit: type === 'TILES' || type === 'BENEFITS' ? undefined : section.limit });
       }}>{(authorable.includes(kind) ? authorable : [...authorable, kind]).map(type =>
         <option key={type} value={type}>{homepageSectionLabels[type]}</option>)}</select></label>
       <label>Display order<input type="number" required min={2} max={100} value={section.position || ''}
@@ -102,11 +110,31 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         onChange={event => onEdit({ startsLocal: event.target.value || undefined })} /></label>
       <label>Ends in market local time<input type="datetime-local" value={section.endsLocal ?? ''}
         onChange={event => onEdit({ endsLocal: event.target.value || undefined })} /></label>
-      {kind !== 'TILES' && <label>Maximum items<input type="number" min={1} max={12} value={section.limit ?? ''}
+      {kind !== 'TILES' && kind !== 'BENEFITS' && <label>Maximum items<input type="number" min={1} max={12} value={section.limit ?? ''}
         onChange={event => onEdit({ limit: event.target.value ? Number(event.target.value) : undefined })} /></label>}
       <label className="homepage-checkbox"><input type="checkbox" checked={section.enabled !== false}
         onChange={event => onEdit({ enabled: event.target.checked })} /> Enabled</label>
     </div>
+    {kind === 'BENEFITS' && <>
+      {benefits.map((benefit, index) => <fieldset className="homepage-tile-image" key={index}>
+        <legend>Benefit {index + 1}</legend>
+        <label>Benefit title<input required minLength={2} maxLength={70} value={benefit.title}
+          onChange={event => editBenefit(index, { title: event.currentTarget.value })}/></label>
+        <label>Benefit description<textarea required rows={2} minLength={2} maxLength={200} value={benefit.description}
+          onChange={event => editBenefit(index, { description: event.currentTarget.value })}/></label>
+        <label>Benefit link<select value={benefit.destination ?? ''} onChange={event => {
+          const key = event.currentTarget.value as HomepageBenefit['destination'];
+          editBenefit(index, { destination: key || undefined });
+        }}>
+          <option value="">No link</option>
+          {Object.entries(benefitDestinations).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select></label>
+        <button className="taxonomy-button" type="button"
+          onClick={() => onEdit({ benefits: benefits.filter((_, row) => index !== row) })}>Remove benefit</button>
+      </fieldset>)}
+      <button className="taxonomy-button" type="button" disabled={benefits.length >= 6}
+        onClick={() => onEdit({ benefits: [...benefits, { title: '', description: '' }] })}>Add benefit</button>
+    </>}
     {kind === 'TILES' && <HomepageTilesEditor section={section} region={region} scope={scope} refData={refData}
       disabled={disabled} onEdit={onEdit} onUpload={onAsset} />}
     {['CURATED', 'FEATURED', 'BANNER'].includes(kind) && refs('products', 'Products', section.productIds ?? [], 16, productIds => onEdit({ productIds }))}
@@ -121,7 +149,7 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         ? { currency: market.currency, amountMinor: Math.round(Number(event.target.value) * 100) } : undefined })} />
       <small>Leave blank to show eligible active offers. Enter a ceiling to select products by local price.</small></label>
       : <p className="taxonomy-muted">Active offers use each market’s pricing. Set a budget ceiling in a market template.</p>)}
-    {kind === 'CATEGORY_SPOTLIGHT' ? <p className="taxonomy-muted">The destination is the published page for the selected category.</p>
+    {kind !== 'BENEFITS' && (kind === 'CATEGORY_SPOTLIGHT' ? <p className="taxonomy-muted">The destination is the published page for the selected category.</p>
     : <>
       <div className="taxonomy-fields">
         <label>Section destination<select value={destination} onChange={event => {
@@ -139,8 +167,8 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
       </div>
       {isCatalogDestination && refs(destination, `Destination ${catalogDestinations[destination].toLowerCase()}`, linked ? [linked.href] : [], 1,
         ([href], ref) => onEdit({ link: href ? { href, label: (ref?.label ?? 'Shop now').slice(0, 40) } : undefined }), true)}
-    </>}
-    <div className="homepage-fieldset">
+    </>)}
+    {kind !== 'BENEFITS' && <div className="homepage-fieldset">
       <h3>Section image</h3>
       {section.bannerImage && <HomepageAsset image={section.bannerImage} region={region} />}
       {refs('media', 'Approved image', section.bannerImage?.src ? [section.bannerImage.src] : [], 1, ([src], ref) =>
@@ -149,7 +177,7 @@ function SectionFields({ section, region, scope, refData, disabled, onEdit, onAs
         onChange={event => { const file = event.target.files?.[0]; if (file) onAsset(file, bannerImage => onEdit({ bannerImage })); event.target.value = ''; }} /></label>
       {section.bannerImage?.src && <label>Image alternative text<input maxLength={130} value={section.bannerImage.alt}
         onChange={event => onEdit({ bannerImage: { src: section.bannerImage!.src, alt: event.target.value } })} /></label>}
-    </div>
+    </div>}
   </>;
 }
 

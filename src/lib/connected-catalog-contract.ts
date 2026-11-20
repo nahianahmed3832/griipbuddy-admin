@@ -1,14 +1,17 @@
 import { connectedOrderActions, marketplaceOrderQueues, orderIdentifier, type MarketplaceOrderQueue } from './connected-order-contract';
 import { isMarketId, type MarketId } from '../components/connected-catalog-product/markets';
 
-const homepageReads = ['homepage-scopes', 'homepage', 'homepage-preview', 'homepage-references', 'homepage-asset'] as const;
+export const sellerHubSections = ['notices', 'requests', 'campaigns', 'conversations'] as const;
+export type SellerHubSection = typeof sellerHubSections[number];
+
+const homepageReads = ['homepage-scopes', 'homepage', 'homepage-editorial', 'homepage-preview', 'homepage-references', 'homepage-asset'] as const;
 type HomepageReadName = typeof homepageReads[number];
 export type CatalogRead = { read: 'categories' | 'products' | 'product' | 'inventory' | 'warehouses' | 'devices' | 'asset' |
   'category-impact' | 'attribute-impact' | 'collection-products' | 'device' | 'search-status' |
-  'orders' | 'order' | 'order-cases' | 'order-case' | HomepageReadName; id?: string; q?: string; page?: number;
+  'orders' | 'order' | 'order-cases' | 'order-case' | 'seller-listing-reviews' | 'catalog-exchange' | 'seller-hub' | 'seller-verification' | HomepageReadName; id?: string; q?: string; page?: number;
   menuKey?: string; locale?: string; collectionId?: string; scope?: 'direct' | 'descendants' | 'all' | 'search'; input?: Record<string, unknown>;
-  homepageScope?: string; marketId?: string; previewAt?: string; kind?: 'products' | 'categories' | 'collections' | 'media';
-  state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; offerMarketId?: MarketId; queue?: MarketplaceOrderQueue; closed?: boolean };
+  homepageScope?: string; marketId?: string; previewAt?: string; kind?: 'products' | 'categories' | 'collections' | 'media'; mode?: 'template' | 'export';
+  state?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'; source?: 'connected' | 'legacy'; offerMarketId?: MarketId; queue?: MarketplaceOrderQueue; closed?: boolean; section?: SellerHubSection };
 export type CatalogCommand = { action: string; input: Record<string, unknown> };
 export type CatalogRequest = CatalogRead | CatalogCommand;
 export const catalogRequestLimit = 512 * 1024;
@@ -16,16 +19,17 @@ export const catalogUploadLimit = 4 * 1024 * 1024;
 export const catalogMediaLimit = 6 * 1024 * 1024;
 
 const reads = new Set(['categories', 'products', 'product', 'inventory', 'warehouses', 'devices', 'category-impact', 'attribute-impact', 'collection-products',
-  'device', 'search-status', 'orders', 'order', 'order-cases', 'order-case']);
+  'device', 'search-status', 'orders', 'order', 'order-cases', 'order-case', 'seller-listing-reviews', 'catalog-exchange']);
 export const catalogActions = new Set([
   'category.save', 'category.move', 'category.archive', 'category.reorder', 'category.translation',
   'category.presentation', 'category.attribute', 'attribute.save', 'menu.save', 'collection.save',
   'collection.publish', 'collection.products', 'product.assignments', 'product.save', 'product.publish',
   'product.translation', 'product.gallery', 'variant.compatibility', 'device.save', 'offer.save',
   'offer.configure', 'inventory.initialize', 'inventory.route', 'inventory.movement', 'inventory.transfer', 'media.upload',
-  'inventory.warehouse.create',
+  'inventory.warehouse.create', 'inventory.threshold', 'inventory.compensate', 'inventory.transfer-dispatch', 'inventory.transfer-receive',
   'homepage.save', 'homepage.publish', 'homepage.restore', 'homepage.inherit', 'homepage.media',
-  'search.reconcile', 'search.rebuild', ...connectedOrderActions,
+  'homepage.editorial-save', 'homepage.editorial-publish', 'homepage.editorial-withdraw',
+  'search.reconcile', 'search.rebuild', 'seller-hub.command', 'seller-verification.command', 'seller-listing.review', 'catalog.exchange.preview', 'catalog.exchange.apply', ...connectedOrderActions,
 ]);
 
 export function isHomepageRequest(request: CatalogRequest) {
@@ -45,7 +49,7 @@ export function parseCatalogRequest(value: unknown): CatalogRequest | null {
       return { read: 'homepage-asset', id: value.id };
     }
     if (typeof value.homepageScope !== 'string' || !/^[a-z][a-z0-9-]{0,15}:[a-zA-Z0-9-]{1,35}$/.test(value.homepageScope)) return null;
-    if (value.read === 'homepage' && keys.every(key => ['read', 'homepageScope'].includes(key))) return value as CatalogRead;
+    if ((value.read === 'homepage' || value.read === 'homepage-editorial') && keys.every(key => ['read', 'homepageScope'].includes(key))) return value as CatalogRead;
     if (value.read === 'homepage-preview' && keys.every(key => ['read', 'homepageScope', 'marketId', 'locale', 'previewAt'].includes(key)) &&
         typeof value.marketId === 'string' && /^[a-z][a-z0-9-]{0,15}$/.test(value.marketId) &&
         typeof value.locale === 'string' && /^[a-zA-Z0-9-]{1,35}$/.test(value.locale) &&
@@ -58,9 +62,25 @@ export function parseCatalogRequest(value: unknown): CatalogRequest | null {
   if (value.read === 'asset' && Object.keys(value).every(key => ['read', 'id'].includes(key)) && catalogAssetPath(value.id)) {
     return { read: 'asset', id: value.id };
   }
+  if (value.read === 'catalog-exchange') {
+    return Object.keys(value).every(key => ['read', 'kind', 'mode', 'page'].includes(key)) &&
+      (value.kind === 'products' || value.kind === 'categories') && (value.mode === 'template' || value.mode === 'export') &&
+      (value.page === undefined || typeof value.page === 'number' && Number.isSafeInteger(value.page) && value.page >= 1 && value.page <= 10000)
+      ? value as CatalogRead : null;
+  }
+  if (value.read === 'seller-hub' || value.read === 'seller-verification') {
+    const paging = value.page === undefined || typeof value.page === 'number' && Number.isSafeInteger(value.page) && value.page >= 1 && value.page <= 10000;
+    if (!paging) return null;
+    if (value.read === 'seller-verification') return Object.keys(value).every(key => ['read', 'page'].includes(key)) ? value as CatalogRead : null;
+    return Object.keys(value).every(key => ['read', 'page', 'section', 'id', 'q'].includes(key)) &&
+      sellerHubSections.some(section => section === value.section) &&
+      (value.id === undefined || typeof value.id === 'string' && orderIdentifier.test(value.id)) &&
+      (value.q === undefined || typeof value.q === 'string' && value.q.length <= 80) ? value as CatalogRead : null;
+  }
   const orderDetail = value.read === 'order' || value.read === 'order-case';
   const requestKeys = value.read === 'categories' ? ['read', 'id', 'q', 'page', 'menuKey', 'locale', 'collectionId', 'scope'] :
     value.read === 'attribute-impact' ? ['read', 'input', 'page'] : value.read === 'products' ? ['read', 'q', 'page', 'state', 'source', 'offerMarketId'] :
+      value.read === 'seller-listing-reviews' ? ['read', 'q'] :
       value.read === 'search-status' || value.read === 'warehouses' ? ['read'] : value.read === 'device' || orderDetail ? ['read', 'id'] :
         value.read === 'orders' ? ['read', 'queue', 'page'] : value.read === 'order-cases' ? ['read', 'closed', 'page'] : ['read', 'id', 'q', 'page'];
   if (typeof value.read === 'string' && reads.has(value.read) && Object.keys(value).every(key => requestKeys.includes(key)) &&

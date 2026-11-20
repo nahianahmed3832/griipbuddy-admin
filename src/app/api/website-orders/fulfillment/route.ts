@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   let command;
   try { command = obj(JSON.parse(raw)); } catch { return reject('Invalid fulfillment request.', 400); }
   try {
-    const region = getRegion(request.nextUrl.searchParams.get('region') || undefined, auth.staff);
+    const region = getRegion(request.nextUrl.searchParams.get('region') ?? undefined, auth.staff);
     await saveHybridFulfillment(id, auth, region, command);
     return Response.json({ saved: true }, { headers });
   } catch (error) {

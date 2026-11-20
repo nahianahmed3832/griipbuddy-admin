@@ -1,6 +1,7 @@
 import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import { ApiError, getRegion, obj, workspaceWritesEnabled, type Session } from './api';
+import { isMarketId, markets, type MarketId } from '../components/connected-catalog-product/markets';
 import { isHomepageRequest, type CatalogRequest } from './connected-catalog-contract';
 import { connectedCatalogEndpoint } from './connected-catalog-endpoint';
 import { has, superAdmin, type Region } from './sections';
@@ -9,7 +10,7 @@ import { scopedCatalogPilotRequested, verifyScopedCatalogFence } from './scoped-
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
 const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
 const orderProgress = new Set(['order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking',
-  'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh']);
+  'order.parcel.prepare', 'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh']);
 
 export function connectedCatalogConfigured() {
   return Boolean(process.env.GRIIP_MAIN_ADMIN_CATALOG_URL || process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET);
@@ -29,15 +30,30 @@ export function connectedHomepageConfigured() {
     process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
 }
 
-export function connectedCatalogMarket(auth: Session, region: Region, homepage = false) {
+export function connectedCatalogMarket(auth: Session, region: Region, homepage = false): MarketId {
   const permitted = getRegion(region, auth.staff);
-  if (permitted !== region) throw new ApiError(403, 'This operating region is unavailable for your account.');
   if (permitted === 'BD') return 'bd';
   const international = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_INTERNATIONAL_MARKET : process.env.GRIIP_MAIN_ADMIN_CATALOG_INTERNATIONAL_MARKET;
-  if (international !== 'us') {
+  if (!isMarketId(international) || markets[international].countryCode === 'BD') {
     throw new ApiError(403, 'This region needs a verified connected catalog market assignment.');
   }
-  return 'us';
+  return international;
+}
+
+function validateRequestMarket(request: CatalogRequest, marketId: MarketId, central: boolean) {
+  if ('read' in request) {
+    const requestedMarket = request.read === 'products' ? request.offerMarketId : request.marketId;
+    if (requestedMarket !== undefined && !isMarketId(requestedMarket)) throw new ApiError(400, 'Choose a supported market.');
+    if (!central && requestedMarket !== undefined && requestedMarket !== marketId) {
+      throw new ApiError(403, 'Choose the current market for this view.');
+    }
+  }
+  if (request.input?.marketId !== undefined && request.input.marketId !== marketId) {
+    throw new ApiError(409, 'Select the intended operating region before saving.');
+  }
+  if (request.input?.currency !== undefined && request.input.currency !== markets[marketId].currency) {
+    throw new ApiError(422, 'The currency does not match the selected market.');
+  }
 }
 
 export function mayEditConnectedHomepage(auth: Session) {
@@ -79,7 +95,50 @@ export function mayEditConnectedOrder(auth: Session, action: string) {
   return action === 'order.case' ? has(staff, 'order.return') : action === 'order.cancel' || action === 'order.collect';
 }
 
+export function mayReviewSellerListings(auth: Session) {
+  return has(auth.staff, 'product.view') && has(auth.staff, 'product.update');
+}
+
+function listingReviewRequest(request: CatalogRequest) {
+  return 'read' in request ? request.read === 'seller-listing-reviews' : request.action === 'seller-listing.review';
+}
+
+function exchangeRequest(request: CatalogRequest) {
+  return 'read' in request ? request.read === 'catalog-exchange' : request.action.startsWith('catalog.exchange.');
+}
+
+export function mayUseCatalogExchange(auth: Session) {
+  return !scopedCatalogPilotRequested() && superAdmin(auth.staff) && has(auth.staff, 'product.view');
+}
+
+function sellerOperationsRequest(request: CatalogRequest) {
+  return 'read' in request ? ['seller-hub', 'seller-verification'].includes(request.read) :
+    ['seller-hub.command', 'seller-verification.command'].includes(request.action);
+}
+
+export function mayUseConnectedSellerOperations(auth: Session) {
+  return connectedCatalogConfigured() && superAdmin(auth.staff) && has(auth.staff, 'user.view');
+}
+
 function authorizeRequest(auth: Session, request: CatalogRequest) {
+  if (sellerOperationsRequest(request)) {
+    if (!mayUseConnectedSellerOperations(auth) || ('action' in request && !workspaceWritesEnabled())) {
+      throw new ApiError(403, 'Seller operations are unavailable.');
+    }
+    return;
+  }
+  if (exchangeRequest(request)) {
+    if (!mayUseCatalogExchange(auth) || ('action' in request && (!workspaceWritesEnabled() || !has(auth.staff, 'product.create')))) {
+      throw new ApiError(403, 'Central catalog exchange access is unavailable.');
+    }
+    return;
+  }
+  if (listingReviewRequest(request)) {
+    if (!mayReviewSellerListings(auth) || ('action' in request && !workspaceWritesEnabled())) {
+      throw new ApiError(403, 'Seller listing review access is unavailable.');
+    }
+    return;
+  }
   if ('read' in request) {
     if (orderReads.has(request.read)) {
       if (!mayReadConnectedOrders(auth, request.read === 'order-cases' || request.read === 'order-case')) {
@@ -141,17 +200,17 @@ export async function connectedCatalog<T = unknown>(auth: Session, region: Regio
     }
   } else {
     authorizeRequest(auth, request);
-    if (scopedCatalogPilotRequested() && 'action' in request && !request.action.startsWith('order.')) {
-      await verifyScopedCatalogFence(auth);
-    }
   }
+  const review = listingReviewRequest(request);
+  if (review && getRegion(region, auth.staff) !== region) throw new ApiError(403, 'You do not have access to this market.');
   const marketId = connectedCatalogMarket(auth, region, homepage);
-  if (request.input?.marketId !== undefined && request.input.marketId !== marketId) {
-    throw new ApiError(409, 'Select the intended operating region before saving.');
+  const central = superAdmin(auth.staff);
+  validateRequestMarket(request, marketId, central);
+  if (!homepage && !review && !sellerOperationsRequest(request) && scopedCatalogPilotRequested() && 'action' in request && !request.action.startsWith('order.')) {
+    await verifyScopedCatalogFence(auth);
   }
   const { endpoint, secret } = connectedCatalogEndpoint(homepage);
-  const body = JSON.stringify({ issuedAt: Date.now(), nonce: randomUUID(), legacyId: auth.staff.id,
-    central: superAdmin(auth.staff), marketId, request });
+  const body = JSON.stringify({ issuedAt: Date.now(), nonce: randomUUID(), legacyId: auth.staff.id, central, marketId, request });
   const signature = createHmac('sha256', secret).update('griip-main-admin-catalog-v1\n').update(body).digest('hex');
   let response: Response;
   try {

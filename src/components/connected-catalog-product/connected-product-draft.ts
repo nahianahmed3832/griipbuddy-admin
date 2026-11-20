@@ -88,6 +88,64 @@ export function variantTuple(options: readonly DraftOption[], selections: Record
   }).join(" / ") || "Standard";
 }
 
+export const foldedSku = (sku: string) => sku.trim().toUpperCase();
+export const validDraftSku = (sku: string) => /^[A-Z0-9][A-Z0-9._ &+\-]{0,59}$/.test(foldedSku(sku));
+
+export function suggestVariantSku(
+  slug: string, options: readonly DraftOption[], selections: Record<string, string>, reserved: Set<string>,
+): string {
+  const token = (value: string) => value.normalize("NFKD").replace(/\p{Mark}/gu, "").toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const prefix = token(slug);
+  if (!prefix) return "";
+  const order = [...options].sort((left, right) => left.key.localeCompare(right.key));
+  const suffixes = order.map(option => token(option.values.find(row => row.id === selections[option.id])?.value ?? ""));
+  const base = [suffixes.some(Boolean) ? prefix.slice(0, 32).replace(/-$/, "") : prefix, ...suffixes].filter(Boolean).join("-");
+  let candidate = base.slice(0, 60).replace(/-$/, "");
+  for (let index = 2; reserved.has(candidate); index++) {
+    const suffix = "-" + index;
+    candidate = base.slice(0, 60 - suffix.length).replace(/-$/, "") + suffix;
+  }
+  return candidate;
+}
+
+export function variantDraftIssues(draft: ProductDraft) {
+  const issues: string[] = [];
+  const fold = (value: string) => value.trim().normalize("NFKC").toLowerCase();
+  const optionKeys = new Set<string>();
+  for (const option of draft.options) {
+    const name = option.label.trim() || option.key.trim() || "An option";
+    const key = fold(option.key);
+    if (!key || !option.label.trim() || !option.values.length) {
+      issues.push(name + " needs a key, label and at least one value.");
+    } else if (optionKeys.has(key)) {
+      issues.push(name + " uses an option key that already exists.");
+    }
+    optionKeys.add(key);
+    const values = option.values.map(row => fold(row.value));
+    const labels = option.values.map(row => fold(row.label) || fold(row.value));
+    if (values.some(value => !value) || new Set(values).size !== values.length || new Set(labels).size !== labels.length) {
+      issues.push(name + " needs distinct canonical values and display labels.");
+    }
+  }
+  const skus = new Set<string>();
+  const combinations = new Set<string>();
+  for (const row of draft.variants) {
+    const sku = foldedSku(row.sku);
+    const tuple = variantTuple(draft.options, row.selections);
+    const signature = variantOptionSignature(row.selections);
+    if (!validDraftSku(sku)) issues.push(tuple + " needs a valid SKU of up to 60 characters.");
+    else if (skus.has(sku)) issues.push(sku + " is used in more than one variant.");
+    if (Object.keys(row.selections).length !== draft.options.length || !draft.options.every(option =>
+      option.values.some(value => value.id === row.selections[option.id]))) {
+      issues.push((sku || tuple) + " needs one value from every option.");
+    } else if (combinations.has(signature)) issues.push(tuple + " is used in more than one variant.");
+    skus.add(sku);
+    combinations.add(signature);
+  }
+  return [...new Set(issues)];
+}
+
 export function withAttribute(values: AttributeValues, key: string, value: AttributeValue | undefined) {
   const next = { ...values };
   if (value === undefined) delete next[key];

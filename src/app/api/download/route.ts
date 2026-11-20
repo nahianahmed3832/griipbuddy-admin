@@ -8,7 +8,11 @@ import { hybridReportDownload } from '@/lib/hybrid-report-export';
 export async function GET(req: NextRequest) {
   const auth = await session();
   if (!auth) return new Response('Sign in to export reports', { status: 401 });
-  const query = Object.fromEntries(req.nextUrl.searchParams);
+  const params = req.nextUrl.searchParams;
+  if (params.getAll('region').length > 1 || params.getAll('currency').length > 1) {
+    return new Response('Choose one operating region and currency.', { status: 400 });
+  }
+  const query = Object.fromEntries(params);
   if (!reportIds.includes(query.id) || !['csv','xlsx'].includes(query.format)) return new Response('Unknown report', { status: 404 });
   try {
     const region = getRegion(query.region, auth.staff);

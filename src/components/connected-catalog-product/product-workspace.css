@@ -32,11 +32,40 @@
 .product-workspace-history { min-width: 470px; }
 .product-workspace-table a { color: var(--color-plum); font-weight: 800; text-decoration: underline; }
 .product-workspace-pagination { justify-content: space-between; }
+.connected-product-workspace .product-list-filters { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); align-items: end; }
+.product-setup-note { display: block; margin-top: 4px; color: var(--color-muted); font-size: .8rem; }
+.connected-product-workspace .product-save { scroll-margin-block: 20px; }
+.product-save:focus-visible { outline: 2px solid var(--color-plum); outline-offset: 2px; }
+.product-save .taxonomy-error ul { margin: 6px 0; padding-inline-start: 1.15rem; }
+.variant-matrix :is(td,th) { overflow-wrap: anywhere; }
+.variant-matrix td[data-field="SKU"] { min-width: 182px; }
+.variant-id { display: block; color: var(--color-muted); font-size: .72rem; font-weight: 500; }
+.variant-scroll { scroll-margin-block: 77px; }
+.variant-proposals > .taxonomy-fields { align-items: center; border-bottom: 1px solid var(--color-line); padding-block: 4px 10px; }
 @media (max-width: 830px) {
   .product-workspace-layout { grid-template-columns: minmax(0, 1fr); }
   .product-workspace-links { position: static; }
   .product-workspace-links ul { display: flex; flex-wrap: wrap; }
   .product-workspace-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table)[role="table"],
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table)[role="table"] tbody { display: block; min-width: 0; }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table) thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+  }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table) tbody { display: grid; gap: 8px; }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table) tbody tr {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--color-line); border-radius: 10px; overflow: hidden;
+  }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table) tbody :is(td,th) {
+    display: block; min-width: 0; border: 0; padding: 8px; overflow-wrap: anywhere; white-space: normal;
+  }
+  .connected-product-workspace .product-workspace-table th[scope="row"] { grid-column: 1 / -1; border-bottom: 1px solid var(--color-line); }
+  .connected-product-workspace .variant-matrix th[scope="row"] { grid-column: 1; grid-row: 1; }
+  .connected-product-workspace .variant-matrix td[data-field="Select"] { grid-column: 2; grid-row: 1; justify-self: end; }
+  .connected-product-workspace .variant-matrix td[data-field="SKU"] { grid-column: 1 / -1; }
+  .connected-product-workspace :is(.variant-matrix, .product-workspace-table) td[data-field]::before {
+    content: attr(data-field); display: block; margin-bottom: 3px; color: var(--color-muted); font-size: .73rem; font-weight: 700;
+  }
 }
 @media (max-width: 490px) {
   .product-workspace-filters { grid-template-columns: minmax(0, 1fr); }

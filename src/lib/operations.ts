@@ -340,9 +340,9 @@ export async function executeOperation(id: OperationId, recordId: string, values
     }
     case 'purchase-notes': {
       const purchaseId = checkedId(recordId, 'Purchase');
-      const purchase = obj(await api('/purchase/' + purchaseId, auth.token));
+      const purchase = obj(await api(url('/purchase/' + purchaseId, { region }), auth.token));
       await locationInRegion(refId(purchase.business_location), region, auth);
-      await mutate('/purchase/' + purchaseId, auth, 'PUT', { additional_notes: input.note });
+      await mutate(url('/purchase/' + purchaseId, { region }), auth, 'PUT', { additional_notes: input.note });
       break;
     }
     case 'purchase-rate': {
@@ -354,7 +354,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       if (supplier.is_deleted === true) invalid('Choose an active supplier.');
       if (Number(input.discount) > Number(input.cost)) invalid('Discount cannot exceed unit cost.');
       await productInRegion(productId, region, auth);
-      const result = obj(await mutate('/purchase/default', auth, 'PUT', {
+      const result = obj(await mutate(url('/purchase/default', { region }), auth, 'PUT', {
         variant: variantId, product: productId, supplier: supplierId, unit_cost: Number(input.cost),
         discount: Number(input.discount), tax: Number(input.tax),
       }));

@@ -25,6 +25,7 @@ function record(raw: unknown): LocationRecord {
       thana: str(address.thana), zip_code: str(address.zip_code),
     },
     manager_name: str(row.manager_name),
+    pickup_enabled: row.pickup_enabled === true, pickup_contact: str(row.pickup_contact), country_code: str(row.country_code) || undefined,
     contact_numbers: (Array.isArray(row.contact_numbers) ? row.contact_numbers : str(row.contact_numbers).split(','))
       .map(str).map(phone => phone.trim()).filter(Boolean),
   };
@@ -184,7 +185,8 @@ export async function LocationsPage({ auth, region, q, id, production = false }:
       <section className="panel">
         <div className="panel-header"><h2>Location details</h2></div>
         <dl><div><dt>Type</dt><dd><TypeBadge type={location.type}/></dd></div>
-          <div><dt>Address</dt><dd><Address address={location.address}/></dd></div></dl>
+          <div><dt>Address</dt><dd><Address address={location.address}/></dd></div>
+          {location.type === 'OUTLET' && <div><dt>Pickup directory</dt><dd>{location.pickup_enabled ? `${location.country_code} · ${location.pickup_contact}` : 'Unlisted'}</dd></div>}</dl>
       </section>
       <section className="panel">
         <div className="panel-header"><h2>Contacts</h2></div>

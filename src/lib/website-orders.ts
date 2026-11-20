@@ -114,6 +114,20 @@ export type CustomerHistory = {
 };
 export const orderNumber = (order: Pick<Order, 'order_serial_id' | 'invoice_number'>) => order.order_serial_id ? '#' + order.order_serial_id : order.invoice_number || 'Order';
 export const currencyFor = (value: string | undefined, region: Region) => value || (region === 'BD' ? 'BDT' : 'USD');
+export function orderDisplayMoney(amount: number | undefined, currency: string | undefined, region: Region) {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '—';
+  const code = /^[A-Z]{3}$/.test(currency ?? '') ? currency : region === 'BD' ? 'BDT' : undefined;
+  const locale = code === 'BDT' ? 'en-BD' : 'en-US';
+  return amount.toLocaleString(locale, { maximumFractionDigits: 2 }) + (code ? ' ' + code : ' (currency unavailable)');
+}
+
+export function orderStateTone(status: string) {
+  if (status === 'DELIVERED') return 'success';
+  if (['CANCELLED', 'FAILED', 'FULL_RETURNED'].includes(status)) return 'danger';
+  if (['AWAITING_STOCK', 'PENDING_RETURN', 'RETURN_REQUESTED', 'INCOMPLETE', 'NO_RESPONSE'].includes(status)) return 'warning';
+  return status === 'UNKNOWN' ? 'neutral' : 'active';
+}
+
 export function money(amount: number | undefined, currency: string) {
   if (typeof amount !== 'number' || !Number.isFinite(amount)) return '—';
   if (currency === 'BDT') return (amount < 0 ? '-৳' : '৳') + Math.abs(amount).toLocaleString('en-BD', { maximumFractionDigits: 2 });

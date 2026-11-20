@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { ArrowDownToLine, ArrowRight } from 'lucide-react';
 import { api, ApiError, arr, integratedCheckoutEnabled, obj, str, url } from '@/lib/api';
 import { adminPath } from '@/lib/paths';
+import { managedMarketScope, managedRead, marketCode } from '@/lib/managed';
+import { param } from '@/lib/data';
 import { afterId, col, date, editor, Grid, json, number, read, ReportValues, status, text, type Context } from './managed-common';
 
 function OrderSearch({ context, order }: { context: Context; order?: string }) {
@@ -11,6 +13,11 @@ function OrderSearch({ context, order }: { context: Context; order?: string }) {
     <button className="button secondary">Open order</button>
     <Link className="button subtle" href={url('/desk/orders',{region:context.region})}>Find an order <ArrowRight size={15}/></Link>
   </form>;
+}
+
+function orderEditorContext(context: Context, data: unknown): Context {
+  const market = str(obj(data).market);
+  return marketCode(market) ? { ...context, market } : context;
 }
 
 async function orderDeskHandoff(context: Context, order?: string) {
@@ -43,27 +50,69 @@ export async function ManagedSourcing(context: Context) {
   </>;
 }
 
+const shipmentStates = [
+  ['planned', 'Ready to pick'], ['picked', 'Ready to pack'], ['packed', 'Ready for handoff'], ['booking', 'Booking needs review'],
+  ['dispatched', 'Dispatched'], ['in-transit', 'In transit'], ['out-for-delivery', 'Out for delivery'],
+  ['exception', 'Delivery exception'], ['delivered', 'Delivered'], ['returned', 'Returned'], ['cancelled', 'Cancelled'],
+] as const;
+
+async function ShipmentQueue(context: Context) {
+  const { auth, market, path, q, region } = context;
+  const state = shipmentStates.find(([key]) => key === param(q, 'state'))?.[0];
+  const requested = param(q, 'direction');
+  const direction = requested === 'outbound' || requested === 'return' ? requested : undefined;
+  const before = afterId(q, 'before');
+  const wrongRegion = region === 'BD' ? market !== 'BD' : market === 'BD';
+  const filters = { market, region, state, direction };
+  const payload = wrongRegion ? null : obj(await managedRead(url('/global/admin/shipments', { state, direction, before }), auth,
+    await managedMarketScope(market, auth)));
+  return <>
+    <form action={adminPath(path)} className="panel filters" aria-label="Filter shipment queue">
+      <input type="hidden" name="region" value={region}/>
+      <label className="filter-label">Country code<input name="market" pattern="[A-Za-z]{2}" maxLength={2}
+        defaultValue={wrongRegion ? '' : market} required/></label>
+      <label className="filter-label">Shipment state<select name="state" defaultValue={state ?? ''}>
+        <option value="">All states</option>{shipmentStates.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      </select></label>
+      <label className="filter-label">Direction<select name="direction" defaultValue={direction ?? ''}>
+        <option value="">Both directions</option><option value="outbound">Outbound</option><option value="return">Return</option>
+      </select></label>
+      <button className="button secondary">Apply filters</button>
+    </form>
+    {payload ? <Grid title="Shipment queue" data={payload} columns={[col('Order','order'),col('Shipment','_id'),col('Service','service'),
+      col('Direction','direction'),status,col('Tracking','tracking'),col('Updated','updatedAt','date')]}
+      select={row => url(path,{ region,market,order:str(row.order),record:str(row._id) })}
+      next={payload.next ? url(path,{...filters,before:str(payload.next)}) : undefined}/>
+      : <p className="notice">Choose a country code in this operating region to view its shipments.</p>}
+  </>;
+}
+
 export async function ManagedFulfillment(context: Context) {
   const { path, region, q, auth } = context;
   const order = afterId(q,'order');
   const handoff = await orderDeskHandoff(context, order);
   if (handoff) return <><OrderSearch context={context} order={order}/>{handoff}</>;
   const shipmentId = afterId(q,'record');
-  const base = { region, order };
+  const base = { region, order, market: param(q, 'market') };
+  if (!order) return <><OrderSearch context={context}/>{await ShipmentQueue(context)}</>;
   const [data, rawOrder] = order ? await Promise.all([
-    read(context,'/global/admin/orders/' + order), api('/order/' + order,auth.token),
+    managedRead('/global/admin/orders/' + order, auth, param(q, 'market') ? await managedMarketScope(context.market, auth) : undefined),
+    api(url('/order/' + order, { region }),auth.token),
   ]) : [];
   const shipments = arr(obj(data).shipments).map(obj);
+  const editorContext = orderEditorContext(context, data);
+  if ((editorContext.market === 'BD') !== (region === 'BD')) throw new ApiError(404);
+  const parcelScope = await managedMarketScope(editorContext.market, auth);
   const selected = shipments.find(row => row._id === shipmentId);
   const state = str(selected?.state);
   const trackable = ['dispatched','in-transit','customs','out-for-delivery','exception'];
   const outbound = selected?.direction === 'outbound';
   const timeline = selected && shipmentId
-    ? obj(await read(context,url('/global/admin/shipments/' + shipmentId + '/tracking',{after:afterId(q,'after')}))) : null;
+    ? obj(await managedRead(url('/global/admin/shipments/' + shipmentId + '/tracking',{after:afterId(q,'after')}),auth,parcelScope)) : null;
   return <>
     <OrderSearch context={context} order={order}/>
     {order && rawOrder && <>
-      <div className="page-actions">{editor(context,'shipment-new','Plan shipment',[
+      <div className="page-actions">{editor(editorContext,'shipment-new','Plan shipment',[
         text('order','Order ID',order),text('warehouse','Warehouse ID'),text('service','Configured shipping service'),
         json('parcels','Parcels',[{grams:500,length:15,width:10,height:5}],'Use grams and centimeters.'),
         json('lines','Order lines',[{id:'',quantity:1}],'Use order line IDs. China shipments require a source mapping and may use a matching purchase ID.'),
@@ -78,24 +127,35 @@ export async function ManagedFulfillment(context: Context) {
       <p>{str(selected.service)} · {state}</p>
       <div className="page-actions">
         {outbound && state === 'planned' && <>
-          {editor(context,'shipment-action','Pick shipment',[json('barcodes','Barcodes',[],'Enter an array of scanned barcode labels. Leave empty for eligible untracked FIFO stock.')],{id:shipmentId,step:'pick'})}
-          {editor(context,'shipment-action','Cancel allocation',[],{id:shipmentId,step:'cancel'})}
+          {editor(editorContext,'shipment-action','Pick shipment',[json('barcodes','Barcodes',[],'Enter an array of scanned barcode labels. Leave empty for eligible untracked FIFO stock.')],{id:shipmentId,step:'pick'})}
+          {editor(editorContext,'shipment-action','Cancel allocation',[],{id:shipmentId,step:'cancel'})}
         </>}
-        {outbound && state === 'picked' && editor(context,'shipment-action','Pack shipment',[],{id:shipmentId,step:'pack'})}
-        {outbound && state === 'packed' && editor(context,'shipment-action','Dispatch shipment',selected.provider === 'steadfast' ? [] : [
+        {outbound && state === 'picked' && editor(editorContext,'shipment-action','Pack shipment',[],{id:shipmentId,step:'pack'})}
+        {outbound && state === 'packed' && editor(editorContext,'shipment-action','Record carrier handoff',[
           text('tracking','Tracking reference'),text('carrierId','Carrier ID',undefined,true),text('evidence','Verified handoff reference'),
         ],{id:shipmentId,step:'dispatch'})}
-        {str(selected.tracking) && trackable.includes(state) && editor(context,'shipment-action','Record tracking event',[
+        {str(selected.tracking) && trackable.includes(state) && editor(editorContext,'shipment-action','Record tracking event',[
           text('id','External event ID'),date('at','Observed at',undefined),text('code','Carrier event code'),text('evidence','Verified evidence reference'),
         ],{id:shipmentId,step:'tracking'})}
-        {str(selected.tracking) && selected.provider === 'steadfast' && editor(context,'shipment-action','Sync Steadfast tracking',[],{id:shipmentId,step:'sync'})}
-        {outbound && ['delivered','exception','returned'].includes(state) && editor(context,'shipment-action','Record return shipment',[
+        {str(selected.tracking) && selected.provider === 'steadfast' && editor(editorContext,'shipment-action','Sync Steadfast tracking',[],{id:shipmentId,step:'sync'})}
+        {outbound && ['delivered','exception','returned'].includes(state) && editor(editorContext,'shipment-action','Record return shipment',[
           text('tracking','Reverse tracking reference'),text('evidence','Return evidence reference'),
+          json('lines','Selected return lines',undefined,'Provide line IDs and quantities for a partial return. Leave blank to review all remaining units.'),
         ],{id:shipmentId,step:'return'})}
+        {!outbound && !selected.receivedAt && str(selected.tracking) && editor(editorContext,'shipment-action','Inspect received return',[
+          text('evidence','Receipt evidence reference'),text('lotEvidence','Reviewed historical lot evidence',undefined,true),
+          json('lines','Inspected lines',arr(selected.lines).map(obj).map(row => ({ id:row.id,sellable:0,damaged:0,
+            sellableBarcodes:[],damagedBarcodes:[] })), 'Count sellable and damaged units. Include the original labels for tracked units and exact lot breakdown if requested.'),
+        ],{id:shipmentId,step:'receive'})}
+        {!outbound && selected.receivedAt != null && <Link className="button secondary"
+          href={url('/desk/payments/payment-desk',{region,market:editorContext.market,order})}>Review payment and refund</Link>}
       </div>
     </section>}
-    {timeline && <Grid title="Tracking history" data={timeline} columns={[col('Status','status','badge'),col('Carrier event','code'),
-      col('Source','source'),col('Observed','at'),col('Staff ID','actor')]}
+    {selected?.receivedAt != null && <Grid title="Inspection result" data={{items:selected.receiptLines}} columns={[
+      col('Order line','id'),col('Sellable units','sellable'),col('Damaged units','damaged')]}/>}
+    {timeline && <Grid title="Tracking history" data={{ ...timeline, items:arr(timeline.items).map(obj).map(row =>
+      ({ ...row, result:row.applied === false ? 'Audit only' : 'Applied' })) }} columns={[col('Status','status','badge'),col('Carrier event','code'),
+      col('Source','source'),col('Observed','at'),col('Result','result'),col('Staff ID','actor')]}
       next={timeline.next ? url(path,{...base,record:shipmentId,after:str(timeline.next)}) : undefined}/>}
   </>;
 }
@@ -103,16 +163,19 @@ export async function ManagedFulfillment(context: Context) {
 export async function ManagedPayments(context: Context) {
   const { q, path, region } = context;
   const order = afterId(q,'order');
-  const base = { region, order };
+  const base = { region, order, market: param(q, 'market') };
   const handoff = await orderDeskHandoff(context, order);
   if (handoff) return <><OrderSearch context={context} order={order}/>{handoff}</>;
   const requested = afterId(q,'record');
   const orderData = order ? obj(await read(context,'/global/admin/orders/' + order)) : null;
+  const editorContext = orderEditorContext(context, orderData);
   const selected = arr(orderData?.payments).map(obj).find(row => row.id === requested);
   const details = selected ? obj(await read(context,url('/global/admin/payments/' + requested,{after:afterId(q)}))) : null;
   const payment = obj(details?.payment);
   const evidence = obj(details?.evidence);
   const offline = ['cod','manual'].includes(str(payment.provider));
+  const inspectedReturns = arr(orderData?.shipments).map(obj).filter(row => row.direction === 'return' && row.receivedAt && arr(row.receiptLines).length);
+  const refundable = Number(obj(details?.refund).amount) || 0;
   return <>
     <OrderSearch context={context} order={order}/>
     {orderData && <Grid title="Payment attempts" data={{items:orderData.payments}} columns={[col('Payment','id'),col('Provider','provider'),
@@ -126,20 +189,28 @@ export async function ManagedPayments(context: Context) {
       <div className="page-actions">
         {payment.evidenceSubmitted === true && <a className="button secondary" href={adminPath('/api/managed?receipt=' + requested)}>
           <ArrowDownToLine size={15}/> Download private receipt</a>}
-        {offline && payment.status === 'pending' && editor(context,'payment-action','Review payment',[
+        {offline && payment.status === 'pending' && editor(editorContext,'payment-action','Review payment',[
           {name:'decision',label:'Decision',type:'select',choices:['approve','reject']},text('reason','Review reason'),
           ...(payment.provider === 'manual' ? [text('verifiedReference','Verified receipt reference',undefined,true),
             number('verifiedAmount','Verified receipt amount (minor units)',undefined,true)] : []),
         ],{id:requested,step:'review',description:'Manual approval requires the matching reference and amount from the private receipt.'})}
-        {offline && ['authorized','captured'].includes(str(payment.status)) && editor(context,'payment-action','Record delivery collection',[
+        {offline && ['authorized','captured'].includes(str(payment.status)) && editor(editorContext,'payment-action','Record delivery collection',[
           text('reference','Verified collection reference'),
         ],{id:requested,step:'collect'})}
-        {!offline && editor(context,'payment-action','Reconcile provider',[],{id:requested,step:'reconcile'})}
-        {typeof payment.captured === 'number' && payment.captured > Number(payment.refunded ?? 0) &&
-          editor(context,'payment-action','Record refund',[
+        {!offline && editor(editorContext,'payment-action','Reconcile provider',[],{id:requested,step:'reconcile'})}
+        {refundable > 0 && !arr(details.refunds).map(obj).some(row => row.returnShipment) &&
+          editor(editorContext,'payment-action','Record refund',[
             number('amount','Refund amount (minor units)'),text('reason','Refund reason'),text('reference','Verified offline refund reference',undefined,!offline),
           ],{id:requested,step:'refunds',description:'Confirm the amount and reason. The API records provider confirmation or requires a verified offline reference.'})}
-        {!offline && editor(context,'payment-action','Add dispute note',[
+        {refundable > 0 && inspectedReturns.map(receipt => <div key={str(receipt._id)}>
+          {editor(editorContext,'payment-action','Refund inspected return ' + str(receipt._id).slice(-8),[
+            text('returnShipment','Inspected return reference',receipt._id),text('reason','Refund reason'),
+            json('lines','Selected returned lines',arr(receipt.receiptLines).map(obj).map(row => ({ id:row.id,quantity:row.sellable ?? 0 })),
+              'Enter the exact order line IDs and eligible quantities. Remove any line that does not qualify.'),
+            ...(offline ? [text('reference','Verified offline refund reference')] : []),
+          ],{id:requested,step:'refunds',description:'The API calculates the returned merchandise share from the original price and discount snapshot.'})}
+        </div>)}
+        {!offline && editor(editorContext,'payment-action','Add dispute note',[
           text('reference','Provider reference'),{name:'disposition',label:'Disposition',type:'select',choices:['investigating','responded','resolved']},
           text('note','Staff note'),
         ],{id:requested,step:'disputes/notes'})}
@@ -147,10 +218,10 @@ export async function ManagedPayments(context: Context) {
       <Grid title="Payment activity" data={{items:details.events}} columns={[col('Event','kind'),col('Staff ID','actor'),
         col('Recorded','createdAt'),col('Decision','details.decision'),col('Reason','details.reason')]}
         next={details.next ? url(path,{...base,record:requested,after:str(details.next)}) : undefined}/>
-      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),col('Currency','currency'),col('State','state','badge'),col('Provider reference','providerId'),col('Updated','updatedAt','date'),col('Reason','reason')]}/>
+      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),col('Currency','currency'),col('State','state','badge'),col('Inspected return','returnShipment'),col('Provider reference','providerId'),col('Updated','updatedAt','date'),col('Reason','reason')]}/>
       {!offline && <div className="page-actions">
         {arr(details.refunds).map(obj).filter(row => row.state === 'pending' && str(row.id)).map(row =>
-          editor(context, 'refund-reconcile', 'Reconcile refund ' + str(row.id).slice(-8), [
+          editor(editorContext, 'refund-reconcile', 'Reconcile refund ' + str(row.id).slice(-8), [
             text('reference', 'Provider refund reference', row.providerId),
           ], { id: requested, step: str(row.id), description: 'Look up this refund with the payment provider and apply its verified outcome.' }))}
       </div>}

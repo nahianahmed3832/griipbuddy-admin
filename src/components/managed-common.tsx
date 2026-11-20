@@ -27,7 +27,7 @@ export const revision = (record: RecordData) => typeof record.revision === 'numb
 export function editor(context: Context, action: ManagedAction, label: string, fields: ManagedField[], options: {
   id?: string; step?: string; revision?: number | null; primary?: boolean; description?: string;
 } = {}) {
-  if (!canWrite(context.auth.staff) || !canManageAction(context.auth, action)) return null;
+  if (!canWrite(context.auth.staff) || !canManageAction(context.auth, action, options.step)) return null;
   return <ManagedForm key={action + (options.step ?? '') + (options.revision ?? '')} action={action} label={label}
     market={context.market} fields={fields} {...options}/>;
 }

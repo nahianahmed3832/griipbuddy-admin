@@ -13,7 +13,7 @@ function refundMinor(value: string) {
   return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
 }
 
-function splitItems(fields: Record<string, FormDataEntryValue>) {
+function parcelItems(fields: Record<string, FormDataEntryValue>) {
   const items: { orderItemId: string; quantity: number }[] = [];
   for (const [key, value] of Object.entries(fields)) {
     if (!key.startsWith('quantity:')) continue;
@@ -21,11 +21,11 @@ function splitItems(fields: Record<string, FormDataEntryValue>) {
     if (value === '' || value === '0') continue;
     const orderItemId = key.slice('quantity:'.length);
     if (!orderIdentifier.test(orderItemId) || typeof value !== 'string' || !/^[1-9]\d{0,5}$/.test(value)) {
-      throw new Error('Enter whole numbers for the quantities moving to the new parcel.');
+      throw new Error('Enter whole numbers for the parcel quantities.');
     }
     items.push({ orderItemId, quantity: Number(value) });
   }
-  if (!items.length) throw new Error('Choose at least one unit for the new parcel.');
+  if (!items.length) throw new Error('Enter at least one parcel quantity.');
   return items;
 }
 
@@ -35,7 +35,7 @@ export function MarketplaceOrderAction({ action, region, input, children, label,
 }) {
   const router = useRouter();
   const running = useRef(false);
-  const splitAttempt = useRef<{ request: string; operationId: string }>(null);
+  const attempt = useRef<{ request: string; operationId: string }>(null);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null);
 
@@ -47,16 +47,17 @@ export function MarketplaceOrderAction({ action, region, input, children, label,
     setFeedback(null);
     try {
       const fields = Object.fromEntries(new FormData(event.currentTarget));
-      const items = action === 'order.parcel.split' ? splitItems(fields) : undefined;
+      const items = action === 'order.parcel.split' || action === 'order.parcel.prepare' ? parcelItems(fields) : undefined;
       const { amount, confirmed, ...values } = fields;
-      if (items) {
-        const request = JSON.stringify({ input, items, reason: values.reason });
-        if (splitAttempt.current?.request !== request) splitAttempt.current = { request, operationId: crypto.randomUUID() };
+      const identified = items || action === 'order.parcel.dispatch';
+      if (identified) {
+        const request = JSON.stringify({ action, input, items, values });
+        if (attempt.current?.request !== request) attempt.current = { request, operationId: crypto.randomUUID() };
       }
       await catalogRequest({ action, input: { ...values, ...input,
         ...(typeof amount === 'string' && { amountMinor: refundMinor(amount) }),
         ...(confirmed && { confirmed: confirmed === 'yes' }),
-        ...(items && { items, operationId: splitAttempt.current?.operationId }) } }, region);
+        ...(items && { items }), ...(identified && { operationId: attempt.current?.operationId }) } }, region);
       setFeedback({ text: success });
       router.refresh();
     } catch (error) {

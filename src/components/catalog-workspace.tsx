@@ -38,6 +38,7 @@ import { ConnectedProductWorkspace } from './connected-catalog-product/workspace
 import { productPath } from './connected-catalog-product/routes';
 import catalogStyles from './production-catalog.module.css';
 import productEditorStyles from './production-product-editor.module.css';
+import { WorkspaceHeading } from './workspace-screen';
 
 type Props = { auth: Session; q: Query; region: Region; id?: string; production?: boolean };
 const availability = ['active', 'pending', 'inactive'];
@@ -191,6 +192,7 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
   const maySeeCost = has(auth.staff, 'purchase.price.view');
   const mayDelete = canEditProduct('delete', auth);
   const canViewStock = has(auth.staff, 'stock.view');
+  const market = region === 'INTERNATIONAL' ? 'International' : 'Bangladesh';
   const filters = catalogFilters(q, canViewStock, canViewStock && has(auth.staff, 'business_locations.view'), production);
   const listParams = catalogParams(filters, region);
   const current = url(catalogPath + '/' + readId, listParams);
@@ -216,12 +218,12 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
       const listQuery = back.slice(catalogPath.length);
       const Form = creating || variantsOnly ? ProductEditForm : ProductionProductUpdate;
       return <div className={productEditorStyles.editor} data-update={!creating && !variantsOnly}>
-        <div className={productEditorStyles.pageHeading}>
-          {!creating && !variantsOnly && <Link className={productEditorStyles.back} href={url('/dashboard/products', listParams)} aria-label="Back to products">
-            <ChevronLeft size={16} aria-hidden="true"/>
-          </Link>}
-          <h1 className={productEditorStyles.heading}>{creating ? 'Create Product' : variantsOnly ? 'Update Product Attribute & Variant' : 'Update Product'}</h1>
-        </div>
+        <WorkspaceHeading title={creating ? 'Create Product' : variantsOnly ? 'Update Product Attribute & Variant' : 'Update Product'}
+          detail={str(record.name) ? `${market} catalog · ${str(record.name)}` : `${market} catalog`}>
+          <Link className={productEditorStyles.back} href={url('/dashboard/products', listParams)}>
+            <ChevronLeft size={16} aria-hidden="true"/> Back to products
+          </Link>
+        </WorkspaceHeading>
         <Form key={title + readId} production changeRegion={has(auth.staff, 'international.access')} id={target} region={region}
           tree={tree} initial={initial} brands={brands} policies={policies} countries={countries} selected={fields.map(key => reference(record[key]))}
           allowCost={maySeeCost} canDelete={mayDelete} initialAttributes={attributes} initialVariants={drafts} variantOnly={variantsOnly} productListQuery={listQuery}/>
@@ -236,7 +238,7 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
         variantOnly={variantsOnly} productListQuery={back.slice(catalogPath.length)}/></section>
     </>;
   }
-  if (production) return <ProductionProductDetail record={record} canSeeStock={canViewStock}
+  if (production) return <ProductionProductDetail record={record} canSeeStock={canViewStock} market={market}
     listHref={url('/dashboard/products', listParams)}
     editHref={mayEdit ? url('/dashboard/update-product/' + readId, listParams) : undefined}/>;
   const [storedVariants, storefront] = await Promise.all([

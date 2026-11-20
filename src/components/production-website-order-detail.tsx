@@ -6,10 +6,10 @@ import { ChevronLeft, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
-import type { HybridFulfillment } from '@/lib/hybrid-fulfillment';
+import { hybridStatusLabels, type HybridFulfillment } from '@/lib/hybrid-fulfillment';
 import type { Region } from '@/lib/sections';
 import {
-  currencyFor, money, orderActions, orderDate, orderNumber,
+  orderActions, orderDate, orderDisplayMoney, orderNumber, orderStateTone, statusLabel,
   type OrderAccess, type OrderDetail, type OrderLocation,
 } from '@/lib/website-orders';
 import { useManualOrderStatus } from './production-order-menu';
@@ -17,6 +17,7 @@ import { OrderDialog, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionManagedPayment, ProductionManagedShipments, useManagedOrder } from './production-order-operations';
 import { ProductionHybridFulfillment } from './production-hybrid-fulfillment';
 import { HybridContactEditor, HybridOrderNotes, ProductionHybridReturns } from './production-hybrid-returns';
+import { WorkspaceStatus } from './workspace-screen';
 import styles from './production-website-order-detail.module.css';
 
 type Props = {
@@ -32,15 +33,20 @@ type Props = {
   integrations: { shipments?: string; payments?: string; receipt?: string };
 };
 
-function Invoice({ order, region, openPayment, payment }: {
+function Invoice({ order, region, openPayment, payment, paymentState, fulfillment }: {
   order: OrderDetail; region: Region; openPayment?: () => void; payment?: ReactNode;
+  paymentState?: string; fulfillment?: HybridFulfillment;
 }) {
-  const currency = currencyFor(order.currency, region);
-  const amount = (value?: number) => currency === 'BDT' ? `${value ?? ''} TK`.trim() : money(value, currency);
+  const amount = (value?: number) => orderDisplayMoney(value, order.currency, region);
+  const carrierState = fulfillment?.shipment?.status ?? fulfillment?.step;
+  const shipmentStatus = carrierState ? hybridStatusLabels[carrierState] ?? statusLabel(carrierState)
+    : order.tracking_code ? 'Tracking available' : order.transfer_to_courier ? 'Courier handoff recorded'
+      : order.consignment_id ? 'Parcel assigned' : 'No shipment recorded';
+  const trackingReference = fulfillment?.shipment?.trackingReference ?? order.tracking_code;
   const totals = [
     ['Sub Total:', amount(order.sub_total)],
-    ['Discount:', '- ' + amount(order.total_discount)],
-    ['Delivery Charge:', '+ ' + amount(order.delivery_charge)],
+    ['Discount:', amount(order.total_discount)],
+    ['Delivery Charge:', amount(order.delivery_charge)],
     ...(order.tax ? [['Tax:', amount(order.tax)]] : []),
     ['Total:', amount(order.total_amount)],
     ['Advance Amount:', amount(order.paid_amount)],
@@ -55,9 +61,18 @@ function Invoice({ order, region, openPayment, payment }: {
       <div className={styles.identity}>
         <h1>ORDER ID: {orderNumber(order)}</h1>
         <p>Invoice: {order.invoice_number}</p>
-        <span className={styles.badge} data-status={order.status}>{(order.status || 'Unknown').replaceAll('_', ' ')}</span>
+        <p>{region === 'BD' ? 'Bangladesh' : 'International'} · {order.order_date ? orderDate(order.order_date, region) : 'Date unavailable'}</p>
       </div>
     </div>
+    <dl className={styles.stateStrip} aria-label="Order summary">
+      <div><dt>Order status</dt><dd><WorkspaceStatus tone={orderStateTone(order.status)}>{statusLabel(order.status)}</WorkspaceStatus></dd></div>
+      <div><dt>Payment</dt><dd>{paymentState ? statusLabel(paymentState) : 'State unavailable'}</dd>
+        {order.payment_type && <dd className={styles.stateDetail}>{statusLabel(order.payment_type)}</dd>}</div>
+      <div><dt>Shipment</dt><dd>{shipmentStatus}</dd>
+        {fulfillment?.shipment?.carrier && <dd className={styles.stateDetail}>{fulfillment.shipment.carrier}</dd>}
+        {trackingReference && <dd className={styles.stateDetail}>Tracking {trackingReference}</dd>}</div>
+      <div><dt>Order total</dt><dd>{amount(order.total_amount)}</dd></div>
+    </dl>
     <div className={styles.billing}>
       <h2>BILL TO:</h2>
       <p>Name: {order.customer_name}</p>
@@ -69,18 +84,14 @@ function Invoice({ order, region, openPayment, payment }: {
         <span>Division: {order.delivery_address?.division}</span>
       </div>
     </div>
-    <div className={styles.summary}>
-      {order.order_date && <div><p>Order Date:</p><p>{orderDate(order.order_date, region)}</p></div>}
-      <div><p>Payment Type:</p><p>{order.payment_type?.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</p></div>
-    </div>
     {payment ?? (order.payment && <section className={styles.payment}>
       {openPayment ? <button type="button" onClick={openPayment}>Payment Info:</button> : <strong>Payment Info:</strong>}
-      <p>Payment Amount: {money(order.payment.amount, currency)}</p>
+      <p>Payment Amount: {amount(order.payment.amount)}</p>
       <p>Payment Date: {order.payment.date ? orderDate(order.payment.date, region) : 'N/A'}</p>
       <p>Transaction Id: {order.payment.reference}</p>
       <p>Transaction Status: {order.payment.status}</p>
     </section>)}
-    <div className={styles.tableScroll}>
+    <div className={styles.tableScroll} role="region" aria-label="Invoice items" tabIndex={0}>
       <table className={styles.lineItems}>
         <thead><tr>{['Product', 'Quantity', 'Unit Price', 'Amount'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{order.products.map((line, index) => <tr key={index}>
@@ -139,14 +150,16 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
     <div className={styles.return}><Link href={back}><ChevronLeft size={16}/> Back to Orders</Link></div>
     {!!(managed.notice || notice) && <p role="status" className="notice">{managed.notice || notice}</p>}
     <div className={styles.grid}>
-      <Invoice order={order} region={region} openPayment={order.checkoutProjection ? undefined : () => setDialog('payment')}
+      <Invoice order={order} region={region} fulfillment={hybridFulfillment}
+        paymentState={managed.data?.payment?.payment?.status ?? order.payment?.status}
+        openPayment={order.checkoutProjection ? undefined : () => setDialog('payment')}
         payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
           priorReference={order.payment?.reference} priorDate={transactionDate && orderDate(transactionDate, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
         <section className={styles.card}>
           <div className={styles.actions}>
             <h2>Actions</h2>
-            {!order.checkoutProjection && <button type="button" disabled={updating.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
+            {actions.length > 0 && <button type="button" disabled={updating.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
             <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
           </div>
         </section>

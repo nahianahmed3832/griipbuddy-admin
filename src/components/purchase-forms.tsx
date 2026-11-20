@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { adminPath } from '@/lib/paths';
 import { BarcodePrint } from './barcode-labels';
 import type { BarcodeLabel } from '@/lib/barcode-data';
-import { purchasesPath, type Purchase, type PurchaseChoices, type ReviewedProposal, type VariantChoice } from '@/lib/purchasing';
+import { purchasesPath, remainingPosting, type Purchase, type PurchaseChoices, type ReviewedProposal, type VariantChoice } from '@/lib/purchasing';
 import type { Region } from '@/lib/sections';
 
 const get = (form: FormData, name: string) => String(form.get(name) ?? '').trim();
@@ -48,7 +48,7 @@ function EvidenceFields({ region, prefix = '', documentOnly = false, dated = fal
     </select></label>}
     <label>Evidence reference<input name={prefix + 'evidenceReference'} required={required} maxLength={80} /></label>
     <label>Evidence date and time ({region === 'BD' ? 'Dhaka' : 'UTC'})
-      <input name={prefix + 'evidenceAt'} type="datetime-local" required={dated} />
+      <input name={prefix + 'evidenceAt'} type="datetime-local" step={dated ? 1 : undefined} required={dated} />
     </label>
     <label>Evidence notes<input name={prefix + 'evidenceNote'} maxLength={500} /></label>
   </fieldset>;
@@ -90,7 +90,8 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
       const status = result.data?.status;
       setFeedback(status === 'reference-conflict' ? 'Reference conflict recorded for review. Stock did not change.' :
         status === 'reconciliation-required' ? 'Reconciliation issue opened. Stock did not change.' :
-        status === 'inspection-needed' ? 'Receipt saved with a discrepancy for review.' : 'Record saved.');
+        status === 'inspection-needed' ? 'Receipt saved with a discrepancy for review.' :
+        action === 'supplier-return' && status === 'dispatched' ? 'Supplier dispatch recorded and stock updated.' : 'Record saved.');
       if (onSaved) onSaved(result.data);
       else router.refresh();
     } catch (error) {
@@ -346,9 +347,41 @@ export function ReceivingForm({ region, purchase }: { region: Region; purchase: 
   </Form>;
 }
 
+export function SupplierReturnForm({ region, purchase }: { region: Region; purchase: Purchase }) {
+  const eligible = purchase.postings.filter(post => remainingPosting(post) > 0);
+  const [selected, setSelected] = useState('');
+  const posting = eligible.find(post => post._id === selected);
+  return <section className="ops-panel" aria-labelledby="supplier-return-heading" id="supplier-returns">
+    <h2 id="supplier-return-heading">Supplier returns</h2>
+    <p>Record a dispatch from its original receipt lot. The warehouse verifies that the scanned units are available before deducting them.</p>
+    {!eligible.length ? <p className="po-hint">No original postings have units remaining for a supplier return.</p> :
+      <Form id={purchase.id} region={region} action="supplier-return" title="Record supplier dispatch" fields={form => ({
+        posting: get(form, 'posting'), quantity: integer(form, 'quantity'), reason: get(form, 'reason'),
+        evidence: evidence(form, region), barcodes: barcodes(form, 'barcodes'), dispatched: form.get('dispatched') === 'on',
+      })}>
+        <div className="po-grid">
+          <label>Original receipt posting<select name="posting" required value={posting?._id ?? ''} onChange={event => setSelected(event.target.value)}>
+            <option value="">Choose a posting</option>{eligible.map(post => {
+              const receipt = purchase.receiptLines.find(line => line._id === post.line);
+              return <option key={post._id} value={post._id}>
+                {receipt?.sku || 'Variant'} · lot {post.lot.slice(-8)} · {remainingPosting(post)} remaining from receipt
+              </option>;
+            })}
+          </select></label>
+          <label>Units dispatched<input name="quantity" type="number" min="1"
+            max={posting ? Math.min(500, remainingPosting(posting)) : 500} required /></label>
+          <label>Reason for return<input name="reason" minLength={8} maxLength={500} required /></label>
+          <label>Original unit labels<textarea name="barcodes" placeholder="One barcode per line" required /></label>
+        </div>
+        <EvidenceFields region={region} dated />
+        <label className="po-check"><input type="checkbox" name="dispatched" required /> These units were handed off for return to the supplier.</label>
+      </Form>}
+  </section>;
+}
+
 export function CorrectionsForm({ region, purchase }: { region: Region; purchase: Purchase }) {
   const held = purchase.receiptLines.filter(row => row.held > 0);
-  const post = purchase.postings.filter(row => row.quantity > row.corrected);
+  const post = purchase.postings.filter(row => remainingPosting(row) > 0);
   return <>
     {!!held.length && <details><summary>Release held goods after inspection</summary>
       <Form id={purchase.id} region={region} action="release" title="Release inspected units" fields={form => ({
@@ -375,12 +408,53 @@ export function CorrectionsForm({ region, purchase }: { region: Region; purchase
         evidence: evidence(form, region), barcodes: barcodes(form, 'barcodes'),
       })}>
         <div className="po-grid">
-          <label>Original stock posting<select name="posting">{post.map(row => <option value={row._id} key={row._id}>{row._id.slice(-8)} · {row.quantity - row.corrected} posted units</option>)}</select></label>
+          <label>Original stock posting<select name="posting">{post.map(row => <option value={row._id} key={row._id}>{row._id.slice(-8)} · {remainingPosting(row)} eligible units</option>)}</select></label>
           <label>Quantity to correct<input name="quantity" type="number" min="1" max="500" required /></label>
           <label>Correction reason<input name="reason" required minLength={8} maxLength={500} /></label>
           <label>Original unit labels (required for tracked units)<textarea name="barcodes" /></label>
         </div>
         <EvidenceFields region={region} />
+      </Form>
+    </details>}
+  </>;
+}
+
+function SupplierReturnFinance({ region, purchase }: { region: Region; purchase: Purchase }) {
+  const returns = purchase.audit.filter(row => row.kind === 'supplier-return');
+  const credits = purchase.finance?.records.filter(row => row.kind === 'supplier-credit' && (row.refundableMinor ?? 0) > 0) ?? [];
+  const [selectedCredit, setSelectedCredit] = useState('');
+  const credit = credits.find(row => row.id === selectedCredit);
+  return <>
+    {!!returns.length && <details><summary>Record supplier credit</summary>
+      <Form id={purchase.id} region={region} action="supplier-credit" title="Record credit document" fields={form => ({
+        supplierReturn: get(form, 'supplierReturn'), amountMinor: integer(form, 'amount'), currency: get(form, 'currency'), evidence: evidence(form, region),
+      })}>
+        <div className="po-grid">
+          <label>Dispatched supplier return<select name="supplierReturn" required defaultValue="">
+            <option value="">Choose a return</option>{returns.map(row => <option key={row.id} value={row.id}>
+              {row.payload?.evidence?.reference || row.id.slice(-8)} · {row.payload?.quantity} units
+            </option>)}
+          </select></label>
+          <label>Credit document currency<input name="currency" defaultValue={purchase.quote?.currency} required minLength={3} maxLength={3} pattern="[A-Z]{3}" /></label>
+          <label>Credit amount in minor units<input type="number" name="amount" min="1" required /></label>
+        </div>
+        <EvidenceFields region={region} documentOnly dated />
+      </Form>
+    </details>}
+    {!!credits.length && <details><summary>Record money received from supplier</summary>
+      <Form id={purchase.id} region={region} action="supplier-refund" title="Record money received" fields={form => ({
+        credit: get(form, 'credit'), amountMinor: integer(form, 'amount'), currency: credit?.currency, evidence: evidence(form, region),
+      })}>
+        <div className="po-grid">
+          <label>Supplier credit<select name="credit" required value={credit?.id ?? ''} onChange={event => setSelectedCredit(event.target.value)}>
+            <option value="">Choose a credit</option>{credits.map(row => <option key={row.id} value={row.id}>
+              {row.evidence.reference} · {row.refundableMinor} {row.currency} minor units remaining
+            </option>)}
+          </select></label>
+          <label>Amount received in minor units{credit && ` (${credit.currency})`}<input type="number" name="amount"
+            min="1" max={credit?.refundableMinor} required /></label>
+        </div>
+        <EvidenceFields region={region} documentOnly dated />
       </Form>
     </details>}
   </>;
@@ -410,6 +484,7 @@ export function FinanceForms({ region, purchase }: { region: Region; purchase: P
         <EvidenceFields region={region} documentOnly />
       </Form>
     </details>}
+    <SupplierReturnFinance region={region} purchase={purchase} />
   </>;
 }
 

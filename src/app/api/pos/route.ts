@@ -2,11 +2,13 @@ import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
 import { changePosSale, posRegisterFilters, posReturnDetails, readPosSale, searchPosCustomers, searchPosItems } from '@/lib/production-pos';
 import { posRegisterExport } from '@/lib/pos-export';
 import { has } from '@/lib/sections';
+import { counterPrivate, downloadCounterReceipt, readCounterPos, writeCounterPos } from '@/lib/counter-pos';
+import type { CounterReceipt } from '@/lib/counter-pos-contract';
 
 const noStore = { 'Cache-Control': 'private, no-store' };
 const failure = (error: unknown) => error instanceof ApiError
-  ? new Response(error.status >= 500 ? 'The sales service did not confirm the request.' : error.message, { status: error.status })
-  : new Response('Invalid sale request.', { status: 400 });
+  ? new Response(error.status >= 500 ? 'The sales service did not confirm the request.' : error.message, { status: error.status, headers: noStore })
+  : new Response('Invalid sale request.', { status: 400, headers: noStore });
 
 export async function GET(request: Request) {
   const auth = await session();
@@ -15,6 +17,11 @@ export async function GET(request: Request) {
   const action = q.get('action');
   const search = q.get('q')?.trim() ?? '';
   try {
+    if (action?.startsWith('counter-')) {
+      const result = await readCounterPos(auth, action, q);
+      return action === 'counter-receipt-download'
+        ? downloadCounterReceipt(result as CounterReceipt) : Response.json(result, { headers: counterPrivate });
+    }
     if ((action === 'products' || action === 'scan') && search.length >= 2 && search.length <= 100) {
       return Response.json(await searchPosItems(q.get('location') || '', search, auth, action === 'scan'), { headers: noStore });
     }
@@ -38,6 +45,10 @@ export async function POST(request: Request) {
   if (body.length > 16384) return new Response('Invalid sale request.', { status: 400 });
   try {
     const input = obj(JSON.parse(body));
+    const action = str(input.action);
+    if (action.startsWith('counter-')) {
+      return Response.json(await writeCounterPos(auth, action, obj(input.values)), { headers: counterPrivate });
+    }
     await changePosSale(str(input.id), input.action, obj(input.values), auth);
     return Response.json({ saved: true });
   } catch (error) { return failure(error); }

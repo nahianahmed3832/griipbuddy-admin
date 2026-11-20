@@ -17,6 +17,9 @@ export type LocationFields = {
   };
   manager_name: string;
   contact_numbers: string[];
+  pickup_enabled?: boolean;
+  pickup_contact?: string;
+  country_code?: string;
 };
 
 export type LocationRecord = LocationFields & { id: string; revision: string | null };

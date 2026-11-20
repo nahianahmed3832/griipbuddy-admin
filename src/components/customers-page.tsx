@@ -59,8 +59,8 @@ export async function CustomersPage({ auth, q, region, production = false }: { a
   const { summary } = list;
   const directory = { ...filter, region };
   const canViewOrders = has(auth.staff, 'order.view');
-  if (production) return <ProductionCustomers rows={list.rows} total={list.total} page={list.page} size={list.size}
-    query={filter.q} region={region} limit={limit} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
+  if (production) return <ProductionCustomers rows={list.rows} total={list.total} page={list.page} summary={summary}
+    filter={filter} region={region} limit={limit} canExport={has(auth.staff, 'manage-permissions')} canSeeOrders={canViewOrders}
     canChangePassword={workspaceWritesEnabled() && has(auth.staff, 'business_locations.create')}>
     <div className="page-actions">
       <RegistryPageSize current={limit ?? '20'} choices={pageSizes} path={productionCustomersPath} params={directory}/>
@@ -156,7 +156,7 @@ export async function CustomerProfilePage({ auth, id, q, region, production = fa
   if (param(q, 'action') === 'password') {
     if (!canResetPassword) throw new ApiError(403);
     if (production) {
-      const back = url(productionCustomersPath, { region, q: param(q, 'q'), page: param(q, 'page'), limit: param(q, 'limit') });
+      const back = url(productionCustomersPath, { ...filters(q), region, page: param(q, 'page'), limit: param(q, 'limit') });
       return <section className={productionStyles.form}><h1>Change Password</h1>
         <CustomerPassword id={id} revision={customer.updatedAt ?? null} back={back} production/>
       </section>;

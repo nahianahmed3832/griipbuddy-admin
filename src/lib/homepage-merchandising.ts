@@ -9,7 +9,7 @@ export const homepageSectionLabels = {
   DEPARTMENTS: 'Shop by category', TILES: 'Category and collection tiles', CURATED: 'Featured product selection', COLLECTIONS: 'Featured collections',
   CATEGORY_SPOTLIGHT: 'Category spotlight', NEW: 'New arrivals', DEALS: 'Genuine offers or budget picks',
   BANNER: 'Banner', COLLECTION: 'Collection products', BESTSELLERS: 'Market bestsellers', TRENDING: 'Market trending',
-  RECENTLY_VIEWED: 'Recently viewed', RELATED: 'Similar products', FEATURED: 'Catalog featured products',
+  BENEFITS: 'Service benefits', RECENTLY_VIEWED: 'Recently viewed', RELATED: 'Similar products', FEATURED: 'Catalog featured products',
 };
 
 export type HomepageSectionType = keyof typeof homepageSectionLabels;
@@ -28,12 +28,14 @@ export type HomepageTile = {
   key: string; kind: HomepageTileKind; referenceId: string; title?: string; ctaLabel?: string;
   image?: HomepageImage; mobileImage?: HomepageImage; focalPoint?: HomepageFocalPoint; mobileFocalPoint?: HomepageFocalPoint;
 };
+export const benefitDestinations = { delivery: 'Delivery information', returns: 'Returns and refunds', privacy: 'Privacy', terms: 'Terms' } as const;
+export type HomepageBenefit = { title: string; description: string; destination?: keyof typeof benefitDestinations };
 export type HomepageSection = {
   key: string; type: HomepageSectionType; title: string; description?: string; position: number; enabled?: boolean;
   productIds?: string[]; categoryIds?: string[]; categoryId?: string; collectionIds?: string[]; collection?: string;
   fallbackIds?: string[]; limit?: number; startsLocal?: string; endsLocal?: string; bannerImage?: HomepageImage;
   budget?: { currency: string; amountMinor: number }; link?: { label: string; href: string };
-  tileLayout?: HomepageTileLayout; tiles?: HomepageTile[];
+  tileLayout?: HomepageTileLayout; tiles?: HomepageTile[]; benefits?: HomepageBenefit[];
 };
 
 export type HomepageDraft = { sections: HomepageSection[]; hiddenSections: string[] };
@@ -58,6 +60,15 @@ export type HomepagePreviewData = {
     id: string; type: HomepageSectionType; title: string; description?: string | null; position: number; enabled?: boolean;
     image?: HomepageImage | null; destination?: { label?: string; href: string } | string | null;
     startsLocal?: string | null; endsLocal?: string | null; categories?: PreviewEntry[]; collections?: PreviewEntry[];
-    products?: PreviewProduct[]; tileLayout?: HomepageTileLayout; tiles?: PreviewTile[];
+    products?: PreviewProduct[]; benefits?: HomepageBenefit[]; tileLayout?: HomepageTileLayout; tiles?: PreviewTile[];
   }[];
+};
+
+export type EditorialDocument = {
+  id: string; kind: 'ARTICLE' | 'PAGE'; slug: string; title: string; summary: string; body: string[];
+  category?: string; image?: HomepageImage; seoTitle?: string; seoDescription?: string; startsLocal?: string; endsLocal?: string;
+};
+export type EditorialDraft = { documents: EditorialDocument[]; categories: { slug: string; label: string }[] };
+export type EditorialEditorData = {
+  revision: number; publishedId: string | null; draft: EditorialDraft; history: { id: string; publishedAt: string }[];
 };

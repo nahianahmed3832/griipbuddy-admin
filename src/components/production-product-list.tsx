@@ -4,12 +4,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, Eye, Filter, LoaderCircle } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import type { CatalogFilters, CategoryOption, Choice } from '@/lib/catalog-list';
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
+import type { basePricing, CatalogFilters, CategoryOption, Choice } from '@/lib/catalog-list';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import { saveCatalog } from './catalog-edit-form';
 import { ProductionCatalogActions } from './production-catalog-actions';
+import { WorkspaceEmpty, WorkspaceHeading, WorkspaceStatus } from './workspace-screen';
 import styles from './production-catalog.module.css';
 
 export type ProductListing = {
@@ -18,16 +19,15 @@ export type ProductListing = {
   sku: string;
   thumbnail: string;
   categories: string[];
-  regular: number | null;
-  sale: number | null;
+  price: ReturnType<typeof basePricing>;
   channels: string[];
-  outlets: string[];
+  outlets?: string[];
   published: boolean;
 };
 const pageSizes = [20, 40, 60, 80, 100];
 const categoryLabels = ['Category', 'Sub Category', 'Sub Sub Category', 'Third Sub Category'];
 const categoryKeys = ['category', 'subcategory', 'subSubcategory', 'thirdSubcategory'];
-const columns = ['SL NO:', 'Image', 'Name', 'Category', 'SKU', 'Price', 'Sale Channels', 'Available in Outlets', 'Active Status', 'Actions'];
+const basePrice = new Intl.NumberFormat('en-BD', { maximumFractionDigits: 2 });
 
 function routes(filters: CatalogFilters, region: Region, destination = '/dashboard/products') {
   const next = new URLSearchParams();
@@ -65,12 +65,14 @@ export function ProductionProductList({ rows, filters, total, tree, locations, r
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const current = useRef(filters);
   const [input, setInput] = useState(filters.q);
-  const [filterOpen, setFilterOpen] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(Boolean(filters.location || filters.category.some(Boolean)));
+  const [loading, startNavigation] = useTransition();
   const [saving, setSaving] = useState('');
   const [error, setError] = useState('');
   const [removeRecord, setRemoveRecord] = useState<ProductListing>();
   const removeDialog = useRef<HTMLDialogElement>(null);
   const removeLabel = useId();
+  const filterId = useId();
   const busy = useRef(false);
   current.current = filters;
   useEffect(() => {
@@ -83,7 +85,7 @@ export function ProductionProductList({ rows, filters, total, tree, locations, r
 
   function navigate(changes: Partial<CatalogFilters>) {
     clearTimeout(timer.current);
-    router.replace(routes({ ...filters, q: input.trim(), page: 1, ...changes }, region), { scroll: false });
+    startNavigation(() => router.replace(routes({ ...filters, q: input.trim(), page: 1, ...changes }, region), { scroll: false }));
   }
   let options = tree;
   const levels = categoryLabels.map((label, index) => {
@@ -120,57 +122,67 @@ export function ProductionProductList({ rows, filters, total, tree, locations, r
       setSaving('');
     }
   }
-  return <section className={styles.page}>
-    <header className={styles.header}><h1>All Products ({total})</h1>
+  return <section className={`${styles.page} ${styles.productPage}`}>
+    <WorkspaceHeading title={`All Products (${total})`} detail={`${region === 'INTERNATIONAL' ? 'International' : 'Bangladesh'} catalog · Legacy variant base prices in BDT`}>
       {canCreate && <Link className={styles.primary} href={routes(filters, region, '/dashboard/create-product')}>Create Product</Link>}
-    </header>
+    </WorkspaceHeading>
     <div className={styles.productPanel}>
-      <button type="button" className={styles.filterBar} aria-expanded={filterOpen} onClick={() => setFilterOpen(current => !current)}>
-        <Filter size={20} aria-hidden="true"/> Filter
-      </button>
-      {filterOpen && <div className={styles.productFilters}>
+      <div className={styles.productToolbar}>
         <label className={styles.field}>SKU
-          <input placeholder="Search by sku" value={input} maxLength={80} onChange={event => {
+          <input type="search" placeholder="Search by sku" value={input} maxLength={80} onChange={event => {
             const text = event.target.value;
             setInput(text);
             clearTimeout(timer.current);
-            timer.current = setTimeout(() => router.replace(routes({ ...current.current, page: 1, q: text.trim() }, region), { scroll: false }), 500);
+            timer.current = setTimeout(() => startNavigation(() => router.replace(
+              routes({ ...current.current, page: 1, q: text.trim() }, region), { scroll: false },
+            )), 500);
           }}/>
         </label>
+        <button type="button" className={styles.filterBar} aria-expanded={filterOpen} aria-controls={filterId} onClick={() => setFilterOpen(current => !current)}>
+          <Filter size={16} aria-hidden="true"/> Filters
+        </button>
+      </div>
+      <div className={styles.productFilters} id={filterId} hidden={!filterOpen}>
         {levels}
-        <label className={styles.field}>Business Location
-          <Dropdown value={filters.location} label="Business Location" disabled={!viewStock} onChange={location => navigate({ location })}>
+        {viewStock && <label className={styles.field}>Business Location
+          <Dropdown value={filters.location} label="Business Location" onChange={location => navigate({ location })}>
             <option value="">All</option>{locations.map(row => <option value={row.value} key={row.value}>{row.label}</option>)}
           </Dropdown>
-        </label>
-      </div>}
+        </label>}
+      </div>
     </div>
     {error && !removeRecord && <p className={styles.error} role="alert">{error}</p>}
-    <div className={styles.productPanel}>
+    <div className={styles.productPanel} aria-busy={loading}>
+      {loading && <p className={styles.resultStatus} role="status">Updating products…</p>}
+      {rows.length ? <>
       <div className={styles.productScroll} role="region" aria-label="Product table" tabIndex={0}>
-        <table className={styles.productTable}>
-          <thead><tr>{columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead>
-          <tbody>{rows.map((row, index) => <tr key={row.id}>
-            <td>{String(index + 1).padStart(2, '0')}</td>
-            <td><Image unoptimized src={row.thumbnail || adminPath('/production-admin/no-image-available.jpg')}
-              alt={row.name} width={72} height={72}/></td>
-            <td><span className={styles.productTitle}>{row.name}</span></td>
-            <td className={styles.productCategories}>{['Category', 'Subcategory', 'Sub-subcategory', 'Third Subcategory'].map((label,i) =>
-              (i < 2 || row.categories[i]) && <p key={label}>{label}: <span>{row.categories[i]}</span></p>)}</td>
-            <td>{row.sku}</td>
-            <td>{row.regular === null && row.sale === null ? 'N/A' : <>{row.regular !== null && <s>৳{row.regular}</s>}
-              {' '}<span className={styles.productCurrency}>৳{row.sale ?? row.regular}</span></>}</td>
-            <td className={styles.channels}>{row.channels.join(', ')}</td>
-            <td className={styles.productLocations}>{viewStock && (row.outlets.length ? row.outlets.join(',') + ',' :
-              <span className={styles.noStock}>No Stocks Found</span>)}</td>
-            <td><div className={styles.publication}>
-              <span className={styles.publicationBadge} data-published={row.published}>{row.published ? 'Published' : 'Unpublished'}</span>
+        <table className={styles.productTable} role="table">
+          <thead role="rowgroup"><tr role="row">
+            {['Product', 'Base price (BDT)', 'Publication', 'Category', 'Sales channels', ...(viewStock ? ['Stocked outlets'] : []), 'Actions'].map(column =>
+              <th scope="col" role="columnheader" key={column}>{column}</th>)}
+          </tr></thead>
+          <tbody role="rowgroup">{rows.map(row => <tr key={row.id} role="row">
+            <td role="cell"><div className={styles.productIdentity}>
+              <Image unoptimized src={row.thumbnail || adminPath('/production-admin/no-image-available.jpg')} alt="" width={54} height={54}/>
+              <div><Link className={styles.productTitle} href={routes(filters, region, '/dashboard/product-details/' + row.id)}>{row.name}</Link>
+                <small>{row.sku || 'No SKU'}</small></div>
+            </div></td>
+            <td role="cell" data-field="Base price">{row.price ? <>
+              {row.price.was !== undefined && <s aria-label={`Regular price ${basePrice.format(row.price.was)} BDT`}>{basePrice.format(row.price.was)}</s>}
+              <strong className={styles.productCurrency}>{basePrice.format(row.price.min)}
+                {row.price.max !== row.price.min && ` – ${basePrice.format(row.price.max)}`} BDT</strong></> : 'Unavailable'}</td>
+            <td role="cell" data-field="Publication"><div className={styles.publication}>
+              <WorkspaceStatus tone={row.published ? 'success' : 'neutral'}>{row.published ? 'Published' : 'Unpublished'}</WorkspaceStatus>
               {canPublish && <button type="button" disabled={saving === row.id} onClick={() => void change(row, 'publish')}>
                 {row.published ? 'Make it Unpublish' : 'Make it Publish'}
-                {saving === row.id && <LoaderCircle className={styles.spinner} size={12}/>}
+                {saving === row.id && <LoaderCircle className={styles.spinner} size={12} aria-hidden="true"/>}
               </button>}
             </div></td>
-            <td><div className={styles.productActions}>
+            <td role="cell" data-field="Category" className={styles.productCategories}>{row.categories.filter(Boolean).join(' / ') || 'Uncategorized'}</td>
+            <td role="cell" data-field="Sales channels" className={styles.channels}>{row.channels.join(', ') || '—'}</td>
+            {viewStock && <td role="cell" data-field="Stocked outlets" className={styles.productLocations}>
+              {row.outlets?.join(', ') || (row.outlets ? 'No stocked outlets' : 'Unavailable')}</td>}
+            <td role="cell"><div className={styles.productActions}>
               <Link aria-label={'Product details: ' + row.name} className={styles.iconOutline}
                 href={routes(filters, region, '/dashboard/product-details/' + row.id)}><Eye size={16} aria-hidden="true"/></Link>
                {(canEdit || canDelete) && <ProductionCatalogActions label={'Product actions: ' + row.name} outlined>
@@ -184,8 +196,7 @@ export function ProductionProductList({ rows, filters, total, tree, locations, r
             </div></td>
           </tr>)}</tbody>
         </table>
-        {!rows.length && <p className={styles.productEmpty}>No data found!</p>}
-      </div>
+      </div></> : <WorkspaceEmpty title="No products found" detail="Try another SKU or adjust the catalog filters."/>}
     </div>
     <div className={`${styles.productPanel} ${styles.productPagination}`} aria-label="Product pages">
       <Dropdown label="Products per page" value={String(filters.size)} onChange={value => navigate({ size: Number(value) })}>

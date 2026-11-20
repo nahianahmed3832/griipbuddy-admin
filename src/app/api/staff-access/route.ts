@@ -3,11 +3,25 @@ import { endpoint } from '@/lib/staff-access';
 import { has, superAdmin } from '@/lib/sections';
 
 const send = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+const actions = {
+  accept: ['POST', '/accept', false, null],
+  invite: ['POST', '/directory', false, 'user.create'],
+  'staff-edit': ['PUT', '/directory/:id', true, 'user.update'],
+  suspend: ['POST', '/directory/:id/suspend', true, 'user.update'],
+  reactivate: ['POST', '/directory/:id/reactivate', true, 'user.update'],
+  cancel: ['POST', '/directory/:id/cancel', true, 'user.update'],
+  reissue: ['POST', '/directory/:id/reissue', true, 'user.update'],
+  'role-create': ['POST', '/roles', false, 'role.create'],
+  'role-edit': ['PUT', '/roles/:id', true, 'role.update'],
+  'role-delete': ['DELETE', '/roles/:id', true, 'role.delete'],
+} as const;
 
 export async function GET(req: Request) {
   const auth = await session();
   if (!auth) return send({ message: 'Sign in to continue.' }, 401);
-  if (!superAdmin(auth.staff)) return send({ message: 'Access denied.' }, 403);
+  if (!superAdmin(auth.staff) || !has(auth.staff, 'user.view') || !has(auth.staff, 'role.view')) {
+    return send({ message: 'Access denied.' }, 403);
+  }
   const id = new URL(req.url).searchParams.get('id') ?? '';
   if (!mongoId(id)) return send({ message: 'Invalid account ID.' }, 400);
   try {
@@ -79,25 +93,15 @@ export async function POST(req: Request) {
       }
       return send({ success: true });
     }
-    const targets: Record<string, [string, string, boolean]> = {
-      accept: ['POST', '/accept', false],
-      invite: ['POST', '/directory', false],
-      'staff-edit': ['PUT', '/directory/' + id, true],
-      suspend: ['POST', '/directory/' + id + '/suspend', true],
-      reactivate: ['POST', '/directory/' + id + '/reactivate', true],
-      cancel: ['POST', '/directory/' + id + '/cancel', true],
-      reissue: ['POST', '/directory/' + id + '/reissue', true],
-      'role-create': ['POST', '/roles', false],
-      'role-edit': ['PUT', '/roles/' + id, true],
-      'role-delete': ['DELETE', '/roles/' + id, true],
-    };
-    if (!Object.hasOwn(targets, action)) return send({ message: 'Unknown action.' }, 400);
-    const [method, path, needsId] = targets[action];
+    if (!Object.hasOwn(actions, action)) return send({ message: 'Unknown action.' }, 400);
+    const [method, path, needsId, permission] = actions[action as keyof typeof actions];
     if (needsId !== Boolean(id)) return send({ message: 'Invalid action target.' }, 400);
-    const auth = action === 'accept' ? null : await session();
-    if (action !== 'accept' && !auth) return send({ message: 'Sign in to continue.' }, 401);
-    if (action !== 'accept' && !workspaceWritesEnabled()) return send({ message: 'Staff management is read-only in this workspace.' }, 403);
-    const result = await requestApi(endpoint + path, auth?.token, {
+    const auth = permission ? await session() : null;
+    if (permission && !auth) return send({ message: 'Sign in to continue.' }, 401);
+    if (permission && auth && (!workspaceWritesEnabled() || !has(auth.staff, permission))) {
+      return send({ message: 'Staff action is restricted in this workspace.' }, 403);
+    }
+    const result = await requestApi(endpoint + path.replace(':id', id), auth?.token, {
       method, ...(method !== 'DELETE' && { body: JSON.stringify(obj(body.values)) }),
     });
     const payload = obj(await result.json());

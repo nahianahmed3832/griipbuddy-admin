@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Filter, Info, Truck } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 import {
-  addressLabel, currencyFor, money, orderActions, orderDate, orderFilterKeys, orderNumber, ordersApi,
+  addressLabel, orderActions, orderDate, orderDisplayMoney, orderFilterKeys, orderNumber, orderStateTone, ordersApi, statusLabel,
   type Listing, type Order, type OrderAccess, type OrderFilters, type OrderLocation,
 } from '@/lib/website-orders';
 import { OrderDateRangeCalendar, type OrderDateRange } from './order-date-range-calendar';
@@ -15,6 +15,7 @@ import { normalizeFraudPhone, useCourierFraud } from './production-fraud';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionOrderMenu, useManualOrderStatus } from './production-order-menu';
 import { OrderThumbnail } from './website-orders-table';
+import { WorkspaceEmpty, WorkspaceHeading, WorkspaceStatus } from './workspace-screen';
 import styles from './production-website-orders.module.css';
 
 const statusTabs = [
@@ -25,8 +26,7 @@ const statusTabs = [
   ['NO_RESPONSE', 'No Response'], ['PRE_ORDER', 'Pre Order'], ['AWAITING_STOCK', 'Awaiting Stock'],
 ] as const;
 const headings = [
-  'Actions', 'Order Id', 'Order Date', 'Products', 'Customer Info', 'COD', 'Paid by Courier', 'Total Paid',
-  'Order Status', 'Call Info', 'Note', 'Courier Info', 'Created By',
+  'Actions', 'Order ID', 'Order status', 'Order total', 'Payment', 'Shipment', 'Customer', 'Products', 'Call info', 'Staff note', 'Created by',
 ];
 const dates = new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' });
 
@@ -41,6 +41,10 @@ function query(region: Region, filters: OrderFilters, page?: number, limit = '')
   if (limit && limit !== '20') params.set('limit', limit);
   return params.size ? '?' + params.toString() : '';
 }
+
+const hasOrderFilters = (filters: OrderFilters) => orderFilterKeys.some(key =>
+  key !== 'q' && key !== 'filter' && Boolean(filters[key]),
+);
 
 function day(region: Region) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: region === 'BD' ? 'Asia/Dhaka' : 'UTC',
@@ -87,10 +91,6 @@ function orderDateParts(value: string | undefined, region: Region) {
   };
 }
 
-function orderMoney(value: number | undefined, currency: string) {
-  return currency === 'BDT' ? 'TK ' + (value?.toLocaleString('en-BD') ?? '') : money(value, currency);
-}
-
 function SelectField({ name, value, onChange, children, className }: {
   name: string; value: string; onChange: (value: string) => void; children: ReactNode; className?: string;
 }) {
@@ -107,6 +107,7 @@ type Props = {
   locations: OrderLocation[];
   creators: { _id: string; label: string }[];
   access: OrderAccess;
+  bulkCancellation?: boolean;
   pageSizes: readonly string[];
   selectedSize?: string;
   issue?: 'dates' | 'too-many';
@@ -134,18 +135,24 @@ function FraudCell({ phone, open }: { phone: string; open: () => void }) {
   </button>;
 }
 
-export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false, executive = false }: Props) {
+export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false, executive = false, bulkCancellation = false }: Props) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const listPath = assigned ? '/dashboard/assigned-orders' : executive ? '/dashboard/sales-executive' : '/dashboard/orders';
   const filterId = useId();
   const [formFilters, setFormFilters] = useState(filters);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(() => hasOrderFilters(filters));
   const [calendar, setCalendar] = useState(false);
   const [customPreset, setCustomPreset] = useState(false);
   const [range, setRange] = useState<OrderDateRange>({ from: '', to: '' });
   const dateTrigger = useRef<HTMLButtonElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [notice, setNotice] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchReason, setBatchReason] = useState('');
+  const [batchResult, setBatchResult] = useState<{ id: string; status: string; message?: string }[]>([]);
+  const cancellationRequest = useRef<{ body: string; key: string } | undefined>(undefined);
   const { updateStatus, updating } = useManualOrderStatus(region, setNotice);
   const [deferred, setDeferred] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -154,6 +161,12 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const toText = dateText(formFilters.to ?? '', dateText(today, today));
   const dateTextLabel = formFilters.from && (!formFilters.to || formFilters.from === formFilters.to) ? fromText : fromText + ' - ' + toText;
   const rows = listing?.rows ?? [];
+  const exportable = (order: Order) => region === 'BD' && !assigned && !order.checkoutProjection && /^[a-f0-9]{24}$/i.test(order._id);
+  const cancellable = (order: Order) => exportable(order) && bulkCancellation && order.managed && !order.paid_amount &&
+    ['PLACED','INCOMPLETE'].includes(order.status) && !order.tracking_code && !order.transfer_to_courier && !order.assigned_business_location;
+  const selection = rows.filter(order => selected.includes(order._id));
+  const cancelIds = selection.filter(cancellable).map(order => order._id);
+  const exportIds = selection.filter(exportable).map(order => order._id);
   const counts = listing?.counts ?? {};
   const total = listing?.total ?? 0;
   const page = listing?.page ?? 1;
@@ -171,7 +184,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
       const search = new URLSearchParams(window.location.search);
       setCalendar(false);
       setCustomPreset(false);
-      setFormFilters(Object.fromEntries(orderFilterKeys.map(key => [key, search.get(key) ?? (key === 'filter' ? search.get('status') : null) ?? undefined])));
+      const restored = Object.fromEntries(orderFilterKeys.map(key => [key, search.get(key) ?? (key === 'filter' ? search.get('status') : null) ?? undefined]));
+      setFormFilters(restored);
+      setExpanded(hasOrderFilters(restored));
     };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
@@ -180,8 +195,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   function submit(value: OrderFilters, delay = 0) {
     clearTimeout(searchTimer.current);
     setFormFilters(value);
-    if (delay) searchTimer.current = setTimeout(() => router.replace(path(value), { scroll: false }), delay);
-    else router.replace(path(value), { scroll: false });
+    const navigate = () => startTransition(() => router.replace(path(value), { scroll: false }));
+    if (delay) searchTimer.current = setTimeout(navigate, delay);
+    else navigate();
   }
 
   function openCalendar() {
@@ -199,17 +215,47 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
 
   const datePresets = presets(today);
   const activePreset = datePresets.find(([, , from, to]) => (formFilters.from ?? '') === from && (formFilters.to ?? '') === to)?.[0] ?? 'custom';
+  async function cancelSelected(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (batchBusy || !cancelIds.length || cancelIds.length !== exportIds.length || !batchReason.trim()) return;
+    const values = { orders: cancelIds, reason: batchReason.trim() };
+    const body = JSON.stringify(values);
+    if (cancellationRequest.current?.body !== body) cancellationRequest.current = { body, key: crypto.randomUUID() };
+    setBatchBusy(true);
+    setBatchResult([]);
+    try {
+      const response = await fetch(adminPath('/api/managed'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action:'order-cancel-batch', market:'BD', key:cancellationRequest.current.key, values }) });
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json() as { rows: { id: string; status: string; message?: string }[] };
+      setBatchResult(result.rows);
+      setSelected(ids => ids.filter(id => !result.rows.some(row => row.id === id && ['cancelled','replayed'].includes(row.status))));
+      cancellationRequest.current = undefined;
+      router.refresh();
+    } catch (error) {
+      setNotice(error instanceof Error && error.message ? error.message : 'Could not confirm the selected cancellations.');
+    } finally { setBatchBusy(false); }
+  }
+
   const visibleStatuses = status && !statusTabs.some(([key]) => key === status)
     ? [...statusTabs, [status, status.replaceAll('_', ' ').toLowerCase()]]
     : statusTabs;
 
 
   return <section className={styles.orders} aria-label={assigned ? 'Assigned orders' : 'Website orders'}>
-    <h1>{assigned ? 'Assigned Orders' : executive ? 'Sales Executive' : 'All Orders'} ({total.toLocaleString('en')})</h1>
+    <WorkspaceHeading title={(assigned ? 'Assigned Orders' : executive ? 'Sales Executive' : 'All Orders') + (listing ? ` (${total.toLocaleString('en')})` : '')}
+      detail={`${region === 'BD' ? 'Bangladesh' : 'International'}${listing ? '' : ' · Order data unavailable'}`}/>
     <section className={styles.panel}>
       <div className={styles.panelHeader}>
+        <form className={styles.quickSearch} action={adminPath(listPath)} onSubmit={onSearch}>
+          {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
+          {orderFilterKeys.filter(key => key !== 'q' && formFilters[key]).map(key =>
+            <input key={key} type="hidden" name={key} value={formFilters[key]}/>)}
+          <input type="search" name="q" aria-label="Search orders" placeholder="Order id, phone, tracking code" maxLength={100}
+            value={formFilters.q ?? ''} onChange={event => submit({ ...formFilters, q: event.currentTarget.value }, 350)}/>
+        </form>
         <button type="button" className={styles.filterToggle} aria-expanded={expanded} aria-controls={filterId}
-          onClick={() => setExpanded(value => !value)}><Filter size={20}/> Filter</button>
+          onClick={() => setExpanded(value => !value)}><Filter size={16} aria-hidden="true"/> Filter</button>
         {!assigned && <div className={styles.headerActions}>
           {region === 'BD' && access.update && <button type="button" className={styles.outlineAction}
             onClick={() => setDialog({ kind: 'sync' })}>
@@ -220,14 +266,25 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           </a>
         </div>}
       </div>
+      {!!exportIds.length && <div className="page-actions padded" aria-label="Selected orders">
+        <a className={styles.outlineAction} href={ordersApi('export', region, { selected:exportIds.join(',') })} download>
+          <FileSpreadsheet size={16}/> Export {exportIds.length} selected
+        </a>
+        <button className="button subtle" type="button" onClick={() => setSelected([])}>Clear selection</button>
+        {cancelIds.length > 0 && cancelIds.length === exportIds.length && <form className="page-actions" onSubmit={cancelSelected}>
+          <label>Cancellation reason<input required maxLength={500} value={batchReason} disabled={batchBusy} onChange={e => setBatchReason(e.target.value)}/></label>
+          <button className="button secondary" disabled={batchBusy}>{batchBusy ? 'Checking…' : 'Cancel selected orders'}</button>
+        </form>}
+      </div>}
+      {batchResult.length > 0 && <ul className="notice" aria-label="Cancellation results">{batchResult.map(row => <li key={row.id}>
+        {rows.find(order => order._id === row.id) ? orderNumber(rows.find(order => order._id === row.id)!) : row.id}
+        {' · '}{row.status === 'replayed' ? 'Already cancelled by this operation' : row.message ?? statusLabel(row.status)}
+      </li>)}</ul>}
       {expanded && <form id={filterId} className={styles.filters} action={adminPath(listPath)} onSubmit={onSearch}>
         {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
         {status && <input type="hidden" name="filter" value={status}/>}
         <div className={styles.firstRow}>
-          <label className={styles.wideField}>Search
-            <input name="q" placeholder="Order id, phone, tracking code" maxLength={100}
-              value={formFilters.q ?? ''} onChange={event => submit({ ...formFilters, q: event.currentTarget.value }, 350)}/>
-          </label>
+          {formFilters.q && <input type="hidden" name="q" value={formFilters.q}/>}
           <label className={styles.wideField}>SKU
             <input name="sku" placeholder="521CL-5" maxLength={100}
               value={formFilters.sku ?? ''} onChange={event => submit({ ...formFilters, sku: event.currentTarget.value }, 350)}/>
@@ -294,13 +351,14 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
         {label} - {(counts[key || 'ALL'] ?? 0).toLocaleString('en')}
       </Link>)}
     </nav>
-    <section className={`${styles.panel} ${styles.tablePanel}`} aria-label="Orders table">
+    {pending && <p className={styles.notice} role="status">Loading orders…</p>}
+    <section className={`${styles.panel} ${styles.tablePanel}`} aria-label="Orders table" aria-busy={pending}>
       <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Scroll order columns">
-        <table data-populated={rows.length > 0}>
-          <thead><tr>{headings.map(heading => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
-          <tbody>{rows.length ? rows.map(order => {
+        <table data-populated={rows.length > 0} role="table" aria-label="Order inbox">
+          <thead role="rowgroup"><tr role="row">{headings.map(heading => <th key={heading} scope="col" role="columnheader">{heading}</th>)}</tr></thead>
+          <tbody role="rowgroup">{rows.length ? rows.map(order => {
             const number = orderNumber(order);
-            const currency = currencyFor(order.currency, region);
+            const amount = (value: number | undefined) => orderDisplayMoney(value, order.currency, region);
             const listQuery = query(region, formFilters, page, pageSize);
             const source = assigned ? 'assigned' : executive ? 'executive' : undefined;
             const destinationQuery = listQuery + (source ? (listQuery ? '&' : '?') + 'source=' + source : '');
@@ -311,8 +369,12 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const newCall = access.update && !deferred.includes(order._id);
             const date = orderDateParts(order.order_date || order.createdAt, region);
             const address = addressLabel(order.delivery_address);
-            return <tr key={order._id}>
-              <td><ProductionOrderMenu order={order} href={href} actions={actions}
+            return <tr key={order._id} role="row">
+              <td role="cell" data-field="actions">{exportable(order) && <input type="checkbox" aria-label={'Select order ' + number}
+                disabled={batchBusy || (!selected.includes(order._id) && exportIds.length >= 25)}
+                checked={selected.includes(order._id)} onChange={event => setSelected(ids => event.target.checked
+                  ? [...ids.filter(id => exportIds.includes(id)), order._id] : ids.filter(id => id !== order._id))}/>}
+                <ProductionOrderMenu order={order} href={href} actions={actions}
                 editHref={order.managed ? href + (href.includes('?') ? '&' : '?') + 'edit=1'
                   : access.product ? '/dashboard/orders/edit/' + order._id + destinationQuery : undefined}
                 updating={updating.get(order._id)} select={kind => {
@@ -320,29 +382,39 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                     void updateStatus(order._id, kind === 'delivered' ? 'DELIVERED' : 'PENDING_RETURN');
                   } else open(kind, order);
                 }}/></td>
-              <td><Link className={styles.orderNumber} href={href}>{number}</Link>
-                {order.order_note && <small>Customer Note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
-              <td><span className={styles.dateCell}>{date.day}</span>{date.time && <span>{date.time}</span>}</td>
-              <td><div className={styles.products}>{order.products.map((line, index) => <div key={index}>
-                <OrderThumbnail src={line.image}/><span><strong>{line.sku || line.name || 'Item'}</strong>
-                  <small>Order Qty:</small><span className={styles.orderQuantity}>{line.quantity ?? '—'} pair/pcs</span></span>
-              </div>)}</div></td>
-              <td>{!projected && <button className={styles.customerLink} onClick={() => open('history', order)}>{order.customer_name || 'Customer details'}
-                {order.customer_phone ? ' - ' + order.customer_phone : ''}</button>}
-                <span>{address || '-'}</span>
-                {access.fraud && normalizeFraudPhone(order.customer_phone) && <FraudCell phone={order.customer_phone!} open={() => open('fraud', order)}/>}</td>
-              <td className={styles.nowrap}>{orderMoney(order.COD, currency)}</td>
-              <td>{order.paid_by_courier == null ? '-' : orderMoney(order.paid_by_courier, currency)}</td>
-              <td>{projected ? orderMoney(order.paid_amount, currency) : <>{orderMoney(order.paid_amount, currency)}
-                <button className={styles.textLink} onClick={() => open('payment', order)}>Pay Info</button></>}</td>
-              <td><span className={styles.orderStatus} data-status={order.status}>{order.status.replaceAll('_', ' ')}</span>
+              <td role="cell" data-field="order"><Link className={styles.orderNumber} href={href}>{number}</Link>
+                <small>{date.day}{date.time && ' · ' + date.time}</small>
+                {order.order_note && <small>Customer note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
+              <td role="cell" data-field="status" data-label="Order status"><WorkspaceStatus tone={orderStateTone(order.status)}>{statusLabel(order.status)}</WorkspaceStatus>
                 {awaitStock && <div className={styles.stockActions}>
                   <button type="button" className={styles.primary} onClick={() => open('accept-stock', order)}>Accept</button>
                   <button type="button" className={styles.smallButton} onClick={() => open('decline-stock', order)}>Decline</button>
                 </div>}
                 {projected ? <Link className={styles.textLink} href={href + '#status-logs'}><Info size={13}/> Status Logs</Link>
                   : <button className={styles.textLink} onClick={() => open('status', order)}><Info size={13}/> Status Logs</button>}</td>
-              <td>{projected ? '—' : order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
+              <td role="cell" data-field="total" data-label="Order total"><strong>{amount(order.total_amount)}</strong></td>
+              <td role="cell" data-field="payment" data-label="Payment">
+                <strong>{order.paid_amount == null ? 'No paid amount recorded' : amount(order.paid_amount) + ' paid'}</strong>
+                {order.COD != null && <small>COD due {amount(order.COD)}</small>}
+                {order.paid_by_courier != null && <small>Courier paid {amount(order.paid_by_courier)}</small>}
+                {!projected && <button type="button" className={styles.textLink} onClick={() => open('payment', order)}>Pay Info</button>}</td>
+              <td role="cell" data-field="shipment" data-label="Shipment"><strong>{order.tracking_code ? 'Tracking available'
+                : order.transfer_to_courier ? 'Courier handoff recorded' : order.consignment_id ? 'Parcel assigned' : 'No shipment recorded'}</strong>
+                {order.assigned_business_location && <small>{order.assigned_business_location.name || order.assigned_business_location.business_location_name}</small>}
+                {order.consignment_id ? <small>Parcel ID {order.consignment_id}</small> : null}
+                {order.tracking_code && (projected ? <small>{order.tracking_code}</small>
+                  : <button type="button" className={styles.textLink} onClick={() => open('track', order)}>Track Order</button>)}
+                {!projected && (order.tracking_code || order.transfer_to_courier || order.managed) &&
+                  <button type="button" className={styles.textLink} onClick={() => open('tracking', order)}>Tracking Logs</button>}</td>
+              <td role="cell" data-field="customer" data-label="Customer">{!projected && <button type="button" className={styles.customerLink} onClick={() => open('history', order)}>{order.customer_name || 'Customer details'}
+                {order.customer_phone ? ' · ' + order.customer_phone : ''}</button>}
+                <span>{address || '—'}</span>
+                {access.fraud && normalizeFraudPhone(order.customer_phone) && <FraudCell phone={order.customer_phone!} open={() => open('fraud', order)}/>}</td>
+              <td role="cell" data-field="products" data-label="Products"><div className={styles.products}>{order.products.map((line, index) => <div key={index}>
+                <OrderThumbnail src={line.image}/><span><strong>{line.sku || line.name || 'Item'}</strong>
+                  <small>Quantity {line.quantity ?? '—'}</small></span>
+              </div>)}</div></td>
+              <td role="cell" data-field="call" data-label="Call info">{projected ? '—' : order.is_called ? <><strong>Called{order.latestCall?.called_by_name ? ' by ' + order.latestCall.called_by_name : ''}</strong>
                 <small>{orderDate(order.latestCall?.called_at, region)}</small>
                 <button type="button" className={styles.textLink} onClick={() => open('calls', order)}>Call History</button></>
                 : newCall ? <><small>Have you called?</small><div className={styles.callActions}>
@@ -350,24 +422,21 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                   <button className={styles.smallButton} aria-label={'Skip call record for ' + number}
                     onClick={() => setDeferred(items => [...items, order._id])}>No</button>
                 </div></> : access.update ? <button className={styles.textLink} onClick={() => open('called', order)}>Record call</button> : 'Not called'}</td>
-              <td><span className={styles.muted}>Last Note:</span>{order.latestNote || 'N/A'}</td>
-              <td>{order.assigned_business_location && <small>{order.assigned_business_location.name || order.assigned_business_location.business_location_name}</small>}
-                {order.consignment_id ? <span>Parcel Id: {order.consignment_id}</span> : null}
-                {order.tracking_code && (projected ? <span>{order.tracking_code}</span>
-                  : <button className={styles.textLink} onClick={() => open('track', order)}>Track Order</button>)}
-                {!projected && (order.tracking_code || order.transfer_to_courier || order.managed) &&
-                  <button className={styles.textLink} onClick={() => open('tracking', order)}>Tracking Logs</button>}</td>
-              <td>{order.user?.full_name || (order.order_by === 'GUEST' ? 'Guest customer' : order.order_by === 'USER' ? 'Registered customer' : order.order_by || '—')}
+              <td role="cell" data-field="note" data-label="Staff note">{order.latestNote || '—'}</td>
+              <td role="cell" data-field="creator" data-label="Created by">{order.user?.full_name || (order.order_by === 'GUEST' ? 'Guest customer' : order.order_by === 'USER' ? 'Registered customer' : order.order_by || '—')}
                 {order.user?.role && <small className={styles.createdRole}>{order.user.role}</small>}</td>
             </tr>;
-          }) : <tr><td colSpan={headings.length} className={styles.empty}>No data found!</td></tr>}</tbody>
+          }) : <tr role="row"><td role="cell" colSpan={headings.length} className={styles.empty}>
+            <WorkspaceEmpty title={listing ? 'No matching orders' : 'Orders unavailable'}
+              detail={listing ? 'Change the search, status or date filters to see more orders.' : 'Review the filters above and try again.'}/>
+          </td></tr>}</tbody>
         </table>
       </div>
     </section>
     <nav className={`${styles.panel} ${styles.pagination}`} aria-label="Order pages">
       <SelectField className={styles.pageSize} name="Orders per page" value={pageSize} onChange={limit => {
         clearTimeout(searchTimer.current);
-        router.replace(path(formFilters, undefined, limit), { scroll: false });
+        startTransition(() => router.replace(path(formFilters, undefined, limit), { scroll: false }));
       }}>
         {pageSizes.map(option => <option key={option} value={option}>{option === 'all' ? 'All' : option}</option>)}
       </SelectField>

@@ -51,7 +51,7 @@ export async function purchaseList(auth: Session, region: Region, q: Query, prod
 export async function purchaseRecord(auth: Session, region: Region, id: string) {
   if (!has(auth.staff, 'purchase.view')) throw new ApiError(403);
   if (!mongoId(id)) throw new ApiError(404);
-  const row = obj(await api('/purchase/' + id, auth.token));
+  const row = obj(await api(url('/purchase/' + id, { region }), auth.token));
   if (!row._id || !obj(row.business_location)._id || (obj(row.business_location).region ?? 'BD') !== region) throw new ApiError(404);
   return row;
 }

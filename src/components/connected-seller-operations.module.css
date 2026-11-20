@@ -1,0 +1,12 @@
+.workspace { display: grid; gap: 16px; min-width: 0; }
+.tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.list { margin: 0; padding: 0; list-style: none; }
+.list > li { padding: 12px 0; border-bottom: 1px solid var(--border, #e3ddeb); overflow-wrap: anywhere; }
+.list > li:last-child { border-bottom: 0; }
+.list strong { display: block; }
+.fields { display: grid; gap: 10px; }
+.workspace :global(.connected-seller-fields) { display: grid; gap: 11px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.workspace :global(.connected-seller-fields) label { display: grid; gap: 5px; }
+.workspace :global(.connected-seller-fields) label:has(input[type='checkbox']) { display: flex; gap: 8px; align-items: center; }
+.workspace :global(.connected-seller-fields) :is(input:not([type='checkbox']),select,textarea) { width: 100%; padding: 8px; border: 1px solid #d4ccdd; border-radius: 7px; font: inherit; color: inherit; background: #fff; }
+.workspace :global(.connected-seller-fields) button { justify-self: start; }

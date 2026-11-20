@@ -11,6 +11,7 @@ import { ChoiceCheck, Feedback, ImageFields, imageInput, moveInList, OrderButton
 import { ConnectedCategoryAssignments } from './connected-category-assignments';
 import { ConnectedCollections, ConnectedMenus } from './connected-organization';
 import { TaxonomyPendingChanges, useConfirmTaxonomyNavigation } from './connected-catalog-product/taxonomy-controls';
+import { WorkspaceHeading } from './workspace-screen';
 import css from './connected-categories.module.css';
 import catalog from './production-catalog.module.css';
 
@@ -61,13 +62,13 @@ export function ConnectedCategories({ data, region, permissions, view, requested
     { key: 'categories', name: 'Categories' }, { key: 'attributes', name: 'Attributes' },
     { key: 'menus', name: 'Menus' }, { key: 'collections', name: 'Collections' },
   ];
-  return <TaxonomyPendingChanges><div className={catalog.page}>
-    <div className={catalog.header}><div><h1>Catalog organization</h1><p>{marketName(region)}</p></div>
-      {view === 'categories' && <div className={catalog.headerActions}>
+  return <TaxonomyPendingChanges><div className={`${catalog.page} ${css.workspace}`}>
+    <WorkspaceHeading title="Catalog organization" detail={data.navigation?.marketName ?? data.collections?.marketName ?? marketName(region)}>
+      {view === 'categories' && <>
         {region === 'BD' && <Link className={catalog.outline} href={taxonomyHref(region, { catalog: 'legacy' })}>Recovered category records</Link>}
-        {permissions.create && <Link className={catalog.primary} href={taxonomyHref(region, { mode: 'create' })}><Plus size={16}/>New category</Link>}
-      </div>}
-    </div>
+        {permissions.create && <Link className={catalog.primary} href={taxonomyHref(region, { mode: 'create' })}><Plus size={16} aria-hidden="true"/>New category</Link>}
+      </>}
+    </WorkspaceHeading>
     {pilot && <p role="status">Connected editing is limited to the reviewed Bangladesh catalog. Use the existing category list for independent legacy categories.</p>}
     <nav aria-label="Catalog organization" className={css.tabs}>{options.map(option => <Link key={option.key} className={catalog.outline}
       href={taxonomyHref(region, { view: option.key, record: option.key === 'attributes' ? current?.id : undefined })}

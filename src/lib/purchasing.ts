@@ -26,33 +26,37 @@ export type Quote = {
 };
 export type PurchaseBalance = {
   variant: string; ordered: number; physical: number; delivered: number; accepted: number;
-  held: number; rejected: number; expected: number; closed: number;
+  held: number; rejected: number; returned?: number; expected: number; closed: number;
 };
 export type ReceiptLine = {
   _id: string; receipt: string; variant?: string; item?: string; sku?: string; name?: string; seen: number; held: number;
-  rejected: number; posted: number; toOrder: number; exceptions: string[]; referenceResolved: boolean;
+  rejected: number; posted: number; returned?: number; toOrder: number; exceptions: string[]; referenceResolved: boolean;
 };
 export type PurchaseAudit = { id: string; at: string; actor?: string; kind: string; payload?: {
   evidence?: Evidence; receivedAt?: string; reference?: string; reason?: string; evidenceReference?: string; status?: string;
   closure?: { reason: string; evidence?: Evidence; reference?: string };
   quantity?: number; issue?: string; lines?: { id: string; sku?: string; item?: string; physical: number; accepted: number; held: number; rejected: number }[];
   stock?: { movement: string; quantity: number }[] | { movement: string; quantity: number };
-  movement?: string; original?: string;
+  movement?: string; original?: string; posting?: string; lot?: string;
 } };
 export type PurchaseFinance = {
-  currencies: { currency: string; invoiced: number | null; recorded: number; verified: number; unmatched: number; unmatchedInvoice: number | null }[];
+  currencies: { currency: string; invoiced: number | null; recorded: number; verified: number; unmatched: number;
+    unmatchedInvoice: number | null; supplierCredit?: number; supplierRefund?: number }[];
   records: { id: string; at: string; kind: string; amountMinor?: number; currency?: string; evidence: Evidence;
-    staffVerified: boolean; invoiceReference?: string; payment?: string }[];
+    staffVerified: boolean; invoiceReference?: string; payment?: string; supplierReturn?: string; credit?: string; refundableMinor?: number }[];
 };
 export type Purchase = {
   id: string; reference: string; test: boolean; revision: number; requester: string; proposal?: string; warehouse: string;
   supplier: string; state: string; canReceive: boolean; expectedAt?: string; approvedAt?: string; closed: boolean;
   quote?: Quote; editor?: Quote; blockers: string[];
   lines: (VariantChoice & { stockUnits: number })[]; totals: PurchaseBalance[]; receiptLines: ReceiptLine[];
-  postings: { _id: string; line: string; quantity: number; corrected: number; movement: string; lot: string }[];
+  postings: { _id: string; line: string; quantity: number; corrected: number; returned?: number; movement: string; lot: string }[];
   audit: PurchaseAudit[]; finance?: PurchaseFinance; overflow: boolean;
 };
 export type PurchaseList = { orders: {
   id: string; reference: string; supplier: string; warehouse: string; expected: number; expectedAt?: string;
   state: string; expired: boolean; test: boolean;
 }[]; overflow: boolean };
+
+export const remainingPosting = (posting: Purchase['postings'][number]) =>
+  Math.max(0, posting.quantity - posting.corrected - (posting.returned ?? 0));

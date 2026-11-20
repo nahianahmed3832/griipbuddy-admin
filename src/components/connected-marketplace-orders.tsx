@@ -157,6 +157,7 @@ function TrackingTimeline({ events, date }: { events: ConnectedParcel['events'];
 function ParcelSetupActions({ parcel, input, region }: {
   parcel: ConnectedParcel; input: { orderId: string; parcelId: string }; region: Region;
 }) {
+  const next = parcel.preparationState === 'PENDING' ? 'PICKED' : 'PACKED';
   return <>
     {parcel.splittable && !scopedCatalogPilotRequested() && <details className={styles.shipmentAction}>
       <summary>Create another parcel</summary>
@@ -170,6 +171,13 @@ function ParcelSetupActions({ parcel, input, region }: {
         <TrackingReason label="Reason for splitting this parcel"/>
       </MarketplaceOrderAction>
     </details>}
+    {parcel.preparable && parcel.trackingRevision !== undefined && <MarketplaceOrderAction key={`prepare:${parcel.trackingRevision}`}
+      action="order.parcel.prepare" region={region} input={{ ...input, next, expectedRevision: parcel.trackingRevision }}
+      label={next === 'PICKED' ? 'Confirm picked quantities' : 'Confirm packed quantities'} success="Parcel quantities confirmed.">
+      {parcel.lines.map(line => <label key={line.id}>{line.sku} · {line.quantity} allocated
+        <input name={`quantity:${line.id}`} type="number" min={1} max={line.quantity} step={1} required/>
+      </label>)}
+    </MarketplaceOrderAction>}
     {parcel.editableReference && parcel.trackingRevision !== undefined && <details className={styles.shipmentAction}>
       <summary>Edit carrier and tracking reference</summary>
       <MarketplaceOrderAction key={parcel.trackingRevision} action="order.parcel.reference" region={region}
@@ -234,6 +242,7 @@ export async function MarketplaceOrder({ auth, region, id }: { auth: Session; re
           {order.parcels.map((parcel, index) => <section key={parcel.id} className={`panel padded ${styles.panel} ${styles.stack}`} aria-label={`Parcel ${index + 1}`}>
             <div><h2>Parcel {index + 1} · {parcel.warehouse}</h2>
               <div className={styles.badges}><strong>{parcel.trackingStatus ? statusLabel(parcel.trackingStatus) : parcel.status}</strong>
+                {parcel.preparationState && parcel.trackingStatus === 'PREPARING' && <span>{parcel.preparationState === 'PENDING' ? 'Pending pick' : statusLabel(parcel.preparationState)}</span>}
                 {parcel.reference && <span>{parcel.carrier} · {parcel.reference}</span>}</div>
             </div>
             <MarketplacePurchasedLines lines={parcel.lines} currency={order.currency}/>

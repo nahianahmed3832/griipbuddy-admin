@@ -184,7 +184,7 @@ export type Section = (typeof sections)[number];
 export type Region = 'BD' | 'INTERNATIONAL';
 export type Staff = { id: string; name: string; role: string; permissions: string[]; assignedLocation?: string };
 export function has(staff: Pick<Staff, 'permissions'>, permission: string) { return staff.permissions.includes(permission); }
-export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role.toUpperCase().replace(/ /g, '_') === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
+export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
 export function hasOperations(staff: Staff) { return superAdmin(staff) || ['operations.pack', 'operations.support', 'operations.purchase',
   'operations.receive', 'operations.supplier-finance'].some(grant => has(staff, grant)); }
 export function visibleSections(staff: Staff) {

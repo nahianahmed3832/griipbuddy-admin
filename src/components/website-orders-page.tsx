@@ -84,7 +84,8 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
   const listing = results[0].value;
   if (!listing) throw new ApiError(503);
   if (productionLayout) return <ProductionWebsiteOrders key={region} listing={listing} filters={filters} region={region}
-    creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit} executive={executive}/>;
+    creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit} executive={executive}
+    bulkCancellation={region === 'BD' && canManage(auth.staff) && has(auth.staff, 'order.update')}/>;
   return <>
     <PageHeading eyebrow="COMMERCE / WEBSITE ORDERS" title={title + ' (' + listing.total.toLocaleString('en') + ')'}
       description="Review website orders, customer follow-ups and courier activity.">

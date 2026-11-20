@@ -39,7 +39,7 @@ function utcDate(value: string, original?: string | null) {
 }
 
 function CommercialTable({ headings, children, name }: { headings: string[]; children: ReactNode; name: string }) {
-  return <div className="connected-commercial-table">
+  return <div className="connected-commercial-table" tabIndex={0} role="region" aria-label={name}>
     <table aria-label={name}>
       <thead><tr>{headings.map(heading => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
       <tbody>{children}</tbody>
@@ -324,12 +324,13 @@ function MovementForm({ data, actorId, pool, onSaved }: { data: Data; actorId: s
     return saved;
   }}>
     <h3>Record a stock movement</h3>
+    {kind === "DAMAGE" && <p className="commerce-muted">Use a negative quantity for damaged units.</p>}
     <p>{pool.warehouse.name} · {pool.ownerName} · {pool.available} available</p>
     <div className="commerce-fields">
       <label>Movement type<select value={kind} onChange={event => setKind(event.currentTarget.value)}>
-        <option value="RECEIPT">Receipt</option><option value="ADJUSTMENT">Adjustment</option>
+        <option value="RECEIPT">Receipt</option><option value="ADJUSTMENT">Adjustment</option><option value="DAMAGE">Damage or write-off</option>
       </select></label>
-      <label>Stock units<input name="quantity" type="number" step="1" min={kind === "RECEIPT" ? 1 : -pool.available} max="1000000" required /></label>
+      <label>Stock units<input name="quantity" type="number" step="1" min={kind === "RECEIPT" ? 1 : -pool.available} max={kind === "DAMAGE" ? -1 : 1000000} required /></label>
       <label>Movement reason<input name="reason" maxLength={240} required /></label>
       <label>Movement reference<input name="reference" maxLength={160} required /></label>
     </div>
@@ -354,12 +355,12 @@ function TransferForm({ data, actorId, pool, destinations, onSaved }: { data: Da
       const payload = { ...stockScope(data), fromPoolId: pool.id, toPoolId: to.id,
         quantity: Number(formValue(form, "quantity")), expectedUpdatedAt, expectedDestinationUpdatedAt,
         reason: formValue(form, "reason"), reference: formValue(form, "reference") };
-      return command("inventory.transfer", { ...payload, idempotencyKey: await stockKey.key(payload) });
+      return command("inventory.transfer-dispatch", { ...payload, idempotencyKey: await stockKey.key(payload) });
     }, "");
     if (saved) { stockKey.clear(); onSaved(); }
     return saved;
   }}>
-    <h3>Transfer available units</h3>
+    <h3>Dispatch a stock transfer</h3>
     <p>From {pool.warehouse.name} · {pool.ownerName} · {pool.available} available</p>
     <div className="commerce-fields">
       <label>Destination warehouse<select name="destination" defaultValue="" required>
@@ -371,26 +372,101 @@ function TransferForm({ data, actorId, pool, destinations, onSaved }: { data: Da
       <label>Transfer reference<input name="reference" maxLength={160} required /></label>
     </div>
     <div className="taxonomy-actions"><button type="submit" className="button button--primary" disabled={operation.pending}>
-      {operation.pending ? "Transferring…" : "Transfer stock"}
+      {operation.pending ? "Dispatching…" : "Dispatch stock"}
     </button></div>
     <TaxonomyFeedback {...operation} />
   </TaxonomyForm>;
 }
 
-function InventoryHistory({ data, skus }: { data: Data; skus: Map<string, Variant> }) {
+function ThresholdForm({ data, pool, onSaved }: { data: Data; pool: Pool; onSaved: () => void }) {
+  const operation = useTaxonomyOperation();
+  const [expectedUpdatedAt] = useState(pool.updatedAt);
+  return <TaxonomyForm className="commerce-panel" aria-label="Low-stock threshold" onSubmit={async event => {
+    const form = new FormData(event.currentTarget);
+    const value = formValue(form, "threshold");
+    const saved = await operation.run(() => command("inventory.threshold", { ...stockScope(data), poolId: pool.id,
+      threshold: value === "" ? null : Number(value), expectedUpdatedAt }), "");
+    if (saved) onSaved();
+    return saved;
+  }}>
+    <h3>Set the low-stock threshold</h3>
+    <p className="commerce-muted">Counts available units at {pool.warehouse.name}. Leave blank to remove the threshold.</p>
+    <label>Warning units<input type="number" name="threshold" step="1" min="0" max="1000000" defaultValue={pool.lowStockThreshold ?? ""}/></label>
+    <button className="button button--primary" type="submit" disabled={operation.pending}>Save threshold</button>
+    <TaxonomyFeedback {...operation}/>
+  </TaxonomyForm>;
+}
+
+function TransferReceipt({ data, actorId, transferId }: { data: Data; actorId: string; transferId: string }) {
+  const operation = useTaxonomyOperation();
+  const stockKey = useStockKey(actorId);
+  return <div>
+    <button className="button button--outline" type="button" disabled={operation.pending} onClick={() => void operation.run(async () => {
+      const payload = { ...stockScope(data), transferId };
+      return command("inventory.transfer-receive", { ...payload, idempotencyKey: await stockKey.key(payload) });
+    }, "Transfer received.")}>Confirm receipt</button>
+    <TaxonomyFeedback {...operation}/>
+  </div>;
+}
+
+function CompensationForm({ data, actorId, movementId, pool, onSaved }: {
+  data: Data; actorId: string; movementId: string; pool: Pool; onSaved: () => void;
+}) {
+  const operation = useTaxonomyOperation();
+  const stockKey = useStockKey(actorId);
+  const [expectedUpdatedAt] = useState(pool.updatedAt);
+  return <TaxonomyForm className="commerce-panel" aria-label="Compensate stock movement" onSubmit={async event => {
+    const form = new FormData(event.currentTarget);
+    const payload = { ...stockScope(data), movementId, expectedUpdatedAt, reason: formValue(form, "reason"), reference: formValue(form, "reference") };
+    const saved = await operation.run(async () => command("inventory.compensate", { ...payload, idempotencyKey: await stockKey.key(payload) }), "");
+    if (saved) { stockKey.clear(); onSaved(); }
+    return saved;
+  }}>
+    <h3>Compensate a posted movement</h3>
+    <p>Post the opposite quantity as a new movement. The original entry stays in history.</p>
+    <div className="commerce-fields">
+      <label>Correction reason<input name="reason" required maxLength={240}/></label>
+      <label>Correction reference<input name="reference" required maxLength={160}/></label>
+    </div>
+    <button className="button button--primary" type="submit" disabled={operation.pending}>Post compensation</button>
+    <TaxonomyFeedback {...operation}/>
+  </TaxonomyForm>;
+}
+
+function InventoryHistory({ data, skus, actorId, canEdit }: { data: Data; skus: Map<string, Variant>; actorId: string; canEdit: boolean }) {
+  const [compensating, setCompensating] = useState<string>();
+  const target = data.movements.find(row => row.id === compensating);
+  const targetPool = target && data.pools.find(row => row.id === target.poolId);
+  const compensated = new Set(data.movements.map(row => row.reversesMovementId));
   const pools = new Map(data.pools.map(pool => [pool.id, pool]));
   const location = (id: string) => {
     const pool = pools.get(id);
     return pool ? `${skus.get(pool.variantId)?.sku ?? "Variant"} · ${pool.warehouse.name}` : "Warehouse pool";
   };
   return <details className="commerce-panel connected-commercial">
-    <summary>Recent stock movements and allocations</summary>
+    <summary>Stock movements, transfers and allocations</summary>
+    {!!data.transfers?.length && <>
+      <h3>Warehouse transfers</h3>
+      <CommercialTable name="Warehouse transfers" headings={["From", "To", "Units", "State", "Reference", "Action"]}>
+        {data.transfers.map(transfer => <tr key={transfer.id}><th scope="row">{location(transfer.fromPoolId)}</th>
+          <td>{location(transfer.toPoolId)}</td><td>{transfer.quantity}</td>
+          <td>{transfer.state === "IN_TRANSIT" ? "In transit" : "Received"}<small>{formatTime(transfer.receivedAt ?? transfer.dispatchedAt)}</small></td>
+          <td>{transfer.reference}</td><td>{canEdit && transfer.state === "IN_TRANSIT" && transfer.marketId === data.market.id &&
+            <TransferReceipt data={data} actorId={actorId} transferId={transfer.id}/>}</td>
+        </tr>)}
+      </CommercialTable>
+    </>}
     <h3>Stock movements</h3>
-    {data.movements.length ? <CommercialTable name="Recent stock movements" headings={["Warehouse pool", "Movement", "Units", "Recorded"]}>
+    {data.movements.length ? <CommercialTable name="Recent stock movements" headings={["Warehouse pool", "Movement", "Units", "Reference", "Recorded", ...(canEdit ? ["Action"] : [])]}>
       {data.movements.map(movement => <tr key={movement.id}><th scope="row">{location(movement.poolId)}</th>
         <td>{movement.kind.replaceAll("_", " ").toLowerCase()}</td><td>{movement.quantity > 0 ? "+" : ""}{movement.quantity}</td>
-        <td>{formatTime(movement.createdAt)}</td></tr>)}
+        <td>{movement.reference ?? "—"}{movement.reason && <small>{movement.reason}</small>}</td>
+        <td>{formatTime(movement.createdAt)}</td>{canEdit && <td>{!movement.reversesMovementId && !compensated.has(movement.id) &&
+          ["RECEIPT", "ADJUSTMENT", "DAMAGE"].includes(movement.kind) && <button type="button" className="button button--outline"
+            onClick={() => setCompensating(movement.id)}>Compensate</button>}</td>}</tr>)}
     </CommercialTable> : <p>No stock movements in the current scope.</p>}
+    {canEdit && target && targetPool && <CompensationForm key={target.id} data={data} actorId={actorId} pool={targetPool}
+      movementId={target.id} onSaved={() => setCompensating(undefined)}/>}
     <h3>Allocations</h3>
     {data.allocations.length ? <CommercialTable name="Recent stock allocations"
       headings={["Warehouse pool", "Reservation", "Market", "State", "Units", "Dispatched", "Returned", "Hold expires"]}>
@@ -404,7 +480,7 @@ function InventoryHistory({ data, skus }: { data: Data; skus: Map<string, Varian
 export function ConnectedInventory({ data, actorId, canEdit, canConfigureWarehouses = true }: {
   data: Data; actorId: string; canEdit: boolean; canConfigureWarehouses?: boolean;
 }) {
-  const [selected, setSelected] = useState<{ id: string; action: "movement" | "transfer" }>();
+  const [selected, setSelected] = useState<{ id: string; action: "movement" | "transfer" | "threshold" }>();
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -432,11 +508,13 @@ export function ConnectedInventory({ data, actorId, canEdit, canConfigureWarehou
       <input type="search" value={query} onChange={event => { setQuery(event.currentTarget.value); setPage(1); }} maxLength={80} />
     </label>}
     {rows.length ? <CommercialTable name="Physical stock pools"
-      headings={["Variant", "Warehouse", "Stock owner", "Serves", "On hand", "Reserved", "Available", ...(canEdit ? ["Action"] : [])]}>
+      headings={["Variant", "Warehouse", "Stock owner", "Serves", "On hand", "Reserved", "Available", "In transit", "Threshold", ...(canEdit ? ["Action"] : [])]}>
       {rows.map(pool => <tr key={pool.id}><th scope="row">{skus.get(pool.variantId)?.sku ?? "Variant"}</th>
         <td>{pool.warehouse.name}{!pool.warehouse.active && <small>Inactive</small>}</td><td>{pool.ownerName}</td>
         <td>{pool.warehouse.servingMarkets.map(id => markets[id].name).join(", ") || "Service pending"}</td>
         <td>{pool.onHand}</td><td>{pool.reserved}</td><td>{pool.available}</td>
+        <td>{pool.inTransitIn ?? 0} incoming<small>{pool.inTransitOut ?? 0} outgoing</small></td>
+        <td>{pool.lowStockThreshold ?? "—"}{pool.isLowStock && <small>Low stock</small>}</td>
         {canEdit && <td><div className="taxonomy-actions">
           <button className="button button--outline" type="button" disabled={pool.legacyOwnerMismatch}
             onClick={() => {
@@ -448,6 +526,8 @@ export function ConnectedInventory({ data, actorId, canEdit, canConfigureWarehou
               if ((selected?.id !== pool.id || selected.action !== "transfer") && !confirmChanges()) return;
               setNotice(""); setSelected({ id: pool.id, action: "transfer" });
             }}>Transfer</button>
+          <button type="button" className="button button--outline" disabled={pool.legacyOwnerMismatch || !pool.warehouse.active}
+            onClick={() => { if (confirmChanges()) { setNotice(""); setSelected({ id: pool.id, action: "threshold" }); } }}>Threshold</button>
         </div></td>}
       </tr>)}
     </CommercialTable> : <p>{data.pools.length ? "No stock pools match this search." : "No physical stock pools in this market."}</p>}
@@ -455,14 +535,16 @@ export function ConnectedInventory({ data, actorId, canEdit, canConfigureWarehou
     <TaxonomyFeedback message={notice} />
     {canEdit && current && (selected?.action === "movement"
       ? <MovementForm key={current.id} data={data} actorId={actorId} pool={current} onSaved={message => { setNotice(message); setSelected(undefined); }} />
+      : selected?.action === "threshold" ? <ThresholdForm key={current.id} data={data} pool={current}
+        onSaved={() => { setNotice("Low-stock threshold saved."); setSelected(undefined); }}/>
       : <TransferForm key={current.id} data={data} actorId={actorId} pool={current} destinations={destinations(current)}
-        onSaved={() => { setNotice("Stock transfer recorded."); setSelected(undefined); }} />)}
+        onSaved={() => { setNotice("Stock is in transit until the receiving warehouse confirms arrival."); setSelected(undefined); }} />)}
     {canEdit && canConfigureWarehouses && (data.warehouses.length ? <>
       <OpenPoolForm data={data} />
       <WarehouseServices data={data} />
     </> : <p>No warehouses are available to manage for this market.
       {data.central && <> <Link href={`/dashboard/check-outlet-stocks?region=${regionFor(data.market.id)}&catalog=connected`} className="text-link">Open the stock workspace</Link></>}
     </p>)}
-    <InventoryHistory data={data} skus={skus} />
+    <InventoryHistory data={data} skus={skus} actorId={actorId} canEdit={canEdit}/>
   </div>;
 }

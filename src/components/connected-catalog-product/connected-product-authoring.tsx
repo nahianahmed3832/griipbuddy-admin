@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { catalogRegion, productPath, regionFor } from "./routes";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { MarketId } from "./markets";
 import type { ProductCategoryChoice, ProductWorkspaceProduct } from "./contracts";
 import { ProductAttributeFields } from "./connected-product-attribute-fields";
 import { ConnectedProductFitment } from "./connected-product-fitment";
 import { ConnectedProductVariants } from "./connected-product-variants";
-import { draftProduct, withAttribute, type ProductDraft } from "./connected-product-draft";
+import { draftProduct, variantDraftIssues, withAttribute, type ProductDraft } from "./connected-product-draft";
 import { runCatalogCommand, TaxonomyFeedback, useTaxonomyDirty, useTaxonomyOperation } from "./taxonomy-controls";
 
 function GeneralFields({ draft, change }: { draft: ProductDraft; change: (next: ProductDraft) => void }) {
@@ -114,6 +114,8 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   const serverDraft = useMemo(() => draftProduct(product), [product]);
   const [edit, setEdit] = useState<ProductDraft | null>(null);
   const [confirmed, setConfirmed] = useState<ProductDraft | null>(null);
+  const [showIssues, setShowIssues] = useState(false);
+  const feedback = useRef<HTMLDivElement>(null);
   const markDirty = useTaxonomyDirty();
   const router = useRouter();
   const operation = useTaxonomyOperation();
@@ -121,6 +123,7 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   const draft = edit ?? latest;
   const templates = categories.find(row => row.id === draft.primaryCategoryId)?.templates ?? [];
   const archived = draft.publication === "ARCHIVED";
+  const issues = showIssues ? variantDraftIssues(draft) : [];
 
   function change(next: ProductDraft) {
     setEdit(next);
@@ -128,6 +131,12 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   }
 
   async function save() {
+    if (variantDraftIssues(draft).length > 0) {
+      setShowIssues(true);
+      feedback.current?.focus();
+      return;
+    }
+    setShowIssues(false);
     const id = draft.id || draft.slug;
     let revision = draft.revision;
     const ok = await operation.run(async () => {
@@ -166,7 +175,12 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
         <ConnectedProductVariants draft={draft} product={product} marketId={marketId} change={change} allowNewVariants={allowNewVariants}
           templates={templates.filter(row => row.scope === "VARIANT")} />
       </fieldset>
-      <div className="taxonomy-card">
+      <div className="taxonomy-card product-save" id="save-product" tabIndex={-1} ref={feedback}>
+        {issues.length > 0 && <div className="taxonomy-error" role="alert">
+          <strong>Review the options and variants before saving.</strong>
+          <ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
+          <a href="#variants" className="text-link">Review options and variants</a>
+        </div>}
         <TaxonomyFeedback {...operation} />
         {archived ? <p className="taxonomy-muted">Archived products remain available for reference.</p>
           : <div className="taxonomy-actions">
@@ -176,6 +190,7 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
             {edit && <button type="button" className="taxonomy-button" onClick={() => {
               if (!window.confirm("Discard unsaved product changes?")) return;
               setEdit(null);
+              setShowIssues(false);
               markDirty(false);
             }}>Discard changes</button>}
             {edit && <span className="taxonomy-muted">Unsaved product changes</span>}

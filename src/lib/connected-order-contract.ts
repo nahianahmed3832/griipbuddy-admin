@@ -1,12 +1,13 @@
 export const marketplaceOrderQueues = [
   ['queue', 'Packing queue'], ['all', 'All Marketplace orders'], ['UNFULFILLED', 'Unfulfilled'], ['PACKING', 'Packing'],
-  ['READY_TO_SHIP', 'Ready to ship'], ['SHIPPED', 'Shipped'], ['DELIVERED', 'Delivered'], ['refused', 'Refused parcels'], ['CANCELLED', 'Cancelled'],
+  ['READY_TO_SHIP', 'Ready to ship'], ['SHIPPED', 'Shipped'], ['DELIVERED', 'Delivered'], ['exceptions', 'Delivery exceptions'],
+  ['refused', 'Refused parcels'], ['CANCELLED', 'Cancelled'],
 ] as const;
 export type MarketplaceOrderQueue = (typeof marketplaceOrderQueues)[number][0];
 
 export const connectedOrderActions = [
   'order.advance', 'order.tracking', 'order.parcel.dispatch', 'order.parcel.tracking', 'order.parcel.receive',
-  'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh',
+  'order.parcel.prepare', 'order.parcel.split', 'order.parcel.reference', 'order.parcel.exception', 'order.parcel.refresh',
   'order.cancel', 'order.collect', 'order.case',
 ] as const;
 export type ConnectedOrderAction = (typeof connectedOrderActions)[number];
@@ -39,6 +40,7 @@ type TrackingEvent = {
 };
 export type ConnectedParcel = Tracking & {
   id: string; warehouse: string; dispatchable: boolean; receivable: boolean; disposition: 'RESTOCK' | 'HOLD' | null;
+  preparationState?: 'PENDING' | 'PICKED' | 'PACKED' | null; preparable?: boolean;
   splittable?: boolean; editableReference?: boolean; canRecordException?: boolean; trackingRevision?: number;
   trackingStatus?: string; statusUpdatedAt?: string; canRefresh?: boolean; refreshReason?: string | null; estimatedDeliveryAt?: string | null;
   lastSyncedAt?: string | null; lastSyncAttemptAt?: string | null; syncError?: string | null;
@@ -64,10 +66,12 @@ export type ConnectedOrderDetail = {
 };
 
 export type ConnectedOrderCaseDetail = {
-  id: string; kind: string; status: string; revision: number; order: OrderCaseIdentity & { currency: string }; locale: string; timeZone: string;
-  events: { status: string; note: string | null; revision: number; createdAt: string }[];
+  id: string; kind: string; status: string; revision: number; order: OrderCaseIdentity & { currency: string; paymentMethod?: string | null }; locale: string; timeZone: string;
+  events: { status: string; note: string | null; publicNote?: string | null; revision: number; createdAt: string }[];
   returnLines: (PurchasedLine & { replacementVariantName: string | null })[];
   returnDisposition: 'RESTOCK' | 'HOLD' | null; pickupAt: string | null; pickupReference: string | null;
   replacementTrackingReference: string | null; refundAmountMinor: number | null; refundLimitMinor: number;
-  allowed: { review: string[]; cancel: boolean; refund: boolean; inspection: boolean; replacement: boolean; requiresCancellationRefund: boolean };
+  cancellationAppliedAt?: string | null;
+  refund?: { state: 'AUTHORIZED' | 'PROCESSING' | 'CONFIRMED' | 'FAILED'; method: string; amountMinor: number; currency: string } | null;
+  allowed: { review: string[]; cancel: boolean; refund: boolean; processRefund?: boolean; inspection: boolean; replacement: boolean; requiresCancellationRefund: boolean };
 };

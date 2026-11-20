@@ -60,6 +60,9 @@ export function ConnectedHomepagePreview({ scope, region, disabled }: { scope: H
         <h3>{section.title}</h3>
         <p className="taxonomy-muted">{section.tileLayout ? homepageTileLayouts[section.tileLayout] : homepageSectionLabels[section.type]}</p>
         {section.description && <p>{section.description}</p>}
+        {section.benefits?.length ? <ul className="homepage-preview-tiles">
+          {section.benefits.map((benefit, index) => <li key={index}><strong>{benefit.title}</strong><p>{benefit.description}</p></li>)}
+        </ul> : null}
         {section.image && <HomepageAsset image={section.image} region={region} />}
         {section.destination && <p className="taxonomy-muted">Destination {typeof section.destination === 'string'
           ? section.destination : section.destination.label ?? section.destination.href}</p>}

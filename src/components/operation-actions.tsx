@@ -66,7 +66,7 @@ export async function OperationActions({ endpoint, auth, region, record, id, man
   let rate: RecordData = {};
   if (actions.includes('purchase-rate')) {
     const [list, defaults] = await Promise.all([
-      api('/supplier', auth.token), api(url('/purchase/default/all', { variant: id, limit: '1' }), auth.token),
+      api('/supplier', auth.token), api(url('/purchase/default/all', { region, variant: id, limit: '1' }), auth.token),
     ]);
     suppliers = arr(list).map(obj).filter(row => mongoId(str(row._id)) && row.is_deleted !== true)
       .map(row => ({ value: str(row._id), label: str(row.name) }));

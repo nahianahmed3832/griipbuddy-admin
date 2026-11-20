@@ -4,6 +4,7 @@ import { superAdmin } from '@/lib/sections';
 
 const orderId = /^[0-9a-f]{24}$/;
 const marketCode = /^[A-Z]{2}$/;
+const maximumBody = 16_384;
 const headers = { 'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff' };
 
 async function access(write = false) {
@@ -38,11 +39,11 @@ export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return new Response('Origin denied', { status:403, headers });
   try {
     const token = await access(true);
-    if (Number(req.headers.get('content-length')) > 3000 || !req.headers.get('content-type')?.startsWith('application/json')) {
+    if (Number(req.headers.get('content-length')) > maximumBody || !req.headers.get('content-type')?.startsWith('application/json')) {
       throw new ApiError(400);
     }
     const raw = await req.text();
-    if (raw.length > 3000) throw new ApiError(400);
+    if (Buffer.byteLength(raw) > maximumBody) throw new ApiError(400);
     const body = JSON.parse(raw);
     const path = body.kind === 'market' && marketCode.test(body.id) ? '/markets/' + body.id
       : body.kind === 'receipt' && orderId.test(body.id) ? '/receipts/' + body.id : null;

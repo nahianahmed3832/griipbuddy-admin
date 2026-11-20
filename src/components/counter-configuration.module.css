@@ -1,0 +1,8 @@
+.workspace { display: grid; gap: 16px; min-width: 0; }
+.workspace header p, .details p { margin: 6px 0 12px; }
+.details { max-width: 36rem; }
+.workspace :global(.counter-configuration-fields) { display: grid; gap: 10px; min-width: 0; padding: 0; border: 0; }
+.workspace :global(.counter-configuration-fields) :is(input[type="text"], input:not([type])) { width: 100%; min-width: 0; border: 1px solid #d4ccdd; padding: 8px 10px; border-radius: 7px; background: #fff; color: inherit; font: inherit; }
+.workspace :global(.counter-configuration-fields) label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; }
+.workspace :global(.counter-configuration-fields) input[type="checkbox"] { margin: 0; }
+.workspace :global(.counter-configuration-fields) button { justify-self: start; }

@@ -3,7 +3,8 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { adminPath } from '@/lib/paths';
 
-type Policy = { methods:string[]; shippingMinor:number; advancePercent:number; revision:string; currency:string };
+type OrderRules = { regions?: string[]; taxBps?: number; taxShipping?: boolean };
+type Policy = { methods:string[]; shippingMinor:number; advancePercent:number; revision:string; currency:string; orderRules?: OrderRules };
 export type CommerceMarket = { code:string; name:string; currency:string; is_active:boolean; checkout?:Policy };
 type Evidence = { phone:string; reference:string; amount:number; currency:string; status:string };
 const path = adminPath('/api/commerce');
@@ -29,8 +30,17 @@ function MarketForm({ market, writable }: { market:CommerceMarket; writable:bool
     setSaving(true);
     setNote('');
     try {
+      const tax = String(form.get('taxBps') ?? '').trim();
+      const regions = String(form.get('regions') ?? '').split(/\r?\n/).map(line => line.trim().toUpperCase()).filter(Boolean);
+      if (regions.length > 100 || new Set(regions).size !== regions.length) {
+        throw new Error('Enter up to 100 distinct delivery regions, one per line.');
+      }
+      const orderRules: OrderRules | null = tax || regions.length ? {
+        ...(tax && { taxBps: Number(tax), taxShipping: form.get('taxShipping') === 'on' }),
+        ...(regions.length && { regions }),
+      } : null;
       await save('market', market.code, { revision:market.checkout?.revision ?? null, methods:form.getAll('methods'),
-        shippingMinor:Number(form.get('shipping')), advancePercent:Number(form.get('advance')) });
+        shippingMinor:Number(form.get('shipping')), advancePercent:Number(form.get('advance')), orderRules });
       setNote('Saved.');
       router.refresh();
     } catch (error) { setNote(error instanceof Error ? error.message : 'Unable to save.'); }
@@ -39,10 +49,18 @@ function MarketForm({ market, writable }: { market:CommerceMarket; writable:bool
   return <form className="panel padded stack-form" onSubmit={submit}>
     <h2>{market.name} · {market.currency}{!market.is_active && ' · Inactive'}</h2>
     <fieldset className="editor-grid commerce-fields" disabled={!writable || saving} key={market.checkout?.revision}>
-      <label>Shipping in minor units<input type="number" name="shipping" min="0" max="1000000" required defaultValue={policy?.shippingMinor ?? 0}/></label>
-      <label>Advance percent<input type="number" name="advance" min="1" max="100" required defaultValue={policy?.advancePercent ?? 25}/></label>
+      <label>Shipping in minor units<input type="number" name="shipping" min="0" max="1000000" required defaultValue={policy?.shippingMinor}/></label>
+      <label>Advance percent<input type="number" name="advance" min="1" max="100" required defaultValue={policy?.advancePercent}/></label>
       {methods.map(method => <label key={method}><span><input type="checkbox" name="methods" value={method}
         defaultChecked={policy?.methods.includes(method)}/> {labels[method]}</span></label>)}
+    </fieldset>
+    <fieldset className="editor-grid commerce-fields" disabled={!writable || saving} key={'rules-' + market.checkout?.revision}>
+      <legend>Order tax and delivery coverage</legend>
+      <label>Approved tax rate in basis points<input name="taxBps" type="number" min="0" max="10000" step="1"
+        defaultValue={policy?.orderRules?.taxBps}/></label>
+      <label><span><input type="checkbox" name="taxShipping" defaultChecked={policy?.orderRules?.taxShipping}/> Tax the shipping charge</span></label>
+      <label>Eligible delivery regions<textarea name="regions" rows={3} maxLength={8100}
+        defaultValue={policy?.orderRules?.regions?.join('\n')}/><small>Use one configured district or state per line. Blank uses the market’s unrestricted region policy.</small></label>
     </fieldset>
     {writable && <div className="page-actions"><button className="button primary" disabled={saving}>Save market checkout</button></div>}
     {note && <p role="status">{note}</p>}

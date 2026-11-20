@@ -5,11 +5,14 @@ const add = (name: string, path: string, query?: Record<string, string>, pending
 };
 
 add('overview', '/desk/overview');
+add('inventory/physical-stock', '/desk/inventory/physical-stock');
 add('reports', '/desk/reports');
 add('reports/[reportId]', '/desk/reports/[reportId]');
 add('orders', '/desk/orders/orders');
 add('create-order', '/desk/orders/create');
 add('order-details/[id]', '/desk/orders/orders/[id]');
+add('seller-hub', '/desk/staff/seller-hub');
+add('seller-verification', '/desk/staff/seller-verification');
 add('marketplace-orders', '/desk/orders/marketplace');
 add('marketplace-orders/cases', '/desk/orders/marketplace-cases');
 add('marketplace-orders/cases/[id]', '/desk/orders/marketplace-cases/[id]');
@@ -35,6 +38,8 @@ add('category-attributes', '/desk/catalog/categories', { view: 'attributes', con
 add('catalog-menus', '/desk/catalog/categories', { view: 'menus', connectedOrganization: '1' });
 add('catalog-collections', '/desk/catalog/categories', { view: 'collections', connectedOrganization: '1' });
 add('catalog-devices', '/desk/catalog/approved-devices');
+add('seller-listing-reviews', '/desk/catalog/seller-listing-reviews');
+add('catalog-exchange', '/desk/catalog/exchange');
 add('catalog-search', '/desk/catalog/search-maintenance');
 add('all-brands', '/desk/catalog/brands');
 add('create-brand', '/desk/catalog/brands/new');
@@ -112,6 +117,9 @@ add('update-role/[slug]', '/desk/staff/roles/[slug]');
 add('sales-executive', '/desk/orders/sales-executive');
 add('pos/all', '/desk/pos/sales');
 add('pos/create', '/desk/pos/editor');
+add('pos/counter-sales', '/desk/pos/counter-sales');
+add('pos/counter-receipt/[id]', '/desk/pos/counter-receipt/[id]');
+add('pos/counter-configuration', '/desk/pos/counter-configuration');
 add('pos/edit/[id]', '/desk/pos/editor/[id]');
 add('pos/report', '/desk/pos/report');
 add('current-plan', '/desk/settings/current-plan', undefined, 'Coming soon in the current admin.');

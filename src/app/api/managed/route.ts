@@ -1,5 +1,5 @@
-import { ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
-import { canManage, managedAction, uploadAsset, uploadSupplier, writeManaged } from '@/lib/managed';
+import { ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, str, type VerifiedMarketScope } from '@/lib/api';
+import { canManage, managedAction, managedMarketScope, uploadAsset, uploadSupplier, writeManaged } from '@/lib/managed';
 import { managedOrderContext, readManagedOrder } from '@/lib/order-managed-server';
 import { has } from '@/lib/sections';
 
@@ -8,11 +8,13 @@ export async function GET(request: Request) {
   if (!auth) return new Response('Sign in required', { status: 401 });
   if (!canManage(auth.staff) || !has(auth.staff,'order.view')) return new Response('Operator access required', { status: 403 });
   const search = new URL(request.url).searchParams;
+  if (['order', 'receipt', 'market'].some(key => search.getAll(key).length > 1)) return new Response('Choose one record and market', { status: 400 });
   const order = search.get('order');
+  const market = search.get('market') ?? undefined;
   if (order !== null) {
     if (!mongoId(order)) return new Response('Order not found', { status: 404 });
     try {
-      return Response.json(await readManagedOrder(order, auth), { headers: { 'Cache-Control': 'private, no-store' } });
+      return Response.json(await readManagedOrder(order, auth, market), { headers: { 'Cache-Control': 'private, no-store' } });
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       return new Response(error.message, { status: error.status });
@@ -21,7 +23,8 @@ export async function GET(request: Request) {
   const id = search.get('receipt') ?? '';
   if (!mongoId(id)) return new Response('Receipt not found', { status: 404 });
   try {
-    const upstream = await requestApi('/global/admin/payments/' + id + '/receipt', auth.token);
+    const scope = market !== undefined ? await managedMarketScope(market, auth) : undefined;
+    const upstream = await requestApi('/global/admin/payments/' + id + '/receipt', auth.token, undefined, undefined, scope);
     if (!upstream.ok || upstream.headers.get('content-type') !== 'image/jpeg') {
       return new Response('Receipt unavailable', { status: upstream.ok ? 502 : upstream.status });
     }
@@ -90,16 +93,21 @@ export async function POST(request: Request) {
     const input = obj(JSON.parse((await boundedBody(request, 64_000)).toString('utf8')));
     const { action, market, id, step, key } = input;
     const values = obj(input.values);
-    const order = new URL(request.url).searchParams.get('order');
+    const search = new URL(request.url).searchParams;
+    if (search.getAll('order').length > 1) throw new ApiError(400, 'Choose one order.');
+    const order = search.get('order');
+    let scope: VerifiedMarketScope | undefined;
     if (order !== null) {
       if (!has(auth.staff, 'order.view') || !has(auth.staff, 'order.update')) throw new ApiError(403);
       if (!mongoId(order)) throw new ApiError(404, 'Order not found.');
       const context = await managedOrderContext(order, auth);
+      if (!context.scope || market !== context.market) throw new ApiError(409, 'This order belongs to a different operating market.');
+      scope = context.scope;
       if (action === 'shipment-return-request') {
         if (!has(auth.staff, 'order.return') || !['IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'DELIVERED', 'RETURN_REQUESTED'].includes(str(context.order.status))) {
           throw new ApiError(409, 'This order cannot be marked as pending return.');
         }
-        const response = await requestApi('/order/' + order + '/mark-pending-return', auth.token, { method: 'PATCH', body: '{}' });
+        const response = await requestApi('/order/' + order + '/mark-pending-return', auth.token, { method: 'PATCH', body: '{}' }, undefined, scope);
         if (!response.ok) throw new ApiError(response.status, 'Could not mark this order as pending return.');
         return Response.json({ id: order });
       }
@@ -112,8 +120,9 @@ export async function POST(request: Request) {
       } else throw new ApiError(404, 'Order action not found.');
     }
     if (typeof action !== 'string' || !managedAction(action)) throw new ApiError(400, 'Choose a valid operation.');
-    const result = obj(await writeManaged(action, str(market), str(id), str(step), values, auth, str(key)));
-    return Response.json({ id: result._id, ...(order !== null && { state: result.state }) });
+    const result = obj(await writeManaged(action, str(market), str(id), str(step), values, auth, str(key), scope));
+    return Response.json(action === 'order-cancel-batch' ? { rows: result.rows }
+      : { id: result._id, ...(order !== null && { state: result.state }) }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     if (error instanceof ApiError) return new Response(error.message, { status: error.status });
     if (error instanceof SyntaxError || error instanceof TypeError) return new Response('Invalid request', { status: 400 });

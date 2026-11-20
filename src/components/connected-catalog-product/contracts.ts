@@ -48,9 +48,13 @@ export type ProductWorkspaceCommerceData = {
       publication: PublicationState; eligible: boolean; sellerName: string | null } | null }[];
   warehouses: Warehouse[];
   pools: { id: string; variantId: string; ownerId: string; ownerName: string; warehouse: Warehouse;
-    onHand: number; reserved: number; available: number; updatedAt: string; legacyOwnerMismatch: boolean }[];
+    onHand: number; reserved: number; available: number; unavailable: number; updatedAt: string; legacyOwnerMismatch: boolean;
+    inTransitIn: number; inTransitOut: number; lowStockThreshold: number | null; isLowStock: boolean }[];
   hasRestrictedPools: boolean;
-  movements: { id: string; poolId: string; kind: string; quantity: number; createdAt: string }[];
+  transfers?: { id: string; fromPoolId: string; toPoolId: string; marketId: MarketId; quantity: number;
+    state: "IN_TRANSIT" | "RECEIVED"; reference: string; dispatchedAt: string; receivedAt: string | null }[];
+  movements: { id: string; poolId: string; kind: string; quantity: number; createdAt: string;
+    reason?: string; reference?: string; reversesMovementId?: string | null }[];
   allocations: { id: string; poolId: string; quantity: number; dispatched: number; returned: number;
     marketId: MarketId; state: string; expiresAt: string; createdAt: string; reservationId?: string }[];
 };

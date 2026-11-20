@@ -1,0 +1,17 @@
+.workspace { display: grid; gap: 1rem; min-width: 0; }
+.card { display: grid; gap: .85rem; min-width: 0; padding: clamp(.8rem, 2vw, 1.4rem); }
+.title { display: flex; justify-content: space-between; gap: .7rem; align-items: start; }
+.title h2, .title p, .description, .photo { max-width: 100%; object-fit: contain; border: 1px solid var(--border); border-radius: .8rem; }
+.facts { margin: 0; overflow-wrap: anywhere; }
+.title p { margin-top: .3rem; }
+.description { max-width: 75ch; white-space: pre-wrap; }
+.facts { display: flex; flex-wrap: wrap; gap: 1rem; }
+.facts dt { color: var(--muted); font-size: .85rem; }
+.facts dd { margin: .15rem 0 0; }
+.variants table { min-width: 25rem; }
+.decision fieldset { display: grid; grid-template-columns: minmax(10rem, .8fr) minmax(14rem, 1.6fr) auto; gap: .85rem; align-items: end; border: 0; padding: 0; margin: 0; min-width: 0; }
+.decision fieldset[data-approved='true'] { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.decision label { display: grid; gap: .3rem; min-width: 0; }
+.decision textarea { width: 100%; min-height: 2.5rem; }
+.decision :is(select, textarea) { max-width: 100%; }
+@media (max-width: 680px) { .decision fieldset { grid-template-columns: minmax(0, 1fr); } }

@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import * as XLSX from 'xlsx';
-import { ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
 import { canManage } from '@/lib/managed';
 import { canReadHybridReports, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { canEditManagedOrderContact, managedOrderContext } from '@/lib/order-managed-server';
 import { has } from '@/lib/sections';
-import { addressLabel, orderFilterKeys, type Listing } from '@/lib/website-orders';
+import { addressLabel, orderFilterKeys, type Listing, type Order } from '@/lib/website-orders';
 
 const root = '/order/workspace';
 const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail', 'calls', 'sms-history', 'return-items'];
@@ -25,7 +25,17 @@ const actions: Record<string, { path: string; method: string }> = {
   handover: { path: '/handover', method: 'POST' },
 };
 const reject = (message: string, status: number) => new Response(message, { status, headers: { 'Cache-Control': 'private, no-store' } });
-function workbook({ rows }: Listing) {
+function selectedWorkbook(rows: Order[]) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Order', 'Invoice', 'Date', 'Status', 'SKUs and quantities', 'Currency', 'Order total', 'Tracking code'],
+    ...rows.map(row => [row.order_serial_id || undefined, row.invoice_number, row.order_date || row.createdAt, row.status,
+      row.products.map(line => `${line.sku || line.name || 'Item'} × ${line.quantity || 0}`).join(', ').slice(0, 30000),
+      row.currency, row.total_amount, row.tracking_code]),
+  ]);
+  return downloadWorkbook(sheet);
+}
+
+function workbook({ rows }: Pick<Listing, 'rows'>) {
   const sheet = XLSX.utils.aoa_to_sheet([
     ['Order', 'Invoice', 'Date', 'Status', 'SKUs and quantities', 'Customer', 'Phone', 'Address', 'Currency', 'COD',
       'Paid by courier', 'Total paid', 'Order total', 'Called', 'Staff note', 'Parcel ID', 'Tracking code', 'Created by'],
@@ -35,6 +45,10 @@ function workbook({ rows }: Listing) {
       row.COD, row.paid_by_courier, row.paid_amount, row.total_amount, row.checkoutProjection ? undefined : row.is_called ? 'Yes' : 'No',
       row.latestNote, row.consignment_id || undefined, row.tracking_code, row.user?.full_name || row.order_by]),
   ]);
+  return downloadWorkbook(sheet);
+}
+
+function downloadWorkbook(sheet: XLSX.WorkSheet) {
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, 'Website Orders');
   return new Response(XLSX.write(book, { bookType: 'xlsx', type: 'buffer', compression: true }), { headers: {
@@ -70,7 +84,7 @@ export async function GET(request: NextRequest) {
   const action = q.get('action') || '';
   const id = q.get('id') || '';
   try {
-    const region = getRegion(q.get('region') || undefined, auth.staff);
+    const region = getRegion(q.get('region') ?? undefined, auth.staff);
     if (action === 'products' || action === 'draft-products') {
       const browse = action === 'products' ? has(auth.staff, 'order.create') : has(auth.staff, 'order.view') && has(auth.staff, 'order.update');
       if (region !== 'BD' || !canWrite(auth.staff) || !browse || !has(auth.staff, 'product.view')) return reject('Access denied.', 403);
@@ -79,6 +93,15 @@ export async function GET(request: NextRequest) {
     }
     if (!has(auth.staff, 'order.view')) return reject('Access denied.', 403);
     if (action === 'export') {
+      const selected = q.get('selected');
+      if (q.has('selected')) {
+        if (region !== 'BD') return reject('Selected export is available for Bangladesh orders.', 403);
+        if (!selected || q.getAll('selected').length !== 1) return reject('Use a single order selection.', 400);
+        const ids = selected.split(',');
+        if (ids.length > 25 || new Set(ids).size !== ids.length || !ids.every(mongoId)) return reject('Choose up to 25 valid orders.', 400);
+        const rows = await Promise.all(ids.map(order => api(url(root + '/orders/' + order, { region }), auth.token)));
+        return selectedWorkbook(rows as Order[]);
+      }
       const filters = Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)]));
       if (q.get('checkout') === '1' && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
       const listing = q.get('checkout') === '1' ? await loadWebsiteOrders(auth, region, filters, undefined, 'all', { exportOrders: true }) : null;
@@ -109,7 +132,7 @@ export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = obj(JSON.parse(raw)); } catch { return reject('Invalid order request.', 400); }
   try {
-    const region = getRegion(q.get('region') || undefined, auth.staff);
+    const region = getRegion(q.get('region') ?? undefined, auth.staff);
     let path: string;
     let method = 'POST';
     if (action === 'create') {

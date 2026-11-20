@@ -38,27 +38,27 @@ export async function MarketplaceOrderCases({ auth, region, query }: { auth: Ses
   </div>;
 }
 
-function ShopperMessage() {
-  return <label>Message to shopper<textarea name="note" minLength={3} maxLength={1500} rows={3} required/></label>;
+function InternalNote() {
+  return <label>Internal reason<textarea name="note" minLength={3} maxLength={1500} rows={3} required/></label>;
 }
 
 function CaseActions({ record, region }: { record: ConnectedOrderCaseDetail; region: Region }) {
   const { allowed, id: caseId, revision } = record;
   const input = { caseId, revision };
   const maxRefund = (record.refundLimitMinor / 100).toFixed(2);
-  const visible = allowed.inspection || allowed.replacement || allowed.cancel || allowed.refund || allowed.review.length > 0;
+  const visible = allowed.inspection || allowed.replacement || allowed.cancel || allowed.refund || allowed.processRefund || allowed.review.length > 0;
   if (!visible) return <p className="muted">There is no action available in this case state.</p>;
   return <div className={styles.stack} key={revision}>
     {allowed.review.length > 0 && <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'review' }} label="Save case update">
       <label>Case status<select name="status" defaultValue="" required><option value="" disabled>Choose a status</option>
         {allowed.review.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
-      <ShopperMessage/>
-      {record.status === 'REFUND_APPROVED' && <p className="muted">Confirm the approved payment was handled before resolving the case.</p>}
+      <InternalNote/>
+      <label>Message to shopper (optional)<textarea name="publicNote" minLength={3} maxLength={1500} rows={3}/></label>
     </MarketplaceOrderAction>}
     {allowed.inspection && <>
       <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'schedule-pickup' }} label="Save pickup details">
         <label>Pickup date and time ({record.timeZone})<input type="datetime-local" name="pickupAt" required/></label>
-        <label>Courier pickup reference<input name="pickupReference" minLength={3} maxLength={80} required/></label><ShopperMessage/>
+        <label>Courier pickup reference<input name="pickupReference" minLength={3} maxLength={80} required/></label><InternalNote/>
       </MarketplaceOrderAction>
       <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'receive' }} label="Record return receipt">
         <label>Stock disposition<select name="disposition" defaultValue="" required><option value="" disabled>Choose after inspection</option>
@@ -67,17 +67,25 @@ function CaseActions({ record, region }: { record: ConnectedOrderCaseDetail; reg
       </MarketplaceOrderAction>
     </>}
     {allowed.replacement && <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'ship-exchange' }} label="Record replacement shipment">
-      <label>Replacement tracking reference<input name="trackingReference" minLength={3} maxLength={80} required/></label><ShopperMessage/>
+      <label>Replacement tracking reference<input name="trackingReference" minLength={3} maxLength={80} required/></label><InternalNote/>
     </MarketplaceOrderAction>}
     {allowed.cancel && <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'approve-cancellation' }} label="Approve cancellation">
-      <p className="muted">Cancel this unshipped order, release its stock, and void the amount due on delivery.</p><ShopperMessage/>
+      <p className="muted">{record.returnLines.length
+        ? record.order.paymentMethod === 'COD'
+          ? 'Release the selected undispatched units and update the cash due for the rest of the order.'
+          : 'Release the selected undispatched units. Review any refund separately after cancellation.'
+        : 'Cancel the unshipped order, release its stock, and void the amount due on delivery.'}</p><InternalNote/>
     </MarketplaceOrderAction>}
     {allowed.refund && <MarketplaceOrderAction action="order.case" region={region}
       input={{ ...input, action: 'approve-refund', ...(allowed.requiresCancellationRefund && { amountMinor: record.refundLimitMinor }) }}
       label={allowed.requiresCancellationRefund ? 'Approve refund and cancel order' : 'Approve refund'}>
       {allowed.requiresCancellationRefund ? <p>Approve the full refund of {money(record.refundLimitMinor / 100, record.order.currency)}.</p>
         : <label>Refund amount ({record.order.currency})<input name="amount" type="number" min="0.01" max={maxRefund} step="0.01" defaultValue={maxRefund} required/></label>}
-      <p className="muted">Record approval here and process the approved payment separately before resolving the case.</p><ShopperMessage/>
+      <p className="muted">Record the approved amount here. Settlement requires a separate action.</p><InternalNote/>
+    </MarketplaceOrderAction>}
+    {allowed.processRefund && <MarketplaceOrderAction action="order.case" region={region} input={{ ...input, action: 'process-refund' }}
+      label={record.refund?.state === 'PROCESSING' ? 'Check PayPal refund status' : 'Process PayPal sandbox refund'} success="Refund status checked.">
+      <p className="muted">Use the original PayPal payment. Check this same case if the provider reply is interrupted.</p>
     </MarketplaceOrderAction>}
   </div>;
 }
@@ -97,7 +105,7 @@ export async function MarketplaceOrderCase({ auth, region, id }: { auth: Session
     <PageHeading eyebrow="WEBSITE ORDERS / MARKETPLACE" title={`${statusLabel(record.kind)} case`} description={statusLabel(record.status)}/>
     <div className={styles.columns}>
       <div className={styles.stack}>
-        <section className={`panel padded ${styles.panel}`}><h2>Purchased return lines</h2>
+        <section className={`panel padded ${styles.panel}`}><h2>{record.kind === 'CANCEL' ? 'Requested cancellation lines' : 'Purchased return lines'}</h2>
           <MarketplacePurchasedLines lines={returnLines} currency={order.currency}/>
           {returnLines.some(line => line.replacementVariantName) && <ul className={styles.list}>{returnLines.filter(line => line.replacementVariantName).map(line =>
             <li key={line.id}>{line.sku} · Requested replacement {line.replacementVariantName}</li>)}</ul>}
@@ -105,6 +113,7 @@ export async function MarketplaceOrderCase({ auth, region, id }: { auth: Session
         <section className={`panel padded ${styles.panel}`}><h2>Case history</h2>
           {events.length ? <ol className={styles.list}>{events.map(event => <li key={event.revision}>
             <strong>{statusLabel(event.status)}</strong>{` · ${date(event.createdAt)}`}{event.note && <div>{event.note}</div>}
+            {event.publicNote && <div>Message to shopper · {event.publicNote}</div>}
           </li>)}</ol> : <p className="muted">No case history recorded.</p>}
         </section>
       </div>
@@ -112,7 +121,10 @@ export async function MarketplaceOrderCase({ auth, region, id }: { auth: Session
         {record.pickupAt && <p>Pickup {date(record.pickupAt)} · {record.pickupReference}</p>}
         {record.returnDisposition && <p>{record.returnDisposition === 'RESTOCK' ? 'Items were restored to available stock.' : 'Items are on hold for review.'}</p>}
         {record.replacementTrackingReference && <p>Replacement tracking {record.replacementTrackingReference}</p>}
+        {record.cancellationAppliedAt && <p>Cancellation recorded {date(record.cancellationAppliedAt)}</p>}
         {record.refundAmountMinor !== null && <p>Approved amount {money(record.refundAmountMinor / 100, order.currency)}</p>}
+        {record.refund && <p>Refund status · {statusLabel(record.refund.state)}</p>}
+        {record.refund?.state === 'AUTHORIZED' && !record.allowed.processRefund && <p className="muted">Reconcile this approval through the original payment authority.</p>}
         {mayEditConnectedOrder(auth, 'order.case') ? <CaseActions record={record} region={region}/>
           : <p className="muted">Your access allows viewing this case.</p>}
       </section>

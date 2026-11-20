@@ -9,6 +9,7 @@ import './catalog.css';
 import './categories.css';
 import './customers.css';
 import './locations.css';
+import './admin-foundation.css';
 
 export const metadata: Metadata = {
   title: { default: 'GriipBuddy Commerce Admin', template: '%s · GriipBuddy Admin' },

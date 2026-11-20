@@ -1,3 +1,4 @@
+import 'server-only';
 import { readFile } from 'node:fs/promises';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
@@ -96,7 +97,9 @@ export function legacyUrl(path?: string) {
   return base + path;
 }
 
-export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string) {
+export type VerifiedMarketScope = { marketId: string; currency: string };
+
+export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string, scope?: VerifiedMarketScope) {
   if (publicSandbox() && (init?.method ?? 'GET') !== 'GET') throw new ApiError(403);
   if (!/^\/[a-z0-9/-]+(?:\?[^#]*)?$/i.test(path) || path.includes('//')) throw new Error('Invalid recovery API path');
   try {
@@ -106,6 +109,7 @@ export async function requestApi(path: string, token?: string, init?: RequestIni
         ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+        ...(scope && { 'X-Griip-Market': scope.marketId, 'X-Griip-Currency': scope.currency }),
       },
       redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000),
     });
@@ -114,8 +118,8 @@ export async function requestApi(path: string, token?: string, init?: RequestIni
   }
 }
 
-export async function api(path: string, token?: string, init?: RequestInit): Promise<unknown> {
-  const res = await requestApi(path, token, init);
+export async function api(path: string, token?: string, init?: RequestInit, scope?: VerifiedMarketScope): Promise<unknown> {
+  const res = await requestApi(path, token, init, undefined, scope);
   if (!res.ok) throw new ApiError(res.status);
   const payload = obj(await res.json());
   if (/^\/stocks\/adjustment(?:\?|$)/.test(path) && Array.isArray(payload.data)) return payload;
@@ -127,13 +131,15 @@ export async function who(token: string): Promise<Staff | null> {
   if (!/^[\w-]+\.[\w-]+\.[\w-]+$/.test(token) || token.length > 2048) return null;
   try {
     const user = obj(await api('/user', token));
-    if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
+    const role = str(user.role);
+    if (!mongoId(str(user._id)) || !mongoId(str(user.role_ref)) || !role || ['USER', 'GUEST'].includes(role.toUpperCase()) ||
+        user.isDeleted || user.status !== 'ACTIVE') return null;
     if (str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE &&
       (fixtureStaffLoginOnly() || (integrationStaffEnrollment() && user.staffEnrollmentCompleted !== true))) return null;
     if (publicSandbox() && (user._id !== '00000000000000000000e001' || user.role !== 'Sandbox Viewer')) return null;
     const location = str(obj(user.business_location)._id) || str(user.business_location);
-    return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
-      permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string'),
+    return { id: str(user._id), name: str(user.full_name) || 'Staff member', role,
+      permissions: [...new Set(arr(user.permissions).filter((key): key is string => typeof key === 'string'))],
       ...(mongoId(location) && { assignedLocation: location }) };
   } catch (error) {
     if (error instanceof ApiError && error.status < 500) return null;
@@ -153,9 +159,12 @@ export const session = cache(async () => {
 
 export type Session = NonNullable<Awaited<ReturnType<typeof session>>>;
 
-export function getRegion(value: string | undefined, staff: Staff): Region {
-  if (value === 'INTERNATIONAL' && !has(staff, 'international.access')) throw new ApiError(403);
-  return value === 'INTERNATIONAL' ? 'INTERNATIONAL' : 'BD';
+export function getRegion(value: unknown, staff: Staff): Region {
+  // Legacy links may omit their region. An explicit override must be recognized.
+  if (value === undefined || value === 'BD') return 'BD';
+  if (value !== 'INTERNATIONAL') throw new ApiError(400, 'Choose a supported operating region.');
+  if (!has(staff, 'international.access')) throw new ApiError(403);
+  return value;
 }
 
 export function sameOrigin(request: Request) {

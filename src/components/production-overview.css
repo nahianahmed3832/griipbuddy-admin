@@ -1,12 +1,12 @@
 .production-overview {
-  --over-surface: oklch(100% 0 0);
-  --over-ink: oklch(14.1% .005 285.823);
-  --over-muted: oklch(55.2% .016 285.938);
-  --over-border: oklch(92% .004 286.32);
-  --over-copy: #45556c;
-  --over-title: #0f172b;
-  --over-accent: oklch(60% .15 162);
-  --over-shadow: 0 1px 3px rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 10%);
+  --over-surface: var(--workspace-surface,#fff);
+  --over-ink: var(--workspace-ink,#24273b);
+  --over-muted: var(--workspace-muted,#5d6276);
+  --over-border: var(--workspace-line,#e4e1ea);
+  --over-copy: var(--workspace-muted,#5d6276);
+  --over-title: var(--workspace-ink,#24273b);
+  --over-accent: var(--workspace-accent,#583c94);
+  --over-shadow: 0 1px 2px rgb(35 29 49 / 6%);
   --surface: var(--over-surface);
   --ink: var(--over-ink);
   --muted: var(--over-muted);
@@ -15,7 +15,7 @@
   gap: 20px;
   min-width: 0;
   color: var(--over-ink);
-  font: 400 14px/20px "DM Sans", "DM Sans Fallback", sans-serif;
+  font: 400 14px/20px var(--workspace-font,system-ui);
 }
 
 .dark .production-overview {
@@ -317,6 +317,29 @@
 .production-attention-notes { margin-top:6px; color:#314158; font-size:12px; font-weight:500; line-height:16px; }
 .production-attention-notes > div + div { margin-top:2px; }
 .production-overview .overview-card strong { font-weight:700; letter-spacing:-.025em; }
+
+.production-overview .overview-headline { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.production-overview .overview-headline .overview-card {
+  --section-color:var(--over-accent);
+  min-width:0;
+  min-height:118px;
+  border:1px solid var(--over-border);
+  border-top:3px solid var(--section-color);
+  border-radius:var(--workspace-radius,14px);
+  background:var(--over-surface);
+}
+.production-overview .overview-headline .overview-card:nth-child(2) { --section-color:#846eae; }
+.production-overview .overview-headline .overview-card:nth-child(3) { --section-color:#438568; }
+.production-overview .overview-headline .overview-value { flex-wrap:wrap; }
+.production-overview .overview-headline .overview-value strong { font-family:var(--workspace-font,system-ui); overflow-wrap:anywhere; }
+.production-overview .overview-headline-unavailable { border:1px solid var(--over-border); border-radius:var(--workspace-radius,14px); background:var(--over-surface); }
+.production-overview .overview-headline .overview-metric-help button { color:var(--over-muted); }
+.production-overview .chart-values-scroll { max-width:100%; overflow:auto; }
+@media (max-width:639px) {
+  .production-overview .overview-headline { grid-template-columns:minmax(0,1fr); }
+  .production-overview .overview-headline .overview-card { min-height:0; }
+  .production-overview .overview-metric-help :is([role=tooltip],p) { overflow-wrap:anywhere; }
+}
 
 .production-overview .overview-subpanel h3 { margin-bottom:8px; }
 .production-overview .overview-bars li { gap:4px 8px; font-size:14px; line-height:20px; }

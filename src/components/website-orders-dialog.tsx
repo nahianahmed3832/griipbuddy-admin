@@ -169,7 +169,13 @@ export function OrderDialog({ state, region, locations = [], close, change, save
   const dispatchLocations = order?.assigned_business_location?._id
     ? locations.filter(location => location.value === order.assigned_business_location?._id) : locations;
   useEffect(() => {
-    if (dialog.current && !dialog.current.open) dialog.current.showModal();
+    const modal = dialog.current;
+    const trigger = document.activeElement;
+    if (modal && !modal.open) modal.showModal();
+    return () => {
+      if (modal?.open) modal.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true });
+    };
   }, []);
   useEffect(() => {
     if (!readAction || !id) return;

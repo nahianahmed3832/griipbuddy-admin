@@ -133,12 +133,15 @@ export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type
 
 export function reportQuery(q: Query, region: Region) {
   const currency = param(q, 'currency');
+  if (q.currency !== undefined && (region === 'BD' ? currency !== 'BDT' : !['USD', 'EUR', 'AUD', 'BDT'].includes(currency ?? ''))) {
+    throw new ApiError(400, 'Choose a currency supported by this reporting region.');
+  }
   const selected = q.location ?? param(q, 'locations')?.split(',');
   const locations = [...new Set((Array.isArray(selected) ? selected : [selected ?? '']).filter(mongoId))].slice(0, 20);
   const compare = param(q,'compare');
   const sort = param(q,'sort');
   return {
-    region, currency: region === 'INTERNATIONAL' && ['USD','EUR','AUD','BDT'].includes(currency ?? '') ? currency : undefined,
+    region, currency: region === 'INTERNATIONAL' ? currency : undefined,
     from: dateParam(param(q,'from')), to: dateParam(param(q,'to')),
     compare: compare === 'none' || (param(q,'filterApplied') === '1' && compare !== 'previous') ? 'none' : undefined,
     locations: locations.join(',') || undefined,

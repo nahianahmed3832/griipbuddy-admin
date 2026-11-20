@@ -4,7 +4,9 @@ import { exactMoney, label, operationsPath, opsApi, opsDate } from '@/lib/operat
 import { purchasesPath, type Purchase, type PurchaseAccess, type PurchaseChoices, type PurchaseList, type Quote,
   type ReviewedProposal } from '@/lib/purchasing';
 import type { Region } from '@/lib/sections';
-import { CorrectionsForm, FinanceForms, PrintPurchase, PurchaseControls, QuoteForm, ReceiptLabels, ReceivingForm, SupplierForm } from './purchase-forms';
+import { CorrectionsForm, FinanceForms, PrintPurchase, PurchaseControls, QuoteForm, ReceiptLabels, ReceivingForm, SupplierForm,
+  SupplierReturnForm } from './purchase-forms';
+import { WorkspaceEmpty, WorkspaceHeading, WorkspaceStatus } from './workspace-screen';
 import '@/app/purchasing.css';
 
 const money = (value: number | null | undefined, currency: string) => value == null ? 'Unresolved' : exactMoney(String(value), currency);
@@ -52,7 +54,8 @@ const kindLabels: Record<string, string> = {
   'supplier-cancelled': 'Supplier cancellation recorded', receipt: 'Physical receipt', 'receipt-reference-conflict': 'Delivery reference conflict',
   'remainder-closed': 'Undelivered remainder closed internally', release: 'Held goods released', correction: 'Original posting corrected',
   'correction-blocked': 'Stock correction needs reconciliation', invoice: 'Supplier invoice recorded', payment: 'Supplier payment reported',
-  'verify-payment': 'Supplier payment checked by staff',
+  'verify-payment': 'Supplier payment checked by staff', 'supplier-return': 'Stock dispatched to supplier',
+  'supplier-credit': 'Supplier credit recorded', 'supplier-refund': 'Money received from supplier',
 };
 const evidenceType = (type: string) => type === 'manual' ? 'Manual operator report' : 'Referenced document';
 
@@ -61,15 +64,17 @@ function ReceiptSummary({ purchase, region }: { purchase: Purchase; region: Regi
     <h2>Receiving balances</h2>
     <p>Amounts are stock units. The physically received count includes held and rejected goods. Replacements require a separate supplier agreement.</p>
     <div className="ops-scroll" role="region" aria-label="Receiving balances" tabIndex={0}><table className="ops-table">
-      <thead><tr><th>Internal SKU</th><th>Ordered</th><th>Physically received</th><th>Accepted</th><th>Held</th><th>Rejected</th><th>Still expected</th><th>Closed</th></tr></thead>
+      <thead><tr><th>Internal SKU</th><th>Ordered</th><th>Physically received</th><th>Accepted</th><th>Held</th><th>Rejected</th>
+        <th>Returned to supplier</th><th>Still expected</th><th>Closed</th></tr></thead>
       <tbody>{purchase.totals.map(row => <tr key={row.variant}>
         <td>{purchase.lines.find(line => line.variant === row.variant)?.sku}</td><td>{row.ordered}</td><td>{row.physical}</td>
-        <td>{row.accepted}</td><td>{row.held}</td><td>{row.rejected}</td><td>{row.expected}</td><td>{row.closed}</td>
+        <td>{row.accepted}</td><td>{row.held}</td><td>{row.rejected}</td><td>{row.returned ?? 0}</td><td>{row.expected}</td><td>{row.closed}</td>
       </tr>)}</tbody>
     </table></div>
     {!!purchase.receiptLines.length && <ul className="po-timeline">
       {purchase.receiptLines.map(row => <li key={row._id}>
         <strong>{row.sku ?? row.item}</strong> · {row.seen} counted · {row.posted} accepted · {row.held} held · {row.rejected} rejected
+        {!!row.returned && <> · {row.returned} returned to supplier</>}
         <small>Receipt line {row._id}{row.toOrder !== row.seen && <> · {row.toOrder} applied to order</>}</small>
         {row.exceptions.length > 0 && <small>{row.exceptions.map(label).join(' · ')}</small>}
         {purchase.postings.filter(post => post.line === row._id && post.quantity > post.corrected)
@@ -83,6 +88,7 @@ function FinancialSummary({ purchase, region }: { purchase: Purchase; region: Re
   if (!purchase.finance) return null;
   return <section className="ops-panel">
     <h2>Supplier invoices and payments</h2>
+    <p>Invoice balances use matched recorded payments. Staff verification, return credits and money received appear separately.</p>
     <div className="ops-scroll" role="region" aria-label="Supplier payment totals" tabIndex={0}><table className="ops-table">
       <thead><tr><th>Currency</th><th>Invoiced</th><th>Payments recorded</th><th>Verified by staff</th><th>Unmatched payment</th><th>Invoice balance without matched payment</th></tr></thead>
       <tbody>{purchase.finance.currencies.map(row => <tr key={row.currency}><td>{row.currency}</td>
@@ -90,11 +96,18 @@ function FinancialSummary({ purchase, region }: { purchase: Purchase; region: Re
         <td>{money(row.recorded, row.currency)}</td><td>{money(row.verified, row.currency)}</td><td>{money(row.unmatched, row.currency)}</td><td>{row.unmatchedInvoice === null ? 'No invoice recorded' : money(row.unmatchedInvoice, row.currency)}</td>
       </tr>)}</tbody>
     </table></div>
+    <div className="ops-scroll" role="region" aria-label="Supplier credits and money received" tabIndex={0}><table className="ops-table">
+      <thead><tr><th scope="col">Currency</th><th scope="col">Credit documents</th><th scope="col">Money received from supplier</th></tr></thead>
+      <tbody>{purchase.finance.currencies.map(row => <tr key={row.currency}>
+        <th scope="row">{row.currency}</th><td>{money(row.supplierCredit ?? 0, row.currency)}</td><td>{money(row.supplierRefund ?? 0, row.currency)}</td>
+      </tr>)}</tbody>
+    </table></div>
     <ul className="po-timeline">
       {purchase.finance.records.map(row => <li key={row.id}><strong>{kindLabels[row.kind]}</strong> · {row.evidence.reference}
         {row.currency && row.amountMinor !== undefined && <> · {money(row.amountMinor, row.currency)}</>}
         {row.kind === 'payment' && <> · {row.staffVerified ? 'Staff verified' : 'Awaiting staff verification'}</>}
-        <small>{date(row.evidence.at, region)} · {evidenceType(row.evidence.type)}{row.invoiceReference && <> · Invoice {row.invoiceReference}</>}</small>
+        <small>{date(row.evidence.at, region)} · {evidenceType(row.evidence.type)}{row.invoiceReference && <> · Invoice {row.invoiceReference}</>}
+          {row.supplierReturn && <> · Return {row.supplierReturn}</>}{row.credit && <> · Credit {row.credit}</>}</small>
       </li>)}
     </ul>
     {purchase.approvedAt && <FinanceForms region={region} purchase={purchase} />}
@@ -116,7 +129,8 @@ function Audit({ purchase, region }: { purchase: Purchase; region: Region }) {
           {(row.payload?.reference || row.payload?.closure?.reference) && <small>Reference {row.payload.reference ?? row.payload.closure?.reference}</small>}
           {row.payload?.evidenceReference && <small>Supporting evidence {row.payload.evidenceReference}</small>}
           {movements.map(movement => <small key={movement.movement}>Stock movement {movement.movement} · {movement.quantity} units</small>)}
-          {row.payload?.movement && <small>Compensating movement {row.payload.movement} · Original {row.payload.original}</small>}
+          {row.payload?.movement && <small>{row.kind === 'supplier-return' ? 'Supplier return movement' : 'Compensating movement'}
+            {' '}{row.payload.movement} · Original {row.payload.original}</small>}
           {row.payload?.issue && <Link href={url(operationsPath + '/queue/' + row.payload.issue, { region })}>Review issue</Link>}
         </li>;
       })}
@@ -131,12 +145,12 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
   if (!id) {
     const data = await opsApi<PurchaseList>(auth, region, 'purchases');
     return <div className="po-desk">
-      <header className="po-page-heading"><div><h1>{access.buy || access.finance ? 'Purchases and receiving' : 'Expected deliveries'}</h1>
-        <p>Review supplier orders and record warehouse receipts.</p></div>
+      <WorkspaceHeading title={access.buy || access.finance ? 'Purchases and receiving' : 'Expected deliveries'}
+        detail={region === 'BD' ? 'Bangladesh' : 'International'}>
         {access.buy && <div className="po-buttons"><Link href={path('/new')} className="button primary">New purchase draft</Link>
-          <Link href={path('/suppliers')} className="button secondary">Suppliers</Link></div>}</header>
+          <Link href={path('/suppliers')} className="button secondary">Suppliers</Link></div>}</WorkspaceHeading>
       <section className="ops-panel">
-        {data.orders.length === 0 ? <p>No purchase orders for this workspace.</p> : <ul className="po-list">{data.orders.map(row => <li key={row.id}>
+        {data.orders.length === 0 ? <WorkspaceEmpty title="No purchase orders for this workspace"/> : <ul className="po-list">{data.orders.map(row => <li key={row.id}>
           <div><Link href={path('/' + row.id)}>{row.reference}</Link><p>{row.supplier} · {row.warehouse}</p></div>
           <div><strong>{row.state}</strong>{row.expired && <p>Quote expired</p>}
             {row.expectedAt && <p>{row.expected} still expected · {date(row.expectedAt, region)}</p>}</div>
@@ -153,7 +167,7 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
       proposal ? { variant: proposal.variant, supplier: proposal.supplier } : undefined);
     return <div className="po-desk">
       <Link href={path()} className="po-back">Back to purchases</Link>
-      <header className="po-page-heading"><h1>{id === 'new' ? 'New purchase draft' : 'Supplier records'}</h1></header>
+      <WorkspaceHeading title={id === 'new' ? 'New purchase draft' : 'Supplier records'} detail={region === 'BD' ? 'Bangladesh' : 'International'}/>
       <section className="ops-panel">
         {id === 'new' ? <QuoteForm region={region} choices={choices} proposal={proposal} /> : <SupplierForm region={region} suppliers={choices.suppliers} />}
       </section>
@@ -164,11 +178,10 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
   const choices = access.buy && purchase.editor ? await opsApi<PurchaseChoices>(auth, region, 'purchases/choices') : undefined;
   return <div className="po-desk po-detail">
     <Link href={path()} className="po-back">Back to purchases</Link>
-    <header className="po-page-heading">
-      <div><h1>{purchase.reference}</h1>
-        <p>{purchase.supplier} · {purchase.warehouse}{purchase.test && ' · Test record'}</p>
-      </div><span className="po-status">{purchase.state}</span>
-    </header>
+    <WorkspaceHeading title={purchase.reference}
+      detail={[region === 'BD' ? 'Bangladesh' : 'International', purchase.supplier, purchase.warehouse, purchase.test && 'Test record'].filter(Boolean).join(' · ')}>
+      <WorkspaceStatus tone="active">{purchase.state}</WorkspaceStatus>
+    </WorkspaceHeading>
     {purchase.proposal && access.buy && <Link href={url(operationsPath + '/work/' + purchase.proposal, { region })}>Reviewed inventory recommendation</Link>}
     {purchase.canReceive && <p>Supplier delivery date {date(purchase.expectedAt, region)}.</p>}
     {purchase.quote && <QuotePreview region={region} quote={purchase.quote} purchase={purchase} />}
@@ -185,6 +198,7 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
       {access.buy && <section className="ops-panel"><h2>Inspections and corrections</h2>
         <CorrectionsForm region={region} purchase={purchase} />
       </section>}
+      {access.buy && <SupplierReturnForm region={region} purchase={purchase} />}
     </>}
     <FinancialSummary purchase={purchase} region={region} />
     <Audit purchase={purchase} region={region} />

@@ -21,7 +21,12 @@ export function LocationForm({ location, region, cancelHref, production = false 
   const submitting = useRef(false);
   const [error, setError] = useState('');
   const errorSummary = useRef<HTMLDivElement>(null);
-  const type = location?.type || '';
+  const [type, setType] = useState(location?.type || '');
+  const [pickup, setPickup] = useState(location?.pickup_enabled === true);
+  const [pickupContact, setPickupContact] = useState(location?.pickup_contact ?? '');
+  const [pickupTouched, setPickupTouched] = useState(false);
+  const pickupMarket = region === 'BD' ? 'BD' : 'US';
+  const pickupSupported = !location?.country_code || location.country_code === pickupMarket;
   const address = location?.address;
   const id = location?.id;
 
@@ -39,6 +44,9 @@ export function LocationForm({ location, region, cancelHref, production = false 
       manager_name: value('manager'),
       contact_numbers: phones.map(phone => phone.value.trim()).filter(Boolean),
       ...(location && { revision: location.revision }),
+      ...(pickupTouched && { pickup_enabled: type === 'OUTLET' && pickup,
+        pickup_contact: type === 'OUTLET' && pickup ? pickupContact.trim() : '',
+        ...(pickup && type === 'OUTLET' && { country_code: pickupMarket }) }),
     };
     const query = new URLSearchParams({ region });
     if (id) query.set('id', id);
@@ -62,12 +70,26 @@ export function LocationForm({ location, region, cancelHref, production = false 
     }
   }
 
+  const changeType = (value: string) => {
+    setType(value);
+    if (pickup && value !== 'OUTLET') { setPickup(false); setPickupTouched(true); }
+  };
+  const pickupFields = type === 'OUTLET' && pickupSupported && <section className="location-editor-section" aria-label="Pickup listing">
+    <div className="location-section-heading"><MapPin size={18} aria-hidden="true"/><div>
+      <h2>Pickup directory</h2><p>Publish the address and public phone for this outlet in {pickupMarket}.</p>
+    </div></div>
+    <label><input type="checkbox" checked={pickup} onChange={event => { setPickup(event.currentTarget.checked); setPickupTouched(true); }}/>
+      {' '}Show in pickup directory</label>
+    {pickup && <label className={styles.field}>Public pickup phone<input type="tel" required maxLength={36} value={pickupContact}
+      onChange={event => { setPickupContact(event.currentTarget.value); setPickupTouched(true); }}/></label>}
+  </section>;
+
   if (production) return <form className={styles.form} onSubmit={save} aria-busy={saving}>
     <ProductEditorPanel>
       {error && <div className="notice warn" tabIndex={-1} ref={errorSummary} role="alert">{error}</div>}
       <div className={styles.pairedFields}>
         <label className={styles.field}>Location Name<input name="name" defaultValue={location?.name} maxLength={120} required placeholder="Enter location name"/></label>
-        <label className={styles.field}>Location Type<select name="type" required defaultValue={type}>
+        <label className={styles.field}>Location Type<select name="type" required value={type} onChange={event => changeType(event.currentTarget.value)}>
           <option value="" disabled>Select location type</option>
           {type && !Object.hasOwn(locationTypes, type) && <option value={type}>{type}</option>}
           {Object.entries(locationTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -95,6 +117,7 @@ export function LocationForm({ location, region, cancelHref, production = false 
           requestAnimationFrame(() => document.getElementById('location-phone-' + key)?.focus());
         }}>+ Add Contact</button>
       </div>
+      {pickupFields}
     </ProductEditorPanel>
     <div className={styles.saveActions}><button type="submit" className={styles.primary} disabled={saving}>
       {saving ? 'Saving…' : id ? 'Update Business Location' : 'Create Business Location'}
@@ -117,7 +140,7 @@ export function LocationForm({ location, region, cancelHref, production = false 
             <input name="name" defaultValue={location?.name} maxLength={120} required placeholder="e.g. Dhaka Distribution Centre"/>
           </label>
           <label>Location type <span aria-hidden="true">*</span>
-            <select name="type" required defaultValue={type}>
+            <select name="type" required value={type} onChange={event => changeType(event.currentTarget.value)}>
               <option value="" disabled>Select a type</option>
               {type && !Object.hasOwn(locationTypes, type) && <option value={type}>{type}</option>}
               {Object.entries(locationTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -170,6 +193,7 @@ export function LocationForm({ location, region, cancelHref, production = false 
           </div>
         </div>
       </section>
+      {pickupFields}
     </fieldset>
     <div className="location-editor-actions">
       {!saving && <Link className="button secondary" href={cancelHref}>Cancel</Link>}

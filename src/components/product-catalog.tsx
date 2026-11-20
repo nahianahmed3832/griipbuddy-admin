@@ -35,8 +35,7 @@ export async function ProductCatalog({ auth, q, region, production = false }: { 
     const listings = data.rows.flatMap((record): ProductListing[] => {
       const id = str(record._id);
       if (!mongoId(id)) return [];
-      const variant = obj(arr(record.variants)[0]);
-      const price = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+      const variants = arr(record.variants).map(obj);
       const thumbnail = str(record.thumbnail);
       const allowedOrigin = process.env.GRIIP_ADMIN_IMAGE_ORIGIN;
       let image = '';
@@ -47,11 +46,10 @@ export async function ProductCatalog({ auth, q, region, production = false }: { 
         } catch { /* Unresolvable legacy thumbnail uses the preserved placeholder. */ }
       }
       const categories = ['category', 'subcategory', 'sub_subcategory', 'third_subcategory'].map(key => str(obj(record[key]).name_en) || str(obj(record[key]).name));
-      const outlets = showLocations ? arr(record.stocks).map(obj).flatMap(stock =>
-        (Array.isArray(stock.business_location) ? stock.business_location : [stock.business_location]).map(obj)
-          .map(location => str(location.name) || str(location.business_location_name)).filter(Boolean)) : [];
-      return [{ id, name: str(record.name), sku: str(record.sku), thumbnail: image, categories,
-        regular: price(variant.regular_price), sale: price(variant.sale_price), channels: Object.entries(obj(record.sale_channels))
+      const stock = showLocations ? stockOverview(record, variants, true) : undefined;
+      const outlets = stock && (stock.locations.length > 0 || stock.known && stock.units === 0) ? stock.locations : undefined;
+      return [{ id, name: str(record.name) || 'Untitled product', sku: str(record.sku), thumbnail: image, categories,
+        price: basePricing(variants), channels: Object.entries(obj(record.sale_channels))
           .filter(([, enabled]) => enabled === true).map(([name]) => name), outlets, published: record.is_published === true }];
     });
     return <ProductionProductList rows={listings} filters={f} total={data.total ?? listings.length} tree={tree} locations={locations}
