@@ -86,13 +86,13 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const q = await searchParams;
   const section = sections.find(item => item.id === sectionId);
   if (!section || view.length > 2) notFound();
-  const nav = visibleSections(auth.staff).filter(item => operationsOnly()
-    ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const regionQuery = param(q, 'region');
   const region = regionQuery === 'INTERNATIONAL' && has(auth.staff,'international.access') ? 'INTERNATIONAL' : 'BD';
   const purple = usesPurpleAdminLayout();
   const bangladeshDesk = purple && region === 'BD';
   const marketplaceAvailable = purple && marketplaceWorkspaceAvailable(auth);
+  const nav = visibleSections(auth.staff, marketplaceAvailable).filter(item => operationsOnly()
+    ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const stockHistoryAvailable = purple && has(auth.staff, 'stock.view');
   const stockActions = purple && advancedEnabled() && canWrite(auth.staff);
   const newPosSale = bangladeshDesk && advancedEnabled() && canWrite(auth.staff) && has(auth.staff, 'pos.view') && has(auth.staff, 'pos.create');
@@ -200,7 +200,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       content = await ManagedWorkspace({ auth, q, region, path:'/desk/' + sectionId + '/' + active, view:active, title:managed.get(active)! });
     else if (sectionId === 'payments' && active === 'transactions' && transactions) content = await TransactionPage({ auth, q, region, id: view[1] });
     else if (sectionId === 'payments' && active === 'accounting' && view.length <= 1) content = await AccountingPage({ auth, q, region });
-    else if (marketplaceAvailable && sectionId === 'markets' && active === 'marketplace' && view.length === 1)
+    else if (marketplaceAvailable && sectionId === 'markets' && active === 'marketplace' && view.length <= 1)
       content = await MarketplaceWorkspace({ auth, region, q });
     else if (allowCheckout && active === 'checkout' && view.length < 2) {
       if (!integrated) content = await CheckoutPanel({auth,mode:sectionId === 'markets' ? 'markets' : 'payments'});

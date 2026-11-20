@@ -187,12 +187,13 @@ export function has(staff: Pick<Staff, 'permissions'>, permission: string) { ret
 export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role.toUpperCase().replace(/ /g, '_') === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
 export function hasOperations(staff: Staff) { return superAdmin(staff) || ['operations.pack', 'operations.support', 'operations.purchase',
   'operations.receive', 'operations.supplier-finance'].some(grant => has(staff, grant)); }
-export function visibleSections(staff: Staff) {
+export function visibleSections(staff: Staff, marketplaceAvailable = false) {
   return sections.filter(({ id }) => {
     if (id === 'operations') return hasOperations(staff);
     if (['overview', 'settings', 'workflows'].includes(id)) return true;
     if (id === 'reports') return staff.permissions.some(key => key.startsWith('report.'));
     if (['payments', 'staff'].includes(id) && superAdmin(staff)) return true;
+    if (id === 'markets' && marketplaceAvailable) return true;
     return Object.values(resources[id] ?? {}).some(item => has(staff, item.permission));
   });
 }
