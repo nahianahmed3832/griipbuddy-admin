@@ -47,9 +47,11 @@ export type HomepageEditorData = { revision: number; draft: HomepageDraft; hasDr
   references?: Partial<Record<HomepageReferenceKind, HomepageReference[]>> };
 
 type PreviewEntry = { id: string; name: string; image?: HomepageImage | null };
-type PreviewProduct = PreviewEntry & { amountMinor: number; regularMinor: number; promotionEndsAt: string | null };
-type PreviewTile = Omit<HomepageTile, 'key' | 'referenceId' | 'title' | 'ctaLabel'> & {
-  id: string; title: string; ctaLabel: string; href: string; product?: PreviewProduct;
+type PreviewPrice = { amountMinor: number; regularMinor: number; promotionEndsAt: string | null };
+type PreviewProduct = PreviewEntry & PreviewPrice;
+type PreviewTile = Omit<HomepageTile, 'key' | 'referenceId' | 'title' | 'ctaLabel' | 'image'> & {
+  id: string; title: string; ctaLabel: string; href: string; image: HomepageImage;
+  product?: PreviewPrice & { id: string; variantId: string };
 };
 export type HomepagePreviewData = {
   marketId: string; locale: string; currency: string; homepageConfig: string; sections: {

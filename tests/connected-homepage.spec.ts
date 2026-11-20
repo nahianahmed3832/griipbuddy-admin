@@ -102,3 +102,75 @@ test('existing Homepage route previews and publishes scoped changes and restores
   await expect(form.getByText('Draft saved. Preview or publish when ready.')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
+
+test('showcase tiles keep catalog order and switch to the mobile image in a protected draft', async ({ page }) => {
+  const fixtureCategory = process.env.GRIIP_HOMEPAGE_TEST_CATEGORY;
+  test.skip(!fixtureCategory, 'Supply a visible category from the disposable Homepage fixture.');
+  const title = `Showcase ${randomUUID().slice(0, 8)}`;
+  await page.route('**/*', route => [admin, storefront].includes(new URL(route.request().url()).origin) ? route.continue() : route.abort());
+  await page.goto('/admin/sign-in');
+  await page.getByLabel('Phone Number').fill('01000000001');
+  await page.getByLabel('Password').fill(fixturePassword());
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/admin\/dashboard\/overview$/);
+  await page.goto('/admin/dashboard/homepage?scope=bd%3Aen-BD');
+  const editor = page.getByRole('region', { name: 'Shopping sections' });
+  await editor.getByRole('button', { name: 'Add section', exact: true }).click();
+  const initial = editor.getByRole('group', { name: 'Untitled section' });
+  await initial.getByLabel('Section type').selectOption('TILES');
+  await initial.getByLabel('Section title').fill(title);
+  const section = editor.getByRole('group', { name: title, exact: true });
+  await section.getByLabel('Tile layout').selectOption('DISCOVERY');
+  await section.getByRole('button', { name: 'Add tile', exact: true }).click();
+  const tiles = section.locator('.homepage-tile-editor');
+  const categoryTile = tiles.nth(0);
+  await categoryTile.getByRole('button', { name: 'Choose tile category destination', exact: true }).click();
+  await categoryTile.getByRole('searchbox', { name: 'Search tile category destination' }).fill(fixtureCategory!);
+  await categoryTile.getByRole('button', { name: `Select ${fixtureCategory}`, exact: true }).click();
+  await categoryTile.getByLabel('Tile label').fill('Browse accessories');
+  await categoryTile.getByLabel('Action label').fill('View accessories');
+  await categoryTile.getByLabel('Desktop horizontal focus (%)').fill('28');
+  await categoryTile.getByLabel('Mobile vertical focus (%)').fill('77');
+  const mobileImage = await sharp({ create: { width: 80, height: 100, channels: 3, background: '#654331' } }).png().toBuffer();
+  await categoryTile.getByLabel('Upload mobile image').setInputFiles({ name: 'mobile.png', mimeType: 'image/png', buffer: mobileImage });
+  await categoryTile.getByLabel('Mobile image alternative text').fill('Accessories shown in a portrait crop');
+
+  await section.getByRole('button', { name: 'Add tile', exact: true }).click();
+  const productTile = tiles.nth(1);
+  await productTile.getByLabel('Destination type').selectOption('PRODUCT');
+  await productTile.getByRole('button', { name: 'Choose tile product destination', exact: true }).click();
+  await productTile.getByRole('searchbox', { name: 'Search tile product destination' }).fill(product);
+  await productTile.getByRole('button', { name: `Select ${product}`, exact: true }).click();
+  await productTile.getByRole('button', { name: 'Move tile 2 up' }).click();
+  await expect(tiles.locator('legend')).toHaveText([product, 'Browse accessories']);
+  await editor.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(editor.getByText('Draft saved. Preview or publish when ready.')).toBeVisible();
+
+  const preview = page.getByRole('region', { name: 'Draft preview' });
+  await preview.getByRole('button', { name: 'Preview saved draft' }).click();
+  const result = preview.locator('article').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+  await expect(result.locator('strong')).toHaveText([product, 'Browse accessories']);
+  await expect(result.getByRole('img', { name: 'Accessories shown in a portrait crop' })).toHaveCount(0);
+  await preview.getByRole('button', { name: 'Mobile', exact: true }).click();
+  const photo = result.getByRole('img', { name: 'Accessories shown in a portrait crop' });
+  await expect(photo).toHaveCSS('object-position', '50% 77%');
+  await expect.poll(async () => photo.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(result.getByRole('link')).toHaveCount(0);
+  expect(JSON.stringify(await (await page.request.get(publicUrl)).json())).not.toContain(title);
+
+  page.on('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Publish saved draft', exact: true }).click();
+  await expect.poll(async () => {
+    const { sections } = await (await page.request.get(publicUrl)).json();
+    return sections.find((section: { title: string }) => section.title === title);
+  }).toMatchObject({ tileLayout: 'DISCOVERY', tiles: [
+    { kind: 'PRODUCT', title: product, href: expect.stringContaining('variant=') },
+    { kind: 'CATEGORY', title: 'Browse accessories', ctaLabel: 'View accessories',
+      focalPoint: { x: 28, y: 50 }, mobileFocalPoint: { x: 50, y: 77 } },
+  ] });
+  await page.getByRole('button', { name: 'Use inherited content', exact: true }).click();
+  await expect.poll(async () => JSON.stringify(await (await page.request.get(publicUrl)).json())).not.toContain(title);
+  await section.getByRole('button', { name: 'Remove section', exact: true }).click();
+  await editor.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(editor.getByText('Draft saved. Preview or publish when ready.')).toBeVisible();
+});
