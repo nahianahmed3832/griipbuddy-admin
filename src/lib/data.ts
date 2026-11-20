@@ -12,6 +12,12 @@ export function valueAt(record: unknown, path: string) {
   return undefined;
 }
 
+export function columnText(row: unknown, column: Column, currency?: string) {
+  const value = valueAt(row, column.fields);
+  if (column.label === 'Publication' && typeof value === 'boolean') return value ? 'Published' : 'Unpublished';
+  return printable(value, column.kind, currency);
+}
+
 export function printable(value: unknown, kind?: Column['kind'], currency = 'BDT'): string {
   if (kind === 'count' && Array.isArray(value)) return String(value.length);
   if (kind === 'list' && Array.isArray(value)) return value.slice(0, 100).map(v => str(v) || str(obj(v).code) || str(obj(v).name)).filter(Boolean).join(', ');
@@ -33,7 +39,15 @@ export function printable(value: unknown, kind?: Column['kind'], currency = 'BDT
   return '';
 }
 
-export type ViewRow = { id: string; values: string[]; href?: string; legacy?: string };
+export type ViewRow = { id: string; values: string[]; numeric?: (number | null)[]; href?: string; cellLinks?: (string | undefined)[]; legacy?: string };
+
+export function numericCells(record: RecordData, columns: Column[]) {
+  return columns.map(column => {
+    const value = valueAt(record, column.fields);
+    if (Array.isArray(value) && column.kind === 'count') return value.length;
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  });
+}
 export const perPage = 20;
 export const dateParam = (value?: string) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? value : undefined;
 
@@ -46,29 +60,48 @@ export function permitted(resource: Resource, auth: Session) {
 const regexCharacters = /[.*+?^${}()|[\]\\]/g;
 const regionFiltered = new Set(['/stocks','/product/admin/variants','/barcode','/business-location','/stocks/adjustment','/stocks/admin/transfer-history','/purchase','/assigned-orders','/pos/sale']);
 function rowRegion(row: RecordData) {
-  const declared = valueAt(row, 'region|product.region|business_location.region|current_location.region|from_business_location.region|from_location.region');
+  const declared = valueAt(row, 'region|product.region|business_location.region|current_location.region|from.region|from_business_location.region|from_location.region|location.region');
   return declared === 'INTERNATIONAL' ? 'INTERNATIONAL' : declared === 'BD' ? 'BD' : undefined;
 }
 
-export async function loadResource(resource: Resource, auth: Session, q: Query, region: Region) {
+export async function loadResource(resource: Resource, auth: Session, q: Query, region: Region, pageSize = perPage) {
   if (!permitted(resource, auth)) throw new ApiError(403);
   const page = Math.min(10000, Math.max(1, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
   const rawSearch = (param(q, 'q') ?? '').trim().slice(0, 80);
   const search = rawSearch.replace(regexCharacters, '\\$&');
   const filter = param(q, 'filter');
   const params: Record<string, string | undefined> = {
-    ...resource.params, page: String(page), limit: String(perPage),
+    ...resource.params, page: String(page), limit: String(pageSize),
     ...(resource.region ? { region } : {}),
   };
-  if (resource.search && search) params[resource.search] = search;
+  if (resource.search && search) {
+    const searchKey = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : resource.search;
+    params[searchKey] = search;
+  }
   if (resource.filter && filter && resource.filter.options.includes(filter)) params[resource.filter.key] = filter;
-  if (resource.endpoint === '/order') {
+  if (['/order','/pre-order'].includes(resource.endpoint)) {
     params.startDate = dateParam(param(q, 'from'));
     params.endDate = dateParam(param(q, 'to'));
   }
   if (resource.endpoint === '/stocks' || resource.endpoint === '/barcode') {
     const loc = param(q, 'location') ?? '';
     if (mongoId(loc)) params[resource.endpoint === '/stocks' ? 'businessLocationId' : 'business_location'] = loc;
+    const product = param(q, 'product') ?? '';
+    if (resource.endpoint === '/stocks' && mongoId(product)) params.productId = product;
+  }
+  if (resource.endpoint === '/stocks/adjustment') {
+    const loc = param(q, 'location') ?? '';
+    if (mongoId(loc)) params.business_location = loc;
+    const from = dateParam(param(q, 'from'));
+    const to = dateParam(param(q, 'to'));
+    if (from) params.startDate = from + 'T00:00:00' + (region === 'BD' ? '+06:00' : 'Z');
+    if (to) params.endDate = to + 'T23:59:59.999' + (region === 'BD' ? '+06:00' : 'Z');
+  }
+  if (resource.endpoint === '/stocks/admin/transfer-history') {
+    const source = param(q, 'source') ?? '';
+    const target = param(q, 'target') ?? '';
+    if (mongoId(source)) params.from = source;
+    if (mongoId(target)) params.to = target;
   }
   if (resource.legacy === 'staffs') {
     const roles = arr(obj(await api('/roles?page=1&limit=100', auth.token)).roles)
@@ -87,19 +120,30 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
   }
   if (!resource.search && rawSearch) {
     const term = rawSearch.toLocaleLowerCase();
-    records = records.filter(row => resource.columns.some(col => printable(valueAt(row, col.fields), col.kind).toLocaleLowerCase().includes(term)));
+    records = records.filter(row => resource.columns.some(col => columnText(row, col).toLocaleLowerCase().includes(term)));
   }
   const count = obj(envelope.meta).total;
   return { rows: records, page, total: !enforceRegion && typeof count === 'number' ? count : undefined,
-    hasNext: typeof count === 'number' ? page * perPage < count : initialLength === perPage, search: rawSearch };
+    hasNext: typeof count === 'number' ? page * pageSize < count : initialLength === pageSize, search: rawSearch };
 }
 
 export const reportIds = ['sales-summary','sales-by-product','order-status','pending-fulfilment','returns-rts','stock-valuation',
   'low-stock','stock-movements','inventory-aging','data-health'];
+export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type', 'status', 'show'];
 
 export function reportQuery(q: Query, region: Region) {
-  return { region, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')),
-    compare: param(q, 'compare') === 'none' ? 'none' : undefined,
-    locations: (param(q, 'locations') ?? '').split(',').filter(mongoId).slice(0, 20).join(',') || undefined,
-    groupBy: ['day','week','month','status','category','location'].includes(param(q, 'groupBy') ?? '') ? param(q, 'groupBy') : undefined };
+  const currency = param(q, 'currency');
+  const selected = q.location ?? param(q, 'locations')?.split(',');
+  const locations = [...new Set((Array.isArray(selected) ? selected : [selected ?? '']).filter(mongoId))].slice(0, 20);
+  const compare = param(q,'compare');
+  const sort = param(q,'sort');
+  return {
+    region, currency: region === 'INTERNATIONAL' && ['USD','EUR','AUD','BDT'].includes(currency ?? '') ? currency : undefined,
+    from: dateParam(param(q,'from')), to: dateParam(param(q,'to')),
+    compare: compare === 'none' || (param(q,'filterApplied') === '1' && compare !== 'previous') ? 'none' : undefined,
+    locations: locations.join(',') || undefined,
+    sort: sort && /^[A-Za-z0-9_]{1,40}$/.test(sort) ? sort : undefined,
+    order: param(q,'order') === 'asc' ? 'asc' : undefined,
+    ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])),
+  };
 }

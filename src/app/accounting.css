@@ -1,0 +1,21 @@
+.finance-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+.finance-fields .button { justify-self: start; }
+.finance-record {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.finance-record:last-child { border-bottom: 0; }
+.finance-record > summary { cursor: pointer; }
+.finance-record > summary > span { margin-left: 10px; }
+.finance-record > p { margin-block: 8px; }
+.finance-record .table-scroll { margin-block: 12px; }
+.finance-actions { padding: 8px 0; }
+.finance-actions > details { margin-top: 8px; }
+.finance-actions summary { cursor: pointer; }

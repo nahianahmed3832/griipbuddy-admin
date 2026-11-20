@@ -1,0 +1,37 @@
+.connected-product-workspace {
+  --color-ink: var(--ink);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-paper: var(--surface);
+  --color-plum: var(--accent);
+  --primary: var(--accent);
+  width: 100%;
+}
+
+.connected-product-workspace .taxonomy-card,
+.connected-product-workspace .commerce-panel {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.connected-product-workspace .text-link {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.connected-product-workspace .button--subtle,
+.connected-product-workspace .button--outline {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.connected-product-workspace .button--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.connected-product-workspace .commerce-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

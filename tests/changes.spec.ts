@@ -9,10 +9,10 @@ const origin = { Origin:fixture };
 const country = '000000000000000000000013';
 async function admin(page: Page) {
   await page.goto(fixture+'/sign-in');
-  await page.getByLabel('Staff email or phone number').fill('01000000001');
+  await page.getByLabel('Phone Number', { exact: true }).fill('01000000001');
   await page.getByLabel('Password',{exact:true}).fill(fixturePassword());
-  await page.getByRole('button',{name:'Sign in'}).click();
-  await expect(page).toHaveURL(fixture+'/desk/overview');
+  await page.getByRole('button',{name:'Login'}).click();
+  await expect(page).toHaveURL(fixture+'/dashboard/overview');
 }
 
 test('country activation and currency edit update the same recovered country record',async ({page}) => {

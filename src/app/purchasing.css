@@ -1,0 +1,53 @@
+.po-desk { display: grid; gap: 1rem; min-width: 0; color: var(--text, #202936); }
+.po-page-heading, .po-preview-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.po-desk h1 { font-size: clamp(1.65rem, 3vw, 2.25rem); margin: 0; line-height: 1.16; }
+.po-desk h2 { margin-top: 0; }
+.po-desk p { margin: .45rem 0; }
+.po-status { border: 1px solid #bcc9d6; border-radius: 999px; padding: .35rem .65rem; background: #f0f5fc; color: #285478; font-weight: 600; }
+.po-form, .po-fields { display: grid; gap: .8rem; min-width: 0; }
+.po-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.po-form .po-card { border: 1px solid #dbe3ec; border-radius: .6rem; padding: .75rem; }
+.po-card legend, .po-evidence legend { padding: 0 .3rem; font-weight: 650; }
+.po-fields label { display: grid; gap: .3rem; font-size: .9rem; font-weight: 600; min-width: 0; }
+.po-fields :is(input, select, textarea) { background: #fff; color: #222e3e; border: 1px solid #a8b7c8; border-radius: .4rem; padding: .53rem .62rem; width: 100%; min-height: 42px; font: inherit; }
+.po-fields textarea { min-height: 65px; }
+.po-fields .po-check { display: flex; align-items: center; gap: .65rem; }
+.po-fields .po-check input[type=checkbox] { appearance: auto; padding: 0; margin: 0; width: 1.15rem; height: 1.15rem; min-height: auto; flex-shrink: 0; }
+.po-grid, .po-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: .8rem; }
+.po-facts { margin: .9rem 0; }
+.po-facts div { min-width: 0; padding: .35rem 0; }
+.po-facts dt { font-size: .8rem; color: #4b5b70; font-weight: 600; }
+.po-facts dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
+.po-money { border-top: 1px solid #dbe3ec; padding-top: .6rem; }
+.po-buttons, .po-add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-end; }
+.po-add label { flex: 1 1 200px; }
+.po-form .button { min-height: 42px; }
+.po-back { width: fit-content; }
+.po-timeline, .po-list { margin: .75rem 0 0; padding: 0; list-style: none; }
+.po-timeline li, .po-list li { padding: .75rem 0; border-top: 1px solid #dbe3ec; overflow-wrap: anywhere; }
+.po-list li { display: flex; justify-content: space-between; gap: 1.2rem; }
+.po-list li a { font-weight: 650; }
+.po-timeline small { display: block; margin-top: .25rem; }
+.po-desk details > :not(summary) { margin-top: .75rem; }
+.po-desk details { margin-top: .8rem; }
+.po-desk summary { cursor: pointer; font-weight: 650; }
+.po-feedback { padding: .6rem .75rem; background: #eef5fa; border-radius: .35rem; }
+.po-hint { font-size: .86rem; color: #4b5b70; }
+@media (max-width: 540px) {
+  .po-list li { display: grid; gap: .3rem; }
+  .po-desk .ops-panel { padding: .85rem; }
+}
+@media print {
+  body:has(.po-preview) .shell, body:has(.po-preview) .workspace, body:has(.po-preview) .main-content,
+  body:has(.po-preview) .ops-desk, body:has(.po-preview) .ops-stack, body:has(.po-preview) .po-detail { display: block; margin: 0; padding: 0; max-width: none; }
+  body:has(.po-preview) .shell > :not(.workspace),
+  body:has(.po-preview) .workspace > :not(.main-content),
+  body:has(.po-preview) .main-content > :not(.ops-desk),
+  body:has(.po-preview) .ops-desk > :not(.ops-stack),
+  body:has(.po-preview) .po-detail > :not(.po-preview) { display: none !important; }
+  body:has(.po-preview) .po-preview { width: 100%; border: 0; padding: 0; box-shadow: none; }
+  .po-preview tr { break-inside: avoid; }
+  .po-preview button { display: none; }
+  .po-preview .ops-scroll { overflow: visible; }
+  .po-preview .ops-table { min-width: 0; }
+}

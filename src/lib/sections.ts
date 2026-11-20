@@ -22,24 +22,25 @@ export type Resource = {
 
 const col = (label: string, fields: string, kind?: Column['kind']): Column => ({ label, fields, kind });
 const title = col('Name', 'name|title|name_en|full_name');
-const state = col('Status', 'status|is_active|isActive|is_published|isPublished', 'badge');
+const state = col('Status', 'status|is_active|isActive|is_published|isPublished|enabled', 'badge');
 const sku = col('SKU', 'sku|variant.sku|selected_variant.sku');
 const date = col('Date', 'createdAt|created_at|date', 'date');
 const region = col('Region', 'region', 'badge');
-const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name');
+const location = col('Location', 'business_location.name|business_location.business_location_name|current_location.name|location.name|location.business_location_name');
 const orderColumns = [col('Order', 'order_serial_id|serial_id|invoice_number'), col('Customer', 'customer_name|user.full_name'),
   state, col('Payment', 'payment_status|payment_info.status|payment_type', 'badge'), col('Tracking', 'tracking_code'), col('Order date', 'order_date|createdAt', 'date')];
-const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'RETURNED', 'CANCELLED'];
+const orderStatuses = ['PLACED', 'PROCESSING', 'AWAITING_STOCK', 'IN_REVIEW', 'IN_TRANSIT', 'DELIVERED', 'PENDING_RETURN', 'PARTIAL', 'RETURNED', 'CANCELLED'];
 const orders: Resource = {
-  title: 'Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
+  title: 'All Orders', endpoint: '/order', permission: 'order.view', columns: orderColumns, search: 'searchQuery',
   filter: { key: 'filter', label: 'Order status', options: orderStatuses }, region: true, legacy: 'orders',
   legacyCreate: 'create-order', legacyDetail: 'order-details/:id',
 };
 const catalogColumns = [title, sku, col('Category', 'category.name'), region, col('Variants', 'variants', 'count'), state];
 const promo: Resource = {
-  title: 'Coupons', endpoint: '/coupon/admin/all', permission: 'coupon.view', rows: 'coupons',
-  columns: [col('Code', 'code|coupon_code'), col('Discount type', 'discount_type|type'), col('Usage limit', 'usage_limit|max_uses'),
-    col('Ends', 'end_date|expires_at', 'date'), state], legacy: 'coupons', legacyCreate: 'create-coupon', legacyDetail: 'coupons/:id',
+  title: 'Coupons', endpoint: '/coupon/admin/all', permission: 'coupon.view', rows: 'coupons', search: 'search',
+  filter: { key: 'isActive', label: 'Coupon status', options: ['true','false'] },
+  columns: [col('Code', 'code|coupon_code'), col('Discount type', 'discountType|discount_type|type'), col('Usage limit', 'usageLimit|usage_limit|max_uses'),
+    col('Ends', 'expireAt|end_date|expires_at', 'date'), state], legacy: 'coupons', legacyCreate: 'create-coupon', legacyDetail: 'coupons/:id',
 };
 
 export const resources: Record<string, Record<string, Resource>> = {
@@ -50,7 +51,8 @@ export const resources: Record<string, Record<string, Resource>> = {
       legacy: 'pre-orders', legacyCreate: 'pre-orders/create', legacyDetail: 'pre-orders/:id' },
     assigned: { title: 'Assigned orders', endpoint: '/assigned-orders', permission: 'order.view', rows: 'assignedOrders',
       columns: [...orderColumns, location], legacy: 'assigned-orders' },
-    returns: { ...orders, title: 'Returns', filter: undefined, params: { filter: 'RETURNED' }, legacyCreate: undefined },
+    returns: { ...orders, title: 'Returns', filter: { key: 'filter', label: 'Return status', options: ['PENDING_RETURN', 'PARTIAL', 'RETURNED'] },
+      params: { filter: 'RETURNED' }, legacyCreate: undefined },
   },
   catalog: {
     products: { title: 'Products', endpoint: '/product/admin/all', permission: 'product.view', region: true, search: 'searchQuery',
@@ -66,7 +68,7 @@ export const resources: Record<string, Record<string, Resource>> = {
     brands: { title: 'Brands', endpoint: '/brand/admin/all', permission: 'product.view', rows: 'brands', columns: [title, col('Slug', 'slug'), state],
       legacy: 'all-brands', legacyCreate: 'create-brand', legacyDetail: 'update-brand/:id' },
     reviews: { title: 'Reviews', endpoint: '/review', permission: 'review.view',
-      columns: [col('Product', 'product.name'), col('Rating', 'rating'), col('Review', 'title|comment|review'), state, date],
+      columns: [col('Product', 'product.name'), col('Rating', 'rating'), col('Review', 'title|content|comment|review'), col('Status', 'status', 'badge'), date],
       legacy: 'product-reviews', legacyDetail: 'product-reviews/:id' },
     faqs: { title: 'FAQs', endpoint: '/faq/admin/all', permission: 'faq.view', rows: 'faqs',
       columns: [col('Question', 'question|title'), col('Product', 'product.name'), state, date], legacy: 'product-faqs', legacyCreate: 'product-faqs/add-new-faq' },
@@ -74,29 +76,32 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [title, col('Type', 'type'), state, date], legacy: 'return-policies', legacyCreate: 'add-new-return-policy', legacyDetail: 'update-return-policy/:id' },
   },
   inventory: {
-    stock: { title: 'Stock', endpoint: '/stocks', permission: 'stock.view', region: true,
+    stock: { title: 'Stock', endpoint: '/stocks', permission: 'stock.view', region: true, search: 'searchQuery',
       columns: [col('Product', 'product.name'), sku, location, col('On hand', 'available_quantity'), col('Location reserved', 'qty_reserved'),
         col('Units received', 'total_received'), col('Units sold', 'total_sold')], legacy: 'check-outlet-stocks' },
     warehouses: { title: 'Locations', endpoint: '/business-location', permission: 'business_locations.view', rows: 'businessLocations', region: true,
       columns: [col('Location', 'business_location_name|name'), col('Type', 'business_location_type|type'), region, state], legacy: 'business-location/all',
       legacyCreate: 'business-location/create', legacyDetail: 'business-location/edit/:id' },
-    purchases: { title: 'Purchases', endpoint: '/purchase', permission: 'purchase.view',
-      columns: [col('Purchase', 'purchase_serial_id|purchase_id|invoice_number|reference'), col('Supplier', 'supplier.name|supplier.supplier_name'), location, state, date],
+    purchases: { title: 'Purchases', endpoint: '/purchase', permission: 'purchase.view', region: true,
+      columns: [col('Purchase', 'purchase_number|purchase_serial_id|purchase_id|invoice_number|reference'), col('Supplier', 'supplier.name|supplier.supplier_name'), location, state,
+        col('Purchase date', 'purchase_date|createdAt|created_at', 'date')],
       legacy: 'purchase/all', legacyDetail: 'purchase/edit/:id' },
     suppliers: { title: 'Suppliers', endpoint: '/supplier', permission: 'supplier.view',
       columns: [col('Supplier', 'name|supplier_name'), col('Type', 'supplier_type|type'), state, date], legacy: 'suppliers/all',
       legacyCreate: 'suppliers/create', legacyDetail: 'update-supplier/:id' },
     rates: { title: 'Purchase rates', endpoint: '/purchase/default/all', permission: 'defaults.purchase',
       columns: [col('Supplier', 'supplier.name|supplier.supplier_name'), col('Product', 'product.name'), sku, date], legacy: 'barcodes/default-rate/all', legacyCreate: 'barcodes/default-rate' },
-    barcodes: { title: 'Barcodes', endpoint: '/barcode', permission: 'barcode.view',
-      filter: { key: 'status', label: 'Barcode status', options: ['IN_STOCK','ASSIGNED','SOLD','RETURNED'] },
-      columns: [col('Barcode', 'barcode'), sku, location, state, col('Updates', 'updated_logs', 'count')], legacy: 'barcodes', legacyCreate: 'barcodes/generate' },
-    adjustments: { title: 'Adjustments', endpoint: '/stocks/adjustment', permission: 'stock.view',
-      columns: [col('Reason', 'reason|note|adjustment_type'), location, col('Quantity', 'quantity|total_quantity'), state, date],
+    barcodes: { title: 'All Barcodes', endpoint: '/barcode', permission: 'barcode.view',
+      columns: [col('Barcode', 'barcode'), sku, state, col('Condition', 'conditions'), date], legacy: 'barcodes' },
+    adjustments: { title: 'Adjustments', endpoint: '/stocks/adjustment', permission: 'stock.view', region: true, search: 'search',
+      filter: { key:'action', label:'Adjustment type', options:['ADDITION','DEDUCTION'] },
+      columns: [col('Adjustment', 'action', 'badge'), location, col('Items', 'products', 'count'),
+        col('Reason', 'note|reason|adjustment_type'), col('Date', 'activities_date|createdAt', 'date')],
       legacy: 'stock-adjustment/all', legacyCreate: 'stock-adjustment/create' },
-    transfers: { title: 'Transfers', endpoint: '/stocks/admin/transfer-history', permission: 'stock.view', rows: 'stockTransferHistory',
-      columns: [col('From', 'from_business_location.name|source_location.name|from_location.name'), col('To', 'to_business_location.name|destination_location.name|to_location.name'),
-        col('Quantity', 'quantity|total_quantity'), state, date], legacy: 'stock-transfer/all', legacyCreate: 'stock-transfer/create' },
+    transfers: { title: 'Transfers', endpoint: '/stocks/admin/transfer-history', permission: 'stock.view', rows: 'stockTransferHistory', region: true,
+      columns: [col('From', 'from.name|from.business_location_name|from_business_location.name'),
+        col('To', 'to.name|to.business_location_name|to_business_location.name'),
+        col('Items', 'items', 'count'), col('Expenses', 'expenses_applied', 'count'), state, date], legacy: 'stock-transfer/all', legacyCreate: 'stock-transfer/create' },
   },
   customers: {
     customers: { title: 'Customers', endpoint: '/user/admin/all/roles', permission: 'user.view', params: { role: 'USER' },
@@ -117,7 +122,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [col('Currency', 'code'), col('Label', 'label'), col('Symbol', 'symbol'), col('Default', 'is_default', 'badge')] },
   },
   shipping: {
-    tracking: { ...orders, title: 'Tracking', filter: { key: 'filter', label: 'Shipment status', options: ['IN_TRANSIT','DELIVERED','CANCELLED','RETURNED'] }, legacyCreate: undefined },
+    tracking: { ...orders, title: 'Tracking', filter: { key: 'filter', label: 'Shipment status', options: ['IN_REVIEW','HANDED_OVER_TO_COURIER','IN_TRANSIT','DELIVERED','CANCELLED','RETURNED'] }, legacyCreate: undefined },
   },
   payments: {
     sources: { title: 'Accounting sources', endpoint: '/payment-source', permission: 'expense.view', columns: [title, col('Type', 'type'), state, date], legacy: 'payment-sources' },
@@ -140,7 +145,7 @@ export const resources: Record<string, Record<string, Resource>> = {
       columns: [title, col('Placement', 'position|order'), state, date], legacy: 'hero-section' },
   },
   pos: {
-    sales: { title: 'Point of sale', endpoint: '/pos/sale', permission: 'pos.view', rows: 'posSales',
+    sales: { title: 'Point of sale', endpoint: '/pos/sale', permission: 'pos.view', rows: 'posSales', search: 'q', region: true,
       columns: [col('Sale', 'sale_serial_id|invoice_number'), location, col('Amount', 'total_amount|grand_total', 'money'), state, date],
       legacy: 'pos/all', legacyCreate: 'pos/create', legacyDetail: 'pos/edit/:id' },
     report: { title: 'POS report', endpoint: '/pos/admin/report', permission: 'pos.view', rows: 'products', flags: 'pos-finance',
@@ -158,7 +163,8 @@ export const resources: Record<string, Record<string, Resource>> = {
 
 export const sections = [
   { id: 'overview', label: 'Overview', group: 'Workspace', icon: 'layout', description: 'Track sales, fulfilment and inventory across your store.' },
-  { id: 'orders', label: 'Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
+  { id: 'operations', label: 'Daily operations', group: 'Operations', icon: 'layout', description: 'Packing, customer requests and COD reconciliation.' },
+  { id: 'orders', label: 'Website Orders', group: 'Commerce', icon: 'orders', description: 'Manage the order pipeline, pre-orders, assignments and returns.' },
   { id: 'catalog', label: 'Catalog', group: 'Commerce', icon: 'catalog', description: 'Manage products, variants, taxonomy and product information.' },
   { id: 'inventory', label: 'Inventory', group: 'Commerce', icon: 'inventory', description: 'See stock positions, warehouse activity and purchasing.' },
   { id: 'customers', label: 'Customers', group: 'Commerce', icon: 'customers', description: 'Find accounts and review customer activity.' },
@@ -176,14 +182,17 @@ export const sections = [
 
 export type Section = (typeof sections)[number];
 export type Region = 'BD' | 'INTERNATIONAL';
-export type Staff = { id: string; name: string; role: string; permissions: string[] };
-export function has(staff: Staff, permission: string) { return staff.permissions.includes(permission); }
-export function superAdmin(staff: Staff) { return staff.role.toUpperCase().replace(/ /g, '_') === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
+export type Staff = { id: string; name: string; role: string; permissions: string[]; assignedLocation?: string };
+export function has(staff: Pick<Staff, 'permissions'>, permission: string) { return staff.permissions.includes(permission); }
+export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role.toUpperCase().replace(/ /g, '_') === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
+export function hasOperations(staff: Staff) { return superAdmin(staff) || ['operations.pack', 'operations.support', 'operations.purchase',
+  'operations.receive', 'operations.supplier-finance'].some(grant => has(staff, grant)); }
 export function visibleSections(staff: Staff) {
   return sections.filter(({ id }) => {
+    if (id === 'operations') return hasOperations(staff);
     if (['overview', 'settings', 'workflows'].includes(id)) return true;
     if (id === 'reports') return staff.permissions.some(key => key.startsWith('report.'));
-    if (id === 'payments' && superAdmin(staff)) return true;
+    if (['payments', 'staff'].includes(id) && superAdmin(staff)) return true;
     return Object.values(resources[id] ?? {}).some(item => has(staff, item.permission));
   });
 }

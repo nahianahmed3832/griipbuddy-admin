@@ -1,0 +1,31 @@
+.page { display: grid; gap: 16px; }
+.page h1, .page h2 { margin: 0; }
+.page h1 { color: #009c69; font-size: 24px; line-height: 32px; font-weight: 700; }
+.page h2 { font-size: 20px; font-weight: 600; }
+.page h2 span { color: #22a957; }
+.warning { margin: 0; padding: 24px; border: 1px solid #ef4444; border-left-width: 5px; border-radius: 8px; background: #fef2f2; box-shadow: 0 1px 2px #0002; }
+.card { min-width: 0; padding: 16px; border: 1px solid #e0e0e4; border-radius: 8px; background: #fff; }
+.card label { display: grid; gap: 6px; width: min(100%, 440px); font-size: 14px; }
+.card input, .card select { min-width: 0; width: 100%; padding: 6px 10px; border: 1px solid #e0e0e4; border-radius: 6px; background: #fff; color: #161618; }
+.search { display: flex; gap: 4px; }
+.results, .attributes { padding: 0; list-style: none; }
+.results button { width: 100%; justify-content: flex-start; }
+.card fieldset { display: grid; gap: 12px; border: 0; margin: 16px 0 0; padding: 0; }
+.attributes, .actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.attributes li { display: inline-flex; align-items: center; padding: 0 4px 0 10px; background: #edf6f2; border-radius: 8px; }
+.table { overflow: auto; }
+.table table { width: 100%; }
+.table th { text-align: left; font-size: 14px; }
+.table th, .table td { padding: 6px; min-width: 105px; }
+.actions:last-child { justify-content: space-between; }
+.recordList { display: grid; gap: 12px; }
+.productSummary { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.productSummary strong { flex: 1; }
+.productSummary span { padding: 4px 8px; border: 1px solid #e0e0e4; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.recordList details[open] .table { margin-top: 16px; }
+.barcode { display: inline-grid; justify-items: center; gap: 4px; }
+.barcode :global(.barcode-image) { width: auto; height: 28px; }
+.barcode small { font-variant-numeric: tabular-nums; color: #52525b; white-space: nowrap; }
+.outletVariants { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; min-width: 230px; margin: 0; padding: 0; }
+.outletVariants li { display: grid; gap: 4px; min-width: 130px; padding: 8px; border: 1px solid #e0e0e4; border-radius: 8px; }
+.outletVariants li > span { font-size: 12px; }

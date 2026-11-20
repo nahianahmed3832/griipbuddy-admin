@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { has, superAdmin, type Region, type Staff } from './sections';
@@ -15,9 +16,32 @@ export class ApiError extends Error {
   }
 }
 
+export function publicSandbox() {
+  return process.env.GRIIP_ADMIN_TARGET === 'sandbox';
+}
+
+export function operationsEnabled() {
+  return process.env.GRIIP_ADMIN_OPERATIONS === '1' || operationsOnly();
+}
+
+export function operationsOnly() {
+  return ['operations', 'pilot'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
+}
+
 export function connection() {
+  if (process.env.GRIIP_ADMIN_TARGET === 'pilot') return { origin: 'http://pilot-api:38100', name: 'Bangladesh COD pilot staging', legacy: null };
+  if (operationsOnly()) return { origin: 'http://127.0.0.1:14920', name: 'Operations staging', legacy: null };
+  if (publicSandbox()) return { origin: 'http://127.0.0.1:14829', name: 'Read-only sample workspace', legacy: null };
+  if (process.env.GRIIP_ADMIN_TARGET === 'integration') {
+    return { origin: 'http://127.0.0.1:14819', name: 'Isolated integration staging', legacy: null };
+  }
+  if (process.env.GRIIP_ADMIN_TARGET === 'preview') {
+    return { origin: 'http://127.0.0.1:14811', name: 'Isolated frontend preview', legacy: null };
+  }
   if (process.env.GRIIP_ADMIN_TARGET === 'fixture') {
-    return { origin: 'http://127.0.0.1:38100', name: 'Local fixture', legacy: null };
+    const port = process.env.GRIIP_ADMIN_FIXTURE_PORT ?? '38100';
+    if (!/^38[0-9]{3}$/.test(port)) throw new Error('Invalid local fixture port');
+    return { origin: 'http://127.0.0.1:' + port, name: 'Local fixture', legacy: null };
   }
   if (process.env.GRIIP_ADMIN_TARGET === undefined || process.env.GRIIP_ADMIN_TARGET === 'staging') {
     return { origin: 'http://127.0.0.1:14801', name: 'Isolated staging', legacy: 'http://127.0.0.1:14801/dashboard/' };
@@ -25,15 +49,45 @@ export function connection() {
   throw new Error('Invalid admin target');
 }
 
-export function hosted() {
-  return process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com';
+export function integratedCheckoutEnabled() {
+  return process.env.GRIIP_ADMIN_INTEGRATED === '1' &&
+    ['integration','fixture'].includes(process.env.GRIIP_ADMIN_TARGET ?? '');
 }
 
-export function canWrite(staff: Staff) {
+export function hosted() {
+  return ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com']
+    .includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
+}
+
+function protectedIntegration() {
+  return process.env.GRIIP_ADMIN_TARGET === 'integration' &&
+    ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
+}
+
+function integrationStaffEnrollment() {
+  return protectedIntegration() && process.env.GRIIP_ADMIN_INTEGRATION_STAFF_ENROLLMENT === '1';
+}
+
+export function workspaceWritesEnabled() {
   const target = connection().name;
   const local = target === 'Local fixture' && process.env.GRIIP_ADMIN_FIXTURE_WRITES === '1';
   const stage = target === 'Isolated staging' && hosted() && process.env.GRIIP_ADMIN_STAGE_WRITES === '1';
-  return superAdmin(staff) && (local || stage);
+  const preview = target === 'Isolated frontend preview' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://frontend.griipbuddy.com';
+  return local || stage || preview || protectedIntegration() || operationsOnly();
+}
+
+export function canWrite(staff: Staff) {
+  return superAdmin(staff) && workspaceWritesEnabled();
+}
+
+export function staffEnrollmentAvailable() {
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || connection().name === 'Isolated staging' ||
+    operationsOnly() || integrationStaffEnrollment();
+}
+
+export function fixtureStaffLoginOnly() {
+  return process.env.GRIIP_ADMIN_TARGET === 'preview' ||
+    (process.env.GRIIP_ADMIN_TARGET === 'integration' && !integrationStaffEnrollment());
 }
 
 export function legacyUrl(path?: string) {
@@ -42,14 +96,16 @@ export function legacyUrl(path?: string) {
   return base + path;
 }
 
-export async function requestApi(path: string, token?: string, init?: RequestInit) {
+export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string) {
+  if (publicSandbox() && (init?.method ?? 'GET') !== 'GET') throw new ApiError(403);
   if (!/^\/[a-z0-9/-]+(?:\?[^#]*)?$/i.test(path) || path.includes('//')) throw new Error('Invalid recovery API path');
   try {
     return await fetch(connection().origin + '/api/v1' + path, {
       ...init, headers: {
         Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000),
     });
@@ -72,8 +128,13 @@ export async function who(token: string): Promise<Staff | null> {
   try {
     const user = obj(await api('/user', token));
     if (!mongoId(str(user._id)) || !user.role_ref || !user.role || user.role === 'USER' || user.isDeleted || user.status !== 'ACTIVE') return null;
+    if (str(user.phone_number) !== process.env.GRIIP_ADMIN_STAFF_PHONE &&
+      (fixtureStaffLoginOnly() || (integrationStaffEnrollment() && user.staffEnrollmentCompleted !== true))) return null;
+    if (publicSandbox() && (user._id !== '00000000000000000000e001' || user.role !== 'Sandbox Viewer')) return null;
+    const location = str(obj(user.business_location)._id) || str(user.business_location);
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role: str(user.role),
-      permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string') };
+      permissions: arr(user.permissions).filter((key): key is string => typeof key === 'string'),
+      ...(mongoId(location) && { assignedLocation: location }) };
   } catch (error) {
     if (error instanceof ApiError && error.status < 500) return null;
     // Recovered verifyToken reports expired or malformed JWTs as HTTP 500.
@@ -83,7 +144,8 @@ export async function who(token: string): Promise<Staff | null> {
 }
 
 export const session = cache(async () => {
-  const token = (await cookies()).get(sessionCookie)?.value;
+  const token = publicSandbox() ? await readFile('/var/lib/griipbuddy/preview-session/token', 'utf8').catch(() => undefined)
+    : (await cookies()).get(sessionCookie)?.value;
   if (!token) return null;
   const staff = await who(token);
   return staff ? { token, staff } : null;
@@ -99,7 +161,7 @@ export function getRegion(value: string | undefined, staff: Staff): Region {
 export function sameOrigin(request: Request) {
   const host = request.headers.get('host');
   if (request.headers.get('sec-fetch-site') === 'cross-site') return false;
-  if (hosted()) return host === 'dev.griipbuddy.com' && request.headers.get('origin') === 'https://dev.griipbuddy.com';
+  if (hosted()) return 'https://' + host === process.env.GRIIP_ADMIN_PUBLIC_ORIGIN && request.headers.get('origin') === process.env.GRIIP_ADMIN_PUBLIC_ORIGIN;
   return /^127\.0\.0\.1:\d{4,5}$/.test(host ?? '') && request.headers.get('origin') === 'http://' + host;
 }
 

@@ -1,0 +1,39 @@
+limit_req_zone $binary_remote_addr zone=griipbuddy_devadmin_login:1m rate=6r/m;
+log_format griipbuddy_devadmin '[$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent';
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name devadmin.griipbuddy.com;
+    location ^~ /.well-known/acme-challenge/ { root /opt/griipbuddy-step8-preview/acme; }
+    location / { return 308 https://devadmin.griipbuddy.com$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name devadmin.griipbuddy.com;
+    ssl_certificate /etc/letsencrypt/live/griipbuddy-dev-panels/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/griipbuddy-dev-panels/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    access_log /var/log/nginx/griipbuddy-devadmin.access.log griipbuddy_devadmin;
+    client_max_body_size 10m;
+
+    location = / { return 302 /admin/sign-in; }
+    location = /admin { include __ORIGINAL_ADMIN_PROXY__; }
+    location = /admin/api/v1/user/admin/login {
+        limit_req zone=griipbuddy_devadmin_login burst=5 nodelay;
+        limit_req_status 429;
+        include __ORIGINAL_ADMIN_PROXY__;
+    }
+    location ~ ^/admin/api/(?:media/video/upload|v1/upload/(?:video/)?(?:single|multiple))$ {
+        client_max_body_size 512m;
+        client_body_timeout 60s;
+        proxy_request_buffering off;
+        include __ORIGINAL_ADMIN_PROXY__;
+    }
+    location /admin/ { include __ORIGINAL_ADMIN_PROXY__; }
+    location / { return 404; }
+}

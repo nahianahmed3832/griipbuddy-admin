@@ -1,0 +1,375 @@
+.production-report-center,
+.production-report-page {
+  --report-text: #0f172b;
+  --report-copy: #45556c;
+  --report-muted: #62748e;
+  --report-border: oklch(92% .004 286.32);
+  --report-shadow: 0 1px 3px rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 10%);
+  min-width: 0;
+  color: var(--report-text);
+  font-size: 14px;
+  line-height: 20px;
+}
+.production-report-center { display: grid; gap: 24px; }
+.production-report-page { display: grid; gap: 20px; }
+.production-report-center :is(h1, h2, h3),
+.production-report-page :is(h1, h2, h3) { margin: 0; color: var(--report-text); font-family: inherit; letter-spacing: normal; }
+.production-report-center h1, .production-report-page h1 { font-size: 24px; font-weight: 700; line-height: 32px; }
+.production-report-center > header p { color: var(--report-copy); }
+.production-report-center .overview-sales,
+.production-report-page.overview-sales { --section-color: #4f39f6; --section-soft: #e0e7ff; }
+.production-report-center .overview-fulfilment,
+.production-report-page.overview-fulfilment { --section-color: #0084d1; --section-soft: #dff2fe; }
+.production-report-center .overview-inventory,
+.production-report-page.overview-inventory { --section-color: #009689; --section-soft: #cbfbf1; }
+.production-report-center .overview-block-icon,
+.production-report-page .overview-block-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 10px;
+  background: var(--section-soft);
+  color: var(--section-color);
+}
+.production-report-page .overview-block-icon { width: 40px; height: 40px; }
+.production-report-center .overview-block-icon { width: 32px; height: 32px; }
+.production-report-category { display: grid; gap: 12px; }
+.production-report-category h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+}
+.production-report-category h2 small { color: var(--report-muted); font-size: 14px; font-weight: 500; }
+.production-report-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.production-report-cards a {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 16px;
+  gap: 12px;
+  border: 1px solid var(--report-border);
+  border-top: 4px solid var(--section-color);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--report-shadow);
+  color: var(--report-text);
+}
+.production-report-cards a:hover { transform: translateY(-2px); box-shadow: 0 4px 9px rgb(0 0 0 / 12%); }
+.production-report-card-description { display: grid; gap: 6px; }
+.production-report-cards h3 { font-size: 16px; font-weight: 600; line-height: 24px; }
+.production-report-cards p { color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--report-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+.production-report-card-footer p { color: inherit; font: inherit; }
+.production-report-card-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  color: var(--section-color);
+  font-size: 14px;
+  font-weight: 600;
+}
+.production-report-other h2 { font-size: 18px; margin-bottom: 8px; }
+.production-report-page .report-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
+.production-report-page .report-header-copy { max-width: 100%; min-width: 0; }
+.production-report-page .report-header-copy > * + * { margin-top: 6px; }
+.production-report-page .report-back { gap: 4px; color: var(--report-copy); font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .report-title { gap: 12px; }
+.production-report-page .report-domain, .production-report-page .report-status {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--report-pill-border, #a3b3c9);
+  color: var(--report-pill-text, #314158);
+  background: var(--report-pill-bg, #f1f5f9);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.production-report-page .report-status { white-space: nowrap; }
+.production-report-page .report-status::before,
+.production-report-page .report-domain::before { background: var(--report-tone, var(--section-color)); }
+.production-report-page .report-title h1 { margin: 0; line-height: 32px; }
+.production-report-page .report-description { max-width: 768px; color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-page .report-header-copy > p.muted { color: var(--report-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .report-actions { flex-wrap: wrap; gap: 8px; color: oklch(55.2% .016 285.938); margin: 0; }
+.production-report-page .report-actions :is(.button, button),
+.production-report-page .pagination :is(.button, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  background: white;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  color: inherit;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  font: inherit;
+  font-weight: 400;
+}
+.production-report-page .report-actions .button:hover { background: #f5f5f6; }
+.production-report-page .report-actions time { font-size: 12px; line-height: 16px; margin: 0; }
+.production-report-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  color: oklch(14.1% .005 285.823);
+  background: white;
+  border-color: var(--report-border);
+  border-radius: 14px;
+  box-shadow: var(--report-shadow);
+}
+.production-report-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.production-report-field > span:first-child,
+.production-report-compare { color: inherit; font-size: 14px; font-weight: 500; line-height: 14px; }
+.production-report-select,
+.production-report-locations { position: relative; min-width: 0; }
+.production-report-select > svg,
+.production-report-locations > summary > svg { width: 16px; color: #a1a1aa; pointer-events: none; }
+
+.production-report-filters :is(.production-report-select, input:not([type="checkbox"]), .production-report-locations > summary) {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  height: 36px;
+  padding: 6px 12px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.production-report-select { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; text-align: left; outline: none; }
+.production-report-select:focus-visible { border-color: #a1a1aa; box-shadow: 0 0 0 3px rgb(161 161 170 / 50%); }
+.production-report-select > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.production-report-select-options { position: relative; z-index: 50; max-height: var(--radix-select-content-available-height); min-width: 128px; overflow-x: hidden; overflow-y: auto; border: 1px solid #e4e4e7; border-radius: 8px; background: white; color: #18181b; font-family: 'DM Sans', 'DM Sans Fallback', sans-serif; font-size: 16px; line-height: 24px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%); transform-origin: var(--radix-select-content-transform-origin); }
+.production-report-select-options[data-side="bottom"] { transform: translateY(4px); }
+.production-report-select-options[data-side="top"] { transform: translateY(-4px); }
+.production-report-select-viewport { min-width: var(--radix-select-trigger-width); padding: 4px; }
+.production-report-select-option { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 32px 6px 8px; border-radius: 6px; font-size: 14px; font-weight: 400; line-height: 20px; outline: none; cursor: default; user-select: none; }
+.production-report-select-option[data-highlighted] { color: #18181b; background: #f4f4f5; }
+.production-report-select-option[data-disabled] { pointer-events: none; opacity: .5; }
+.production-report-select-indicator { position: absolute; right: 8px; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: #71717a; }
+.production-report-select-scroll { display: flex; align-items: center; justify-content: center; padding-block: 4px; cursor: default; }
+.production-report-select-options svg { flex-shrink: 0; pointer-events: none; }
+.production-report-locations > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 9px;
+}
+.production-report-locations > summary::-webkit-details-marker { display: none; }
+.production-report-location-count {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.production-report-location-count > span {
+  border-radius: 6px;
+  padding-inline: 5px;
+  background: #f4f4f5;
+  font-size: 12px;
+}
+.production-report-location-options {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 5px);
+  inset-inline-start: 0;
+  display: grid;
+  width: min(300px, 100vw - 40px);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--report-shadow);
+}
+.production-report-location-options fieldset { display: grid; padding: 0; margin: 0; border: 0; }
+.production-report-location-options label { display: flex; align-items: center; gap: 8px; padding: 5px 4px; }
+.production-report-location-options button { display: inline-flex; gap: 4px; align-items: center; text-align: left; }
+.production-report-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.production-report-custom-dates { min-width: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.production-report-filters .production-report-compare { display: flex; gap: 8px; align-items: center; padding-top: 24px; min-height: 56px; }
+.production-report-compare input {
+  appearance: none;
+  display: grid;
+  align-items: center;
+  justify-content: start;
+  flex: 0 0 32px;
+  min-height: 18px;
+  width: 32px;
+  height: 18px;
+  padding: 1px;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  background: #dedee3;
+}
+.production-report-compare input:checked { background: var(--accent); justify-content: end; }
+.production-report-compare input::before {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  content: "";
+  box-shadow: 0 1px 2px #0003;
+}
+.production-report-page .report-metrics { gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.production-report-page .report-metrics[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.production-report-page .report-metric {
+  gap: 0;
+  padding: 16px;
+  border-color: var(--report-border);
+  border-left: 4px solid var(--report-tone, var(--section-color));
+  box-shadow: var(--report-shadow);
+  border-radius: 11px;
+}
+.production-report-page .report-metric-heading { justify-content: flex-start; align-items: center; gap: 6px; }
+.production-report-page .report-metric h2 { font-weight: 500; color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-page .report-metric .overview-value { margin-top: 8px; gap: 8px; align-items: baseline; }
+.production-report-page .report-metric strong { font-family: inherit; font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -0.025em; font-variant-numeric: normal; }
+.production-report-page .report-metric p { margin-top: 4px; color: var(--report-copy); font-size: 12px; line-height: 16px; }
+.production-report-page .report-definition summary { color: #90a4bf; }
+.production-report-page .report-definition { position: relative; }
+.production-report-page .report-definition p {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  inset: auto auto 100% 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 100px;
+  max-width: min(320px, 80vw);
+  margin: 0 0 5px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: white;
+  background: #18181b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.production-report-page .report-definition:is([open], :hover, :focus-within) > p { display: block; }
+.production-report-page .report-table-caption { padding: 0; border: 0; margin: 0 0 12px; gap: 0; }
+.production-report-page .report-table-caption h2 { font-weight: 600; font-size: 18px; line-height: 28px; }
+.production-report-page .report-table-caption p { color: var(--report-copy); font-size: 14px; line-height: 20px; }
+.production-report-page .report-table-scroll .production-report-table-empty {
+  padding: 40px 8px;
+  color: #71717a;
+  text-align: center;
+  vertical-align: middle;
+}
+.production-report-page .report-table-scroll th[aria-sort] > a { color: #0069a8; }
+.production-report-page .report-panel { border-color: var(--report-border); border-top: 4px solid var(--section-color); box-shadow: var(--report-shadow); border-radius: 14px; padding: 16px; }
+.production-report-page .report-table-scroll { border: 1px solid #e2e8f0; border-radius: 11px; box-shadow: var(--report-shadow); }
+.production-report-page .report-table-scroll table { font-size: 14px; line-height: 20px; }
+.production-report-page .report-table-scroll :is(th,td) {
+  min-width: 0;
+  max-width: none;
+  padding: 8px;
+  color: #1d293d;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+.production-report-page .report-table-scroll th { height: 40px; background: #f1f5f9; font-weight: 600; }
+.production-report-page .report-table-scroll .report-numeric { font-weight: 500; }
+.production-report-page .report-table-scroll th.report-numeric { font-weight: 600; }
+.production-report-page .report-table-scroll tfoot :is(th,td) { color: #0f172b; font-weight: 700; background: #f1f5f9; }
+.production-report-page .report-table-scroll tfoot tr { border-color: #cbd5e1; }
+.production-report-page .report-table-scroll tbody tr:nth-child(even) td { background: #f6f8fa; }
+.production-report-page .report-table-scroll tbody tr:hover td { background: #eef8ff; }
+.production-report-page .report-table-scroll td a { color: #0069a8; font-weight: 500; }
+.production-report-page .report-table-scroll td a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.production-report-page .report-table-scroll td.report-text-cell { max-width: 352px; overflow: hidden; text-overflow: ellipsis; }
+.production-report-page .report-table-scroll td.report-image-cell { max-width: 416px; }
+.production-report-page .report-table-scroll td .overview-product { min-width: 0; gap: 10px; }
+.production-report-page .report-table-scroll .overview-product > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.production-report-page .pagination { flex-wrap: wrap; gap: 8px; padding: 0; border: 0; margin-top: 8px; line-height: 16px; }
+.production-report-page .pagination > div { align-items: center; gap: 8px; }
+.production-report-page .production-report-restricted,
+.production-report-page .production-report-quality { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; background: #f8fafc; color: #314158; font-size: 12px; font-weight: 500; line-height: 16px; }
+.production-report-page .production-report-restricted,
+.production-report-page .production-report-quality p { display: flex; gap: 8px; align-items: flex-start; }
+.production-report-page .production-report-quality { display: grid; gap: 4px; border-color: #fee685; background: #fffbeb; color: #7b3306; }
+.production-report-page .production-report-quality svg { color: #d97706; }
+.production-report-page.overview-sales .report-domain {
+  --report-pill-bg: #e0e7ff; --report-pill-border: #a3b3ff; --report-pill-text: #372aac; --report-tone: #4f39f6;
+}
+.production-report-page.overview-fulfilment .report-domain,
+.production-report-page .report-tone-info {
+  --report-pill-bg: #dff2fe; --report-pill-border: #74d4ff; --report-pill-text: #00598a; --report-tone: #0084d1;
+}
+.production-report-page.overview-inventory .report-domain {
+  --report-pill-bg: #cbfbf1; --report-pill-border: #5eead4; --report-pill-text: #005f5a; --report-tone: #009689;
+}
+.production-report-page .report-tone-success {
+  --report-pill-bg: #d1fae5; --report-pill-border: #86efac; --report-pill-text: #006045; --report-tone: #009966;
+}
+.production-report-page .report-tone-warning {
+  --report-pill-bg: #fef3c6; --report-pill-border: #ffd230; --report-pill-text: #7b3306; --report-tone: #fe9a00;
+}
+.production-report-page .report-tone-danger {
+  --report-pill-bg: #ffe2e2; --report-pill-border: #ffa2a2; --report-pill-text: #9f0712; --report-tone: #e7000b;
+}
+.production-report-page .report-tone-violet {
+  --report-pill-bg: #ede9fe; --report-pill-border: #c4b4ff; --report-pill-text: #59168b; --report-tone: #7f22fe;
+}
+@media (min-width: 1280px) {
+  .production-report-page .report-metrics[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .production-report-page .report-metrics[data-count="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 1279px) {
+  .production-report-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-report-page .report-metrics:is([data-count="5"], [data-count="6"]) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1023px) {
+  .production-report-page .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .production-report-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) { .production-report-filters { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 639px) {
+  .production-report-cards, .production-report-page .report-metrics { grid-template-columns: minmax(0, 1fr) !important; }
+}
+.production-report-loading { display: flex; gap: .6rem; align-items: center; }
+.production-report-loading svg { animation: report-loading-spin .9s linear infinite; }
+@keyframes report-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .production-report-loading svg { animation: none; } }

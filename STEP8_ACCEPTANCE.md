@@ -1,5 +1,89 @@
 # Step 8 admin reconstruction acceptance
 
+## Operational Overview and Step 9 checkout
+
+The five operational screenshots cover one Overview workflow. The modernized dashboard uses the existing analytics and report APIs for action queues, sales, fulfilment, stock and aging, money, and pre-orders. Filters cover the operating region, Dhaka business dates, comparison, location and currency where applicable. Queue and report links open native order or product records. The pre-order queue and list share the same backend age thresholds, and the native pre-order detail shows items, balances, batch and status history.
+
+The combined profile uses backend `bec7899` and Step 9 storefront `45a94fc2` on isolated loopback staging. The browser suite changed shipping and managed pricing, placed COD and manual advance orders through the storefront, replayed placement, reviewed the private receipt from the Overview queue, and verified the payment on the buyer's original order. It also verified that a restricted role could not download the receipt. Step 9 orders link to their order and receipt operations. Cart orders use their managed payment and shipment records. Cart coverage writes are disabled in the combined profile to preserve the Step 9 checkout contract.
+
+The admin passed lint, TypeScript and a production build. The 20 browser scenarios covered 14 recovered-admin cases, four managed commerce cases and two combined-profile cases. The recovered-admin suite included five fixture roles, all registered native views and CSV and XLSX exports for all ten reports. The isolated backend restore rehearsal covered 23 baseline cases and the commerce suites.
+
+- [Desktop Overview](evidence/step8-overview/overview-desktop.png) and [mobile Overview](evidence/step8-overview/overview-mobile.png)
+- [Combined profile browser test](tests/step9-overview.spec.ts)
+
+Full operational parity still requires acceptance of the remaining legacy mutations, including pre-order quotes, advances and courier handoff, staff and role edits, specialized accounting and support, and the provider-backed fraud checker. Historical data, real payment and courier sandbox credentials, and private object storage controls remain outside the loopback rehearsal.
+
+## November 7 modernization candidate
+
+The admin branch `feature/step8-admin-modernization` starts from the Step 10 admin so existing native screens, POS, CMS, reports and checkout integration remain available. The three supplied mockups guided the light sidebar, plum accents, dashboard cards and operational tables. The application uses the recovered analytics response for bookings, delivered value, delivery outcomes and work queues. The search palette opens permission-scoped record searches, and tables can sort the visible page and export the current or selected rows.
+
+The managed profile runs against backend `feature/step8-growth-operator` at `829c530`. The recovered and managed routes use the same authenticated API origin and database within that profile. The standalone checkout simulator controls are disabled there. The existing Step 9/10 deployment profile remains separate. An installed post-commit hook began building the admin for the read-only dev preview. It was stopped during the build. The active isolated admin container was verified at the prior revision `e41a6951`.
+
+| Area | API integration and acceptance |
+| --- | --- |
+| Catalog, taxonomy and imports | Step 1 catalog routes support draft creation, variant creation and prices, gallery uploads, coverage, approval and publication, four category levels, and approved CSV/XLSX import queues and outcomes. Browser acceptance created and published a listing, navigated a category hierarchy and processed a CSV feed with the real import worker. Supplier profiles and advanced mappings still use the backend contract or preserved workflows. |
+| Stock, buying and China sourcing | Step 2 and Step 5 routes drive warehouse and bin setup, physical stock, FIFO lots, barcodes, tracked purchases, receipts and Chinese dispatch mappings. Browser acceptance created a warehouse and bin. The backend suite exercised purchase-backed receipts, FIFO and stock contention, split China shipments and reverse shipment tracking. |
+| Orders, fulfillment and support | Recovered order records supply lists, notes and history. The managed shipment desk plans allocations and records picking, packing, dispatch, events and reverse shipments. A synthetic COD order passed staff verification, planning, picking, packing, Steadfast dispatch and tracking. The preserved return and POS checks cover scanned partial returns and cash stock reconciliation. |
+| Markets and payments | Existing country and currency controls remain available. Step 3 and Step 5 use market policies, scheduled price lists, FX fallback, delivery zones and payment availability. The browser checked private manual evidence, exact reference and amount matching, and a COD shipment. Stripe, PayPal, private storage and courier adapters used isolated transports in backend acceptance. |
+| Promotions, loyalty and merchandising | Step 3 and Step 7 provide campaign budgets, limits, flash and bundle definitions, group thresholds, loyalty policies, referral reports and curated collections. Step 6 provides ranking rules and reports on consented placement activity. Browser acceptance wrote policies, campaigns, group tiers, collections and ranking rules. Backend reports supply paid conversions and costed contribution, with each metric scoped to its source. |
+| CMS, POS, accounting and staff | Existing native CMS and SEO, review, POS and cash return, accounting lists, reports, staff and role views stay in the workspace. The existing staff grants govern access and finance exports. New managed actions require an authorized isolated operator and the relevant grant. Several specialized CMS, accounting, pre-order and staff or role mutations remain in the preserved admin. |
+| Activity and compatibility | Group offers, rewards and collection changes write the actor and revision to existing market history in the same transaction as the update. Listing, payment, purchase and shipment histories use their source records. The workflow library inventories all 98 legacy dashboard routes from the 102-entry build manifest. It distinguishes workspace views, record-dependent routes, provider-bound workflows and entries that require the preserved admin. |
+
+### Verification
+
+- Admin lint, TypeScript and production build passed. Browser coverage exercises 14 recovered-profile scenarios across five roles and ten CSV/XLSX reports, plus four managed-profile scenarios against a fresh synthetic replica.
+- The backend source check parsed 366 files. Growth and global lint and the full isolated test runner passed, including 23 baseline checks and the catalog, inventory, pricing, checkout, global commerce, discovery and growth suites. The same backend suites passed after an encrypted synthetic restore to a separate replica. The restore matched options and document fingerprints across 16 collections, 26 documents and 42 indexes.
+- Chromium captured six fixture screenshots. Chromium, WebKit and Firefox smoke checks covered the overview, products and campaigns. The tested Chromium screens had no serious or critical axe violations.
+- Secret scanning found no leaks in the candidate changes.
+
+### Screenshots
+
+- [Desktop overview](evidence/step8-modernization/overview-desktop.png) and [phone overview](evidence/step8-modernization/overview-phone.png)
+- [Product catalog](evidence/step8-modernization/products.png) and [campaigns](evidence/step8-modernization/campaigns.png)
+- [Market coverage](evidence/step8-modernization/market-coverage.png) and [warehouse lots](evidence/step8-modernization/warehouse-lots.png)
+
+### Remaining acceptance
+
+Full Step 8 parity remains open. The Step 7 managed profile needs integration acceptance against the later shared checkout contract before a hosted rollout. Several legacy forms, including staff and role mutation, specialized pre-orders, accounting and provider-bound workflows, still need native replacements or a verified preserved-admin session. Unified customer support, deployment-level international fallback and end-to-end inventory allocation policy remain incomplete. The release also needs scrubbed historical records, physical-device checks, live S3 controls and real sandbox payment and courier acceptance. No production deployment or production data operations were performed.
+
+## Frontend preview release
+
+The [storefront](https://frontend.griipbuddy.com/) and [admin](https://frontend.griipbuddy.com/admin) run on Hostinger in the separate `griipbuddy-frontend-preview` Compose project. The storefront is open for browsing and the admin requires sign-in with the configured preview staff account. MongoDB and Redis use dedicated volumes or processes, the recovered API uses synthetic records and provider stubs, and the preview blocks checkout mutations and raw API access at the HTTPS edge. Production service container IDs and start times matched the predeployment receipt.
+
+| Requested workflow | Acceptance | Scope |
+| --- | --- | --- |
+| Advanced POS | Verified on synthetic stock | Multi-line Bangladesh sale and edit, item percentage and order discounts, authoritative quote, offline cash or accounting-backed payment, stale quote rejection, identical retry and changed-request rejection. The baseline also covers last-unit contention against COD, partial cash returns and stock reconciliation. |
+| Bulk courier handover | Verified on synthetic orders | Two assigned orders with existing consignments moved to handover status. A repeated batch recorded zero new handovers. The backend rejects mixed invalid batches atomically and preserves one history entry per order. |
+| CMS and SEO | Verified on synthetic content | Staff can edit banners, hero, homepage merchandising and page metadata. The storefront reads the shared record and preserves canonical and noindex policy. Concurrent changes require a fresh revision. |
+| PayPal and Stripe | Verified as code setup | Mocked requests checked sandbox URLs, idempotency headers, amounts and redirect validation. Provider activation and settlement are outside this release. |
+
+Admin lint and production build passed. The 14 admin regression tests covered all five staff roles and ten CSV/XLSX reports. Storefront lint, production build and 16 fixture browser tests passed. The recovered backend passed 23 isolated checks. Hosted acceptance used Chromium with desktop, tablet and mobile viewports.
+
+Deployed application commits are admin `919fb8b`, storefront `a06de0b` and recovered backend `883d92d`. The earlier acceptance sections record the original development release and its outstanding legacy routes. Full production parity still requires acceptance with scrubbed historical records and the specialized workflows that use the preserved admin.
+
+The preview uses a dedicated HTTPS host and an isolated database volume. To roll back its application release, select the previous sibling release directory under `/opt/griipbuddy-frontend-preview/releases`, build the matching admin and storefront images from that release and use its Compose manifest to replace the preview services. Keep the `griipbuddy-frontend-preview` project name, private environment file and MongoDB volume. For a backup of preview content, use an authorized encrypted export of that isolated database.
+
+## Native workflow follow-up
+
+This historical candidate extended the admin with operations backed by the recovered API and its existing records. New writes required an authorized fixture administrator. POS cash workflows and explicit coupon status also required the private parity backend and the local parity flag. The existing staging connection was used for the role, report and view acceptance suite.
+
+| Area | Scope of the candidate | Remaining acceptance |
+| --- | --- | --- |
+| Inventory and purchasing | Location-scoped stock adjustments and transfers, supplier creation, purchase rates, barcode generation and receiving, purchase details and notes. | Verify multi-line and edited transfers, purchase line corrections, barcode grading and resets, and lot and barcode location reconciliation on scrubbed staging records. |
+| Orders and shipping | Native barcode assignment, partial scanned returns, pending returns and simulated courier status refresh. | Legacy order and pre-order forms, bulk handover and courier replay and reconciliation with the approved provider configuration. |
+| POS | Paid Bangladesh cash sales and returns, sale detail, and backend checks for shared last-unit contention, sale line edits and repeated partial returns. | Multi-item checkout, discounts, payment accounts and advanced sale editing in the native interface. Legacy data and outlet acceptance are still pending. |
+| Markets and marketing | Product publication, country coverage, regional variant pricing, coupon creation and explicit coupon activation. | Region-specific promotion and inventory routing contracts. Verify concurrent price edits before enabling the recovered variant editor for staging writes. |
+| CMS and administration | Native announcement creation and editing. The workflow library retains the recovered routes and points to the native actions when available. | Native banner, hero, homepage, SEO, full catalog and staff CRUD, and specialized support and system workflows. |
+| Payments | Existing simulated COD, manual payment verification, PayPal and Stripe controls. | An approved live payment adapter and an atomic MongoDB inventory claim for paid orders, provider credentials, settlement and refund acceptance. |
+
+The private backend correction keeps the physical warehouse and lot quantities authoritative, checks online holds before stock deductions, and reconciles global availability in the POS sale, edit and return transactions. POS lists also retain historical sales when a date filter is omitted. The fixture test races POS and COD for one unit, edits the resulting sale, returns the units in separate operations and verifies the ledger and inventory counts.
+
+The candidate passed lint, TypeScript and a production build. All 14 Playwright scenarios passed across the isolated staging connection and the disposable fixture. They covered the five staff roles, ten reports and their CSV/XLSX exports, and the new write workflows. The native transfer dialog fit a 390 px viewport and had no serious or critical axe findings. The private recovered backend passed 21 baseline checks with simulated providers. Backend commits are `f779eb2` and `d880943`.
+
+Full Step 8 acceptance remains open. The test order used the recovered checkout contract to produce a schema-valid record. Older orders with missing required fields, actual payment settlement, and the legacy workflows listed above still need acceptance before cutover. This candidate was built and committed locally.
+
+## Initial acceptance evidence
+
 The development candidate adds a responsive admin workspace and a separate storefront preview. The native workspace uses the recovered staff API. The workflow library retains access to the preserved admin for operations that still use its original forms. Production replacement remains blocked on workflow parity and the commerce engine gates from Step 7.
 
 ## Functionality

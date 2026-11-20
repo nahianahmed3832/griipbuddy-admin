@@ -1,0 +1,43 @@
+.connected-product-workspace { min-width: 0; }
+.connected-product-workspace .taxonomy-card { grid-template-columns: minmax(0, 1fr); }
+.connected-product-workspace select { min-width: 0; max-width: 100%; }
+.connected-product-workspace #compatibility > label { display: grid; gap: 5px; min-width: 0; }
+.product-workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, .85fr) minmax(0, 4fr);
+  align-items: start;
+  gap: clamp(12px, 2vw, 22px);
+}
+.product-workspace-sections { display: grid; align-content: start; gap: 15px; min-width: 0; }
+.product-workspace-sections [id] { scroll-margin-top: 14px; }
+.product-workspace-links { position: sticky; top: 12px; }
+.product-workspace-links ul { display: grid; gap: 3px; padding: 0; margin: 0; }
+.product-workspace-links li { list-style: none; }
+.product-workspace-links a {
+  display: block;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--color-plum);
+  font-size: .86rem;
+  font-weight: 750;
+}
+.product-workspace-links a:hover { background: var(--taxonomy-tint); }
+.product-workspace-checklist { list-style: disc; margin: 9px 0 0 19px; }
+.product-workspace-checklist li + li { margin-top: 5px; }
+.product-workspace-filters { grid-template-columns: minmax(200px, 2fr) repeat(3, minmax(135px, 1fr)); align-items: end; }
+.product-workspace-filters button { justify-self: start; }
+.product-workspace-statuses { display: flex; flex-wrap: wrap; gap: 5px; }
+.product-workspace-statuses .taxonomy-badge { display: inline-flex; }
+.product-workspace-table { min-width: 640px; }
+.product-workspace-history { min-width: 470px; }
+.product-workspace-table a { color: var(--color-plum); font-weight: 800; text-decoration: underline; }
+.product-workspace-pagination { justify-content: space-between; }
+@media (max-width: 830px) {
+  .product-workspace-layout { grid-template-columns: minmax(0, 1fr); }
+  .product-workspace-links { position: static; }
+  .product-workspace-links ul { display: flex; flex-wrap: wrap; }
+  .product-workspace-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 490px) {
+  .product-workspace-filters { grid-template-columns: minmax(0, 1fr); }
+}

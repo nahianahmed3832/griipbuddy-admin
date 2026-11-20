@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminPath, prefix } from '@/lib/paths';
-import { api, ApiError, hosted, obj, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { api, ApiError, fixtureStaffLoginOnly, hosted, obj, operationsEnabled, operationsOnly, publicSandbox, sameOrigin, sessionCookie, str, who } from '@/lib/api';
+import { hasOperations, superAdmin } from '@/lib/sections';
 
 export async function POST(req: NextRequest) {
+  if (publicSandbox()) return new Response('This preview uses read-only sample data.', { status: 405 });
   if (!sameOrigin(req)) return new Response('Origin denied', { status: 403 });
   if (Number(req.headers.get('content-length')) > 4096 || !req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded')) {
     return new Response('Invalid form', { status: 400 });
@@ -18,16 +20,20 @@ export async function POST(req: NextRequest) {
   }
   const identifier = (form.get('phone') ?? '').trim();
   const staffEmail = process.env.GRIIP_ADMIN_STAFF_EMAIL?.trim().toLowerCase();
+  const staffPhone = process.env.GRIIP_ADMIN_STAFF_PHONE;
   const phone_number = staffEmail && identifier.toLowerCase() === staffEmail
-    ? process.env.GRIIP_ADMIN_STAFF_PHONE ?? ''
+    ? staffPhone ?? ''
     : identifier;
   const password = form.get('password') ?? '';
-  if (!/^\+?\d{8,16}$/.test(phone_number) || password.length < 6 || password.length > 200) return redirect('/sign-in?error=credentials');
+  if (!/^\+?\d{8,16}$/.test(phone_number) || password.length < 6 || password.length > 256) return redirect('/sign-in?error=credentials');
+  if (fixtureStaffLoginOnly() && phone_number !== staffPhone) return redirect('/sign-in?error=credentials');
   try {
     const result = obj(await api('/user/admin/login', undefined, { method: 'POST', body: JSON.stringify({ phone_number, password }) }));
     const token = str(result.access_token);
-    if (!token || !await who(token)) return redirect('/sign-in?error=credentials');
-    const response = redirect('/desk/overview');
+    const staff = token ? await who(token) : null;
+    if (!staff || (operationsOnly() && !hasOperations(staff))) return redirect('/sign-in?error=credentials');
+    const response = redirect(operationsEnabled() && hasOperations(staff) && (operationsOnly() || !superAdmin(staff))
+      ? '/desk/operations' : '/dashboard/overview');
     response.cookies.set(sessionCookie, token, { httpOnly: true, sameSite: 'strict', path: prefix || '/', secure: hosted(), maxAge: 3600 });
     return response;
   } catch (error) {

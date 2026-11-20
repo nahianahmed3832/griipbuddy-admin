@@ -1,0 +1,1122 @@
+{
+  "summary": {
+    "manifestPatterns": 102,
+    "concreteRequests": 111,
+    "missingRecordFixtures": 0,
+    "sourceDashboard200": 107,
+    "statusDifferences": 0,
+    "failures": 0
+  },
+  "routes": [
+    {
+      "pattern": "/",
+      "path": "/",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/_not-found",
+      "path": "/_not-found",
+      "source": {
+        "status": 404
+      },
+      "reference": {
+        "status": 404
+      }
+    },
+    {
+      "pattern": "/api/fraud-check",
+      "path": "/api/fraud-check",
+      "source": {
+        "status": 400
+      },
+      "reference": {
+        "status": 400
+      }
+    },
+    {
+      "pattern": "/dashboard/add-new-category",
+      "path": "/dashboard/add-new-category",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/add-new-return-policy",
+      "path": "/dashboard/add-new-return-policy",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/add-new-role",
+      "path": "/dashboard/add-new-role",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/add-new-staff",
+      "path": "/dashboard/add-new-staff",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/add-new-sub-category",
+      "path": "/dashboard/add-new-sub-category",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/all-brands",
+      "path": "/dashboard/all-brands",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/all-countries",
+      "path": "/dashboard/all-countries",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/assigned-orders",
+      "path": "/dashboard/assigned-orders",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/banner-update",
+      "path": "/dashboard/banner-update",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes",
+      "path": "/dashboard/barcodes",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes/default-rate",
+      "path": "/dashboard/barcodes/default-rate",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes/default-rate/all",
+      "path": "/dashboard/barcodes/default-rate/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes/generate",
+      "path": "/dashboard/barcodes/generate",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes/logs",
+      "path": "/dashboard/barcodes/logs",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/barcodes/receive",
+      "path": "/dashboard/barcodes/receive",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/business-location/all",
+      "path": "/dashboard/business-location/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/business-location/create",
+      "path": "/dashboard/business-location/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/business-location/edit/[id]",
+      "path": "/dashboard/business-location/edit/000000000000000000000007",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/categories",
+      "path": "/dashboard/categories",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/check-outlet-stocks",
+      "path": "/dashboard/check-outlet-stocks",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/coupons",
+      "path": "/dashboard/coupons",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/coupons/[id]",
+      "path": "/dashboard/coupons/f17000000000000000000008",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-brand",
+      "path": "/dashboard/create-brand",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-country",
+      "path": "/dashboard/create-country",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-coupon",
+      "path": "/dashboard/create-coupon",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-customer",
+      "path": "/dashboard/create-customer",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-expense",
+      "path": "/dashboard/create-expense",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-order",
+      "path": "/dashboard/create-order",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/create-product",
+      "path": "/dashboard/create-product",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/current-plan",
+      "path": "/dashboard/current-plan",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/customers",
+      "path": "/dashboard/customers",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/expense-categories",
+      "path": "/dashboard/expense-categories",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/expense-report",
+      "path": "/dashboard/expense-report",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/expense-subcategories",
+      "path": "/dashboard/expense-subcategories",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/expenses",
+      "path": "/dashboard/expenses",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/featured-products",
+      "path": "/dashboard/featured-products",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/fraud-checker",
+      "path": "/dashboard/fraud-checker",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/header",
+      "path": "/dashboard/header",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/hero-section",
+      "path": "/dashboard/hero-section",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/homepage/best-selling",
+      "path": "/dashboard/homepage/best-selling",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/homepage/leather-section",
+      "path": "/dashboard/homepage/leather-section",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/homepage/new-arrivals",
+      "path": "/dashboard/homepage/new-arrivals",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/homepage/shop-by-category",
+      "path": "/dashboard/homepage/shop-by-category",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/inventory/outlet-update",
+      "path": "/dashboard/inventory/outlet-update",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/inventory/transfer-history",
+      "path": "/dashboard/inventory/transfer-history",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/inventory/view/outlet",
+      "path": "/dashboard/inventory/view/outlet",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/inventory/view/warehouse",
+      "path": "/dashboard/inventory/view/warehouse",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/inventory/warehouse-update",
+      "path": "/dashboard/inventory/warehouse-update",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/offer-page",
+      "path": "/dashboard/offer-page",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/order-details/[id]",
+      "path": "/dashboard/order-details/00000000000000000000000a",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/orders",
+      "path": "/dashboard/orders",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/orders/edit/[id]",
+      "path": "/dashboard/orders/edit/00000000000000000000000a",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/outlets-and-warehouse",
+      "path": "/dashboard/outlets-and-warehouse",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/overview",
+      "path": "/dashboard/overview",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/password-change-customer/[id]",
+      "path": "/dashboard/password-change-customer/00000000000000000000000f",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/payment-sources",
+      "path": "/dashboard/payment-sources",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pos/all",
+      "path": "/dashboard/pos/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pos/create",
+      "path": "/dashboard/pos/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pos/edit/[id]",
+      "path": "/dashboard/pos/edit/f17000000000000000000009",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pos/report",
+      "path": "/dashboard/pos/report",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pre-orders",
+      "path": "/dashboard/pre-orders",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pre-orders/create",
+      "path": "/dashboard/pre-orders/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pre-orders/[id]",
+      "path": "/dashboard/pre-orders/f17000000000000000000010",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/pre-orders/[id]/edit",
+      "path": "/dashboard/pre-orders/f17000000000000000000010/edit",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-details/[id]",
+      "path": "/dashboard/product-details/000000000000000000000003",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-faqs",
+      "path": "/dashboard/product-faqs",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-faqs/add-new-faq",
+      "path": "/dashboard/product-faqs/add-new-faq",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-faqs/[slug]",
+      "path": "/dashboard/product-faqs/fixture-bd",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-reviews",
+      "path": "/dashboard/product-reviews",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/product-reviews/[id]",
+      "path": "/dashboard/product-reviews/f17000000000000000000003",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/products",
+      "path": "/dashboard/products",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/purchase/all",
+      "path": "/dashboard/purchase/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/purchase/edit/[id]",
+      "path": "/dashboard/purchase/edit/f17000000000000000000005",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/renew-subscription",
+      "path": "/dashboard/renew-subscription",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports",
+      "path": "/dashboard/reports",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/data-health",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/inventory-aging",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/low-stock",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/order-status",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/pending-fulfilment",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/returns-rts",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/sales-by-product",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/sales-summary",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/stock-movements",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/reports/[reportId]",
+      "path": "/dashboard/reports/stock-valuation",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/return-policies",
+      "path": "/dashboard/return-policies",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/role",
+      "path": "/dashboard/role",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/sales-channels",
+      "path": "/dashboard/sales-channels",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/sales-executive",
+      "path": "/dashboard/sales-executive",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/staffs",
+      "path": "/dashboard/staffs",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/stock-adjustment/all",
+      "path": "/dashboard/stock-adjustment/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/stock-adjustment/create",
+      "path": "/dashboard/stock-adjustment/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/stock-transfer/all",
+      "path": "/dashboard/stock-transfer/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/stock-transfer/create",
+      "path": "/dashboard/stock-transfer/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/sub-categories",
+      "path": "/dashboard/sub-categories",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/suppliers/all",
+      "path": "/dashboard/suppliers/all",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/suppliers/create",
+      "path": "/dashboard/suppliers/create",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-brand/[id]",
+      "path": "/dashboard/update-brand/f17000000000000000000001",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-category/[slug]",
+      "path": "/dashboard/update-category/fixture-category",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-country/[id]",
+      "path": "/dashboard/update-country/000000000000000000000013",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-expense/[id]",
+      "path": "/dashboard/update-expense/EXP-991707",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-product/[slug]",
+      "path": "/dashboard/update-product/fixture-bd",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-return-policy/[id]",
+      "path": "/dashboard/update-return-policy/f17000000000000000000002",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-role/[slug]",
+      "path": "/dashboard/update-role/000000000000000000000011",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-staff/[slug]",
+      "path": "/dashboard/update-staff/000000000000000000000010",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-sub-category/[slug]",
+      "path": "/dashboard/update-sub-category/fixture-subcategory",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/dashboard/update-supplier/[id]",
+      "path": "/dashboard/update-supplier/f17000000000000000000004",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    },
+    {
+      "pattern": "/favicon.ico",
+      "path": "/favicon.ico",
+      "source": {
+        "status": 200
+      },
+      "reference": {
+        "status": 200
+      }
+    }
+  ]
+}

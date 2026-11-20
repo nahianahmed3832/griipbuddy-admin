@@ -1,0 +1,75 @@
+.calendar {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+  max-width: calc(100vw - 8px);
+  max-height: calc(100dvh - 8px);
+  overflow: auto;
+  border: 1px solid var(--orders-border, #e0e0e5);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--orders-surface, white);
+  box-shadow: 0 4px 7px rgb(0 0 0 / 13%);
+}
+.navigation {
+  position: absolute;
+  inset: 12px 12px auto;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.navigation button, .days button {
+  appearance: none;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.navigation button {
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  pointer-events: auto;
+}
+.month { min-width: 224px; }
+.month h3 {
+  display: grid;
+  place-items: center;
+  margin: 0 0 16px;
+  height: 32px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  font-family: inherit;
+  letter-spacing: normal;
+}
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 32px);
+  grid-auto-rows: 32px;
+  row-gap: 8px;
+  justify-content: center;
+  text-align: center;
+}
+.weekday { display: grid; align-items: center; font-size: 12px; line-height: 20px; color: var(--orders-muted, #71717b); }
+.days button { font-weight: 400; font-size: 14px; }
+.days button[data-outside="true"] { color: var(--orders-muted, #71717b); }
+.days button[aria-pressed="true"] { background: #f4f4f5; color: #eab308; }
+.days button:nth-child(7n + 1), .days button[data-from="true"] + button { border-radius: 8px 0 0 8px; }
+.days button:nth-child(7n), .days button:has(+ [data-outside="true"]) { border-radius: 0 8px 8px 0; }
+.days button[data-boundary="true"] {
+  border-radius: 8px;
+  color: white;
+  background: var(--orders-accent, #009966);
+}
+.navigation button:focus-visible, .days button:focus-visible { outline: 2px solid var(--orders-accent, #009966); outline-offset: -2px; }
+.navigation button:hover, .days button:hover { background: #e9e9ea; color: #09090b; border-radius: 8px; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 540px) { .calendar { flex-direction: column; } }

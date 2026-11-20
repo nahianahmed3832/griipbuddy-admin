@@ -1,0 +1,43 @@
+.workspace, .stack { display: grid; gap: 16px; min-width: 0; }
+.columns { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.panel { min-width: 0; overflow-wrap: anywhere; }
+.panel > :first-child { margin-top: 0; }
+.panel h2 { font-size: 16px; }
+.panel h3 { font-size: 14px; }
+.list { display: grid; gap: 6px; margin: 0; padding-inline-start: 18px; }
+.lines table { min-width: 420px; }
+.badges, .linkList { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.terms { display: grid; gap: 5px; margin: 0; }
+.terms > div { display: flex; justify-content: space-between; gap: 10px; }
+.terms dd { margin: 0; text-align: right; }
+.trackingSummary { display: grid; gap: 8px; }
+.trackingSummary > p { margin: 0; }
+.trackingFacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; margin: 0; }
+.trackingFacts > div { display: grid; gap: 2px; }
+.trackingFacts dt { font-weight: 600; }
+.trackingFacts dd { margin: 0; }
+.timeline { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.timeline li { display: grid; gap: 3px; border-inline-start: 2px solid var(--catalog-border, #d8dde5); padding-inline-start: 12px; }
+.timeline li span { margin-inline-start: 6px; }
+.shipmentAction { border-block-start: 1px solid var(--catalog-border, #d8dde5); padding-block-start: 8px; }
+.shipmentAction summary { font-weight: 600; cursor: pointer; }
+.shipmentAction form { margin-block-start: 8px; }
+.action { display: grid; gap: 8px; }
+.action fieldset { display: grid; gap: 8px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.action label:not(.check) { display: grid; gap: 4px; font-weight: 600; }
+.action button { justify-self: start; }
+.action input, .action select, .action textarea { max-width: 100%; }
+.check { display: flex; align-items: flex-start; gap: 8px; }
+.check input { flex: none; width: auto; margin-top: 2px; }
+.sheet { display: none; }
+
+@media (max-width: 960px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+
+@media print {
+  .screen { display: none !important; }
+  .sheet { display: block; color: #111; font-size: 12pt; }
+  .sheet address { font-style: normal; }
+  .sheet h1 { margin-bottom: 0.3em; }
+  .sheet h2 { font-size: 14pt; }
+  .sheet section { break-inside: avoid; }
+}

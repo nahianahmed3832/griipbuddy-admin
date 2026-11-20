@@ -1,4 +1,5 @@
 import { ApiError } from './api';
+import { managedProfile } from './managed';
 
 export type MarketSettings = { cod: boolean; manual: { advancePercent: number } | null; paypal: boolean; stripe: boolean; shipping: number | null };
 export type CheckoutSnapshot = {
@@ -9,6 +10,7 @@ export type CheckoutSnapshot = {
 };
 
 export async function checkoutRequest(receipt?: string, body?: unknown, metadata = false) {
+  if (managedProfile()) throw new ApiError(404, 'The managed checkout workspace uses the commerce API.');
   const key = process.env.GRIIP_ADMIN_CHECKOUT_KEY;
   if (!key || key.length < 32) throw new ApiError(503,'Checkout sandbox is disconnected.');
   const path = '/api/checkout/admin' + (receipt ? '?receipt='+encodeURIComponent(receipt)+(metadata ? '&format=metadata' : '') : '');
