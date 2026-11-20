@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
+import { isProtectedDevAdminOrigin } from './dev-admin-profile';
 import { has, superAdmin, type Region, type Staff } from './sections';
 
 export type RecordData = Record<string, unknown>;
@@ -55,13 +56,13 @@ export function integratedCheckoutEnabled() {
 }
 
 export function hosted() {
-  return ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com', 'https://frontend.griipbuddy.com']
-    .includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
+  const origin = process.env.GRIIP_ADMIN_PUBLIC_ORIGIN;
+  return isProtectedDevAdminOrigin(origin) || origin === 'https://dev.griipbuddy.com' || origin === 'https://frontend.griipbuddy.com';
 }
 
 function protectedIntegration() {
   return process.env.GRIIP_ADMIN_TARGET === 'integration' &&
-    ['https://devadmin.griipbuddy.com', 'https://dev.griipbuddy.com'].includes(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN ?? '');
+    (isProtectedDevAdminOrigin() || process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://dev.griipbuddy.com');
 }
 
 function integrationStaffEnrollment() {

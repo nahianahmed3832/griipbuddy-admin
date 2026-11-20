@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { usesPurpleAdminLayout } from '@/lib/admin-layout';
 import { publicSandbox } from '@/lib/api';
 import { adminPath } from '@/lib/paths';
 import { SignInForm } from './sign-in-form';
@@ -20,7 +21,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
   if (error === 'unavailable') message = 'Sign-in is temporarily unavailable. Please try again shortly.';
 
   return (
-    <main className="production-sign-in">
+    <main className="production-sign-in" data-layout={usesPurpleAdminLayout() ? 'purple' : undefined}>
       <section className="production-sign-in-card" aria-labelledby="sign-in-heading">
         <SignInForm action={adminPath('/api/session')} error={message} />
       </section>

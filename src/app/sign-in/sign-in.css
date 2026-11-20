@@ -31,6 +31,10 @@
   --login-error: oklch(70.4% 0.191 22.216);
 }
 
+.production-sign-in[data-layout="purple"] {
+  --login-button: #613d98;
+}
+
 .production-sign-in-card {
   width: min(100%, 400px);
   padding: 24px;

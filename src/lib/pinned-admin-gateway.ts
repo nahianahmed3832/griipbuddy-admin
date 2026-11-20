@@ -2,12 +2,13 @@ import 'server-only';
 
 import { request } from 'node:http';
 import { Readable } from 'node:stream';
+import { isProtectedDevAdminOrigin } from './dev-admin-profile';
 
 const publicOrigin = 'https://devadmin.griipbuddy.com';
 const bodyHeaders = ['content-type', 'content-length', 'accept-ranges', 'content-range', 'content-security-policy'];
 
 export function pinnedAdminGatewayConfigured() {
-  return process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === publicOrigin &&
+  return isProtectedDevAdminOrigin() &&
     /^http:\/\/(?:original-admin|127\.0\.0\.1):\d{2,5}$/.test(process.env.GRIIP_ADMIN_LEGACY_MEDIA_ORIGIN ?? '');
 }
 
