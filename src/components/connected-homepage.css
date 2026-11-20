@@ -21,3 +21,37 @@
 .homepage-preview-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(110px, 100%), 1fr)); gap: 10px; }
 .homepage-preview-tiles > div { border: 1px solid var(--taxonomy-outline); border-radius: 8px; padding: 7px; min-width: 0; }
 .homepage-asset { width: min(100%, 270px); height: auto; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 8px; }
+.homepage-asset--cover { display: block; width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; border-radius: 0; }
+.homepage-tile-editor { display: grid; gap: 12px; min-width: 0; margin: 0; }
+.homepage-tile-editor legend { overflow-wrap: anywhere; padding-inline: .4rem; font-weight: 750; }
+.homepage-tile-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 12px; }
+.homepage-tile-image { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 12px;
+  border: 1px solid var(--taxonomy-outline); border-radius: 8px; }
+.homepage-tile-image label { display: grid; gap: 4px; min-width: 0; }
+.homepage-tile-image button { justify-self: start; }
+.homepage-crop, .homepage-preview-tile-image { overflow: hidden; aspect-ratio: 3 / 4; }
+.homepage-crop { width: min(100%, 120px); border-radius: 8px; }
+.homepage-tile-fields:is([data-layout="SHORTCUTS"], [data-layout="DISCOVERY"]) .homepage-crop { aspect-ratio: 1; }
+.homepage-tile-fields[data-layout="SHOWCASE"] .homepage-crop { aspect-ratio: 5 / 4; }
+.homepage-tile-destination, .homepage-preview-destination { overflow-wrap: anywhere; }
+.homepage-preview-frame { display: grid; gap: 10px; min-width: 0; }
+.homepage-preview-frame[data-viewport="mobile"] { width: min(100%, 390px); }
+.homepage-preview-showcase { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; }
+.homepage-preview-showcase[data-layout="SHOWCASE"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.homepage-preview-frame[data-viewport="mobile"] .homepage-preview-showcase { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.homepage-preview-frame[data-viewport="mobile"] .homepage-preview-showcase[data-layout="SHOWCASE"] { grid-template-columns: 1fr; }
+.homepage-preview-showcase[data-layout="SHORTCUTS"] { display: flex; overflow-x: auto; }
+.homepage-preview-showcase[data-layout="SHORTCUTS"] > li { flex: 0 0 105px; }
+.homepage-preview-showcase[data-layout="SHORTCUTS"] .homepage-preview-tile-image { width: 68px; }
+.homepage-preview-showcase:is([data-layout="SHORTCUTS"], [data-layout="DISCOVERY"]) .homepage-preview-tile-image { aspect-ratio: 1; }
+.homepage-preview-showcase[data-layout="SHOWCASE"] .homepage-preview-tile-image { aspect-ratio: 5 / 4; }
+.homepage-preview-showcase li { min-width: 0; }
+.homepage-preview-tile { display: grid; align-items: end; overflow: hidden; border-radius: 8px; }
+.homepage-preview-tile-copy { display: grid; gap: 4px; padding: 7px; min-width: 0; overflow-wrap: anywhere; }
+.homepage-preview-showcase:is([data-layout="PORTRAIT"], [data-layout="SHOWCASE"]) .homepage-preview-tile > * { grid-area: 1 / 1; }
+.homepage-preview-showcase:is([data-layout="PORTRAIT"], [data-layout="SHOWCASE"]) .homepage-preview-tile-copy {
+  z-index: 1; color: #fff; background: rgb(29 20 22 / 88%); }
+.homepage-preview-destination { display: block; margin-top: 4px; color: var(--color-muted); font-size: .72rem; }
+@media (max-width: 520px) {
+  .homepage-preview-showcase { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

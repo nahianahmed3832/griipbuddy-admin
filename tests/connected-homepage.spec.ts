@@ -31,7 +31,7 @@ test('existing Homepage route previews and publishes scoped changes and restores
   await add.press('Enter');
   const row = form.getByRole('group', { name: 'Untitled section' });
   await expect(row.getByLabel('Section type').getByRole('option')).toHaveText([
-    'Shop by category', 'Featured product selection', 'Featured collections', 'Category spotlight',
+    'Shop by category', 'Category and collection tiles', 'Featured product selection', 'Featured collections', 'Category spotlight',
     'New arrivals', 'Genuine offers or budget picks',
   ]);
   await row.getByLabel('Section type').selectOption('CURATED');

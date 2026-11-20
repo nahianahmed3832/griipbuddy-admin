@@ -4,21 +4,26 @@ import Image from 'next/image';
 import { useEffect, useId, useState } from 'react';
 import { catalogAssetPath } from '@/lib/connected-catalog-contract';
 import { catalogRequest } from '@/lib/connected-catalog-client';
-import type { HomepageImage, HomepageReference, HomepageReferenceKind } from '@/lib/homepage-merchandising';
+import type { HomepageFocalPoint, HomepageImage, HomepageReference, HomepageReferenceKind } from '@/lib/homepage-merchandising';
 import { adminPath } from '@/lib/paths';
 import type { Region } from '@/lib/sections';
 
-export function HomepageAsset({ image, region }: { image: HomepageImage; region: Region }) {
+export function HomepageAsset({ image, region, cover, focalPoint }: {
+  image: HomepageImage; region: Region; cover?: boolean; focalPoint?: HomepageFocalPoint;
+}) {
   const [pathWithoutQuery] = image.src.split('?');
   const src = pathWithoutQuery.replace(/^\/marketplace(?=\/)/, '');
   if (!catalogAssetPath(src)) return null;
   const path = adminPath(`/api/connected-catalog?${new URLSearchParams({ homepageAsset: src, region })}`);
-  return <Image unoptimized src={path} alt={image.alt} width={360} height={202} className="homepage-asset" />;
+  return <Image unoptimized src={path} alt={image.alt} width={360} height={202}
+    className={cover ? 'homepage-asset homepage-asset--cover' : 'homepage-asset'}
+    style={focalPoint ? { objectPosition: `${focalPoint.x}% ${focalPoint.y}%` } : undefined} />;
 }
 
-export function HomepageReferencePicker({ kind, label, region, scope, value, maximum, selected, disabled, onChange, useHref = false }: {
+export function HomepageReferencePicker({ kind, label, region, scope, value, maximum, selected, disabled, onChange, useHref = false, exclude = [] }: {
   kind: HomepageReferenceKind; label: string; region: Region; scope: string; value: string[]; maximum: number;
-  selected: HomepageReference[]; disabled: boolean; useHref?: boolean; onChange: (ids: string[], picked?: HomepageReference) => void;
+  selected: HomepageReference[]; disabled: boolean; useHref?: boolean; exclude?: readonly string[];
+  onChange: (ids: string[], picked?: HomepageReference) => void;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -76,10 +81,10 @@ export function HomepageReferencePicker({ kind, label, region, scope, value, max
           {results.map(option => <li key={option.id}>
             {option.image && kind === 'media' && <HomepageAsset image={option.image} region={region} />}
             <span>{option.label}</span><button type="button" className="taxonomy-button" aria-label={`Select ${option.label}`}
-              disabled={value.includes(option.id)} onClick={() => {
+              disabled={value.includes(option.id) || exclude.includes(option.id)} onClick={() => {
                 onChange(maximum === 1 ? [option.id] : [...value, option.id], option);
                 if (maximum === 1 || value.length + 1 === maximum) setOpen(false);
-              }}>{value.includes(option.id) ? 'Selected' : 'Select'}</button>
+              }}>{value.includes(option.id) ? 'Selected' : exclude.includes(option.id) ? 'Used by another tile' : 'Select'}</button>
           </li>)}
         </ul>}
       </div>}
