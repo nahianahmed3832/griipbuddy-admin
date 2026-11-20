@@ -7,9 +7,9 @@ import { legacyCatalogAuthoringRetired } from '@/lib/connected-catalog';
 import { requestPinnedAdmin } from '@/lib/pinned-admin-gateway';
 import { localCmsUpload } from '@/lib/production-cms-media';
 import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
+import { isEditableAdminOrigin, legacyEditableAdminOrigin } from '@/lib/admin-origins';
 
 const headers = { 'Cache-Control': 'private, no-store' };
-const origin = 'https://devadmin.griipbuddy.com';
 const mediaPath = '/admin/api/media/catalog/';
 const fail = (error: string, status: number) => Response.json({ error }, { status, headers });
 
@@ -18,6 +18,8 @@ export async function POST(request: NextRequest) {
   const auth = await session();
   if (!auth) return fail('Sign in to upload media.', 401);
   try {
+    const origin = process.env.GRIIP_ADMIN_PUBLIC_ORIGIN;
+    if (!origin || !isEditableAdminOrigin(origin)) return fail('Media upload is unavailable on this host.', 404);
     const scope = request.nextUrl.searchParams.get('scope');
     if ((scope === 'product' || scope === 'category') && legacyCatalogAuthoringRetired()) {
       return fail('Upload catalog media from the connected workspace.', 410);
@@ -45,7 +47,8 @@ export async function POST(request: NextRequest) {
     if (!response.ok) return fail('Could not upload the file.', response.status);
     const payload = obj(await response.json());
     const url = str(payload.secure_url);
-    const key = kind === 'video' && url.startsWith(origin + mediaPath) ? url.slice((origin + mediaPath).length) : str(obj(payload.data).url);
+    const gatewayPath = legacyEditableAdminOrigin + mediaPath;
+    const key = kind === 'video' && url.startsWith(gatewayPath) ? url.slice(gatewayPath.length) : str(obj(payload.data).url);
     if (!localCmsUpload(key)) return fail('Could not upload the file.', 502);
     return Response.json({ url: origin + mediaPath + key }, { headers });
   } catch (error) {

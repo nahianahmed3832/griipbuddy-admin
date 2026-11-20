@@ -1,4 +1,5 @@
 import { adminPath } from './paths';
+import { editableAdminOrigins } from './admin-origins';
 
 const uuid = '[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}';
 const upload = new RegExp(`^${uuid}\\.(?:jpe?g|png|webp|gif|avif|apng|bmp|tiff?|heic|heif|svg|ico|mp4|webm|ogv|mov)$`);
@@ -18,9 +19,10 @@ export function localCmsUpload(key: string) {
 }
 
 export function productionCmsPreview(value: string) {
+  const editablePath = editableAdminOrigins.map(origin => origin + pinnedPath).find(path => value.startsWith(path));
   const key = value.startsWith(cdn) ? value.slice(cdn.length)
     : value.startsWith(legacy) ? 'legacy-s3/' + value.slice(legacy.length)
-    : value.startsWith('https://devadmin.griipbuddy.com' + pinnedPath) ? value.slice(('https://devadmin.griipbuddy.com' + pinnedPath).length)
+    : editablePath ? value.slice(editablePath.length)
     : value.startsWith(pinnedPath) ? value.slice(pinnedPath.length)
     : value;
   return cmsMediaKey(key) ? adminPath('/api/media/catalog/' + key) : value;

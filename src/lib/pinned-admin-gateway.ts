@@ -2,12 +2,13 @@ import 'server-only';
 
 import { request } from 'node:http';
 import { Readable } from 'node:stream';
+import { isEditableAdminOrigin, legacyEditableAdminOrigin } from './admin-origins';
 
-const publicOrigin = 'https://devadmin.griipbuddy.com';
+const gatewayHost = new URL(legacyEditableAdminOrigin).host;
 const bodyHeaders = ['content-type', 'content-length', 'accept-ranges', 'content-range', 'content-security-policy'];
 
 export function pinnedAdminGatewayConfigured() {
-  return process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === publicOrigin &&
+  return isEditableAdminOrigin(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN) &&
     /^http:\/\/(?:original-admin|127\.0\.0\.1):\d{2,5}$/.test(process.env.GRIIP_ADMIN_LEGACY_MEDIA_ORIGIN ?? '');
 }
 
@@ -23,7 +24,8 @@ export function requestPinnedAdmin(path: string, token: string, incoming: Reques
   return new Promise((resolve, reject) => {
     const upstream = request(url, {
       method,
-      headers: { ...sourceHeaders, host: 'devadmin.griipbuddy.com', origin: publicOrigin, authorization: 'Bearer ' + token },
+      // The private legacy gateway still verifies its original Host and Origin.
+      headers: { ...sourceHeaders, host: gatewayHost, origin: legacyEditableAdminOrigin, authorization: 'Bearer ' + token },
       signal: incoming.signal,
     }, result => {
       const status = result.statusCode ?? 502;

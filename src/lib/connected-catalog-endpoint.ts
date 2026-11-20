@@ -1,5 +1,6 @@
 import 'server-only';
 import { ApiError } from './api';
+import { isEditableAdminOrigin } from './admin-origins';
 
 export function connectedCatalogEndpoint(homepage: boolean) {
   const raw = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_URL : process.env.GRIIP_MAIN_ADMIN_CATALOG_URL;
@@ -9,7 +10,7 @@ export function connectedCatalogEndpoint(homepage: boolean) {
   if (!raw || !secret || Buffer.byteLength(secret, 'utf8') < 32 || !['fixture', 'integration'].includes(profile ?? '')) {
     throw new ApiError(503, 'The connected catalog is unavailable in this workspace.');
   }
-  if (protectedDev && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN !== 'https://devadmin.griipbuddy.com') {
+  if (protectedDev && !isEditableAdminOrigin(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN)) {
     throw new ApiError(503, 'The connected catalog requires the protected development admin origin.');
   }
   let endpoint: URL;

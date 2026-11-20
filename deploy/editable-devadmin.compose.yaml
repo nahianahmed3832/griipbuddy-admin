@@ -6,7 +6,7 @@ services:
     environment:
       NEXT_PUBLIC_GRIIP_ADMIN_PREFIX: /admin
       GRIIP_ADMIN_TARGET: integration
-      GRIIP_ADMIN_PUBLIC_ORIGIN: https://devadmin.griipbuddy.com
+      GRIIP_ADMIN_PUBLIC_ORIGIN: ${GRIIP_ADMIN_PUBLIC_ORIGIN:-https://admindev.griipbuddy.com}
       GRIIP_ADMIN_INTEGRATED: "1"
       GRIIP_ADMIN_MANAGED: "1"
       GRIIP_ADMIN_INTEGRATION_STAFF_ENROLLMENT: "1"

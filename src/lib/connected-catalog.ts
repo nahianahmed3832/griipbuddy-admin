@@ -6,6 +6,7 @@ import { isHomepageRequest, type CatalogRequest } from './connected-catalog-cont
 import { connectedCatalogEndpoint } from './connected-catalog-endpoint';
 import { has, superAdmin, type Region } from './sections';
 import { scopedCatalogPilotRequested, verifyScopedCatalogFence } from './scoped-catalog-pilot';
+import { isEditableAdminOrigin } from './admin-origins';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
 const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
@@ -27,7 +28,7 @@ export function legacyCatalogAuthoringRetired() {
 export function connectedHomepageConfigured() {
   if (process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_ENABLED !== '1') return false;
   return process.env.GRIIP_ADMIN_TARGET === 'fixture' || (process.env.GRIIP_ADMIN_TARGET === 'integration' &&
-    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
+    isEditableAdminOrigin(process.env.GRIIP_ADMIN_PUBLIC_ORIGIN));
 }
 
 export function connectedCatalogMarket(auth: Session, region: Region, homepage = false): MarketId {
