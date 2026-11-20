@@ -1,6 +1,7 @@
 import { api, ApiError, arr, canWrite, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
 import { barcodePattern, receiptLimit } from './barcode-data';
 import { has, type Region, type Staff } from './sections';
+import { verifyScopedLegacyCatalogWrite } from './scoped-catalog-pilot';
 
 export type Choice = { value: string; label: string };
 export type Field = {
@@ -244,6 +245,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const variant = obj(stock.variant);
       const productId = refId(variant.product);
       await productInRegion(productId, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: productId });
       const from = await locationInRegion(input.location, region, auth);
       const fromId = refId(from);
       const locationStock = arr(stock.stocks_by_location).map(obj).find(row => refId(row.location) === fromId);
@@ -272,7 +274,8 @@ export async function executeOperation(id: OperationId, recordId: string, values
       break;
     }
     case 'barcode-generate': {
-      await findVariantBySku(input.sku, region, auth);
+      const variant = await findVariantBySku(input.sku, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: refId(variant.product) });
       const generated = obj(await mutate('/barcode', auth, 'POST', {
         sku: input.sku, product_count: Number(input.quantity), admin_note: input.note,
       }));
@@ -281,6 +284,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
     case 'barcode-receive': {
       const barcodes = barcodeList(input.barcodes);
       const receiving = await locationInRegion(input.location, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth);
       // Inspect small batches sequentially so a single scan does not fan out into unbounded requests.
       const products = new Set<string>();
       for (const barcode of barcodes) {
@@ -408,12 +412,14 @@ export async function executeOperation(id: OperationId, recordId: string, values
     case 'product-publication': {
       const productId = checkedId(recordId, 'Product');
       await productInRegion(productId, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: productId });
       await mutate('/product/admin/publish/' + productId, auth, 'PATCH', { is_published: input.enabled === 'true' });
       break;
     }
     case 'product-details': {
       const productId = checkedId(recordId, 'Product');
       await productInRegion(productId, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: productId });
       const tags = [...new Map(input.tags.split(',').map(tag => tag.trim()).filter(Boolean)
         .map(tag => [tag.toLowerCase(), tag])).values()];
       if (tags.length > 24 || tags.some(tag => tag.length > 60)) invalid('Use up to 24 search tags of 60 characters each.');
@@ -427,6 +433,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const variant = obj(await api('/product/variant/single/' + variantId, auth.token));
       const productId = refId(variant.product);
       await productInRegion(productId, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: productId });
       const regular = Number(input.regular);
       const sale = Number(input.sale);
       if (regular <= 0 || sale > regular) invalid('Regular price must be positive and sale price cannot exceed it.');
@@ -450,6 +457,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
       const productId = checkedId(recordId, 'Product');
       if (region !== 'INTERNATIONAL') invalid('Country coverage applies to international products.');
       await productInRegion(productId, region, auth);
+      await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: productId });
       const codes = [...new Set(input.countries.toUpperCase().split(/[\s,]+/).filter(Boolean))];
       const countries = obj(await api('/country/admin/all?limit=250', auth.token));
       const selected = arr(countries.countries).map(obj).filter(country => codes.includes(str(country.code)));

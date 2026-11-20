@@ -3,6 +3,7 @@ import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, same
 import { readProduct } from '@/lib/catalog-admin';
 import { locationsEndpoint } from '@/lib/locations';
 import { canAccessStockChanges, stockChangeApi, stockChangeModes, type StockChangeMode } from '@/lib/stock-changes';
+import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 const reject = (message: string, status: number) => new Response(message, { status, headers });
@@ -57,6 +58,7 @@ async function update(mode: StockChangeMode, request: NextRequest) {
   try { JSON.parse(raw); } catch { return reject('Invalid stock change request.', 400); }
   try {
     const region = getRegion(request.nextUrl.searchParams.get('region') ?? undefined, auth.staff);
+    await verifyScopedLegacyCatalogWrite(auth);
     const response = await requestApi(url(stockChangeApi + '/' + mode, { region }), auth.token, { method: 'POST', body: raw });
     const data = obj(await response.json().catch(() => ({})));
     if (!response.ok) return reject(response.status >= 500 ? 'The inventory service did not confirm this change. Retry the same details or check the history.'

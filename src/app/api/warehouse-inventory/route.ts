@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { ApiError, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
 import { canAccessStockChanges } from '@/lib/stock-changes';
 
 const path = '/stocks/workspace/warehouse-inventory';
@@ -29,6 +30,7 @@ async function inventory(request: NextRequest, write: boolean) {
   }
   try {
     const region = getRegion(query.get('region') ?? undefined, auth.staff);
+    if (write) await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: product });
     const target = term ? url(path + '/products', { region, q: term }) : url(path, { region, product, warehouse });
     const response = await requestApi(target, auth.token, write ? { method: 'PUT', body } : undefined);
     const result = obj(await response.json());

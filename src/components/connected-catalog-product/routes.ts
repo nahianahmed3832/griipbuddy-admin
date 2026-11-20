@@ -13,5 +13,5 @@ export function regionFor(marketId?: MarketId): Region {
 }
 
 export function productPath(id: string, region: Region) {
-  return `/dashboard/product-details/${encodeURIComponent(id)}?${new URLSearchParams({ region })}`;
+  return `/dashboard/product-details/${encodeURIComponent(id)}?${new URLSearchParams({ region, catalog: "connected" })}`;
 }

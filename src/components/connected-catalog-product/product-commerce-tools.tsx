@@ -401,7 +401,9 @@ function InventoryHistory({ data, skus }: { data: Data; skus: Map<string, Varian
   </details>;
 }
 
-export function ConnectedInventory({ data, actorId, canEdit }: { data: Data; actorId: string; canEdit: boolean }) {
+export function ConnectedInventory({ data, actorId, canEdit, canConfigureWarehouses = true }: {
+  data: Data; actorId: string; canEdit: boolean; canConfigureWarehouses?: boolean;
+}) {
   const [selected, setSelected] = useState<{ id: string; action: "movement" | "transfer" }>();
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
@@ -455,7 +457,7 @@ export function ConnectedInventory({ data, actorId, canEdit }: { data: Data; act
       ? <MovementForm key={current.id} data={data} actorId={actorId} pool={current} onSaved={message => { setNotice(message); setSelected(undefined); }} />
       : <TransferForm key={current.id} data={data} actorId={actorId} pool={current} destinations={destinations(current)}
         onSaved={() => { setNotice("Stock transfer recorded."); setSelected(undefined); }} />)}
-    {canEdit && (data.warehouses.length ? <>
+    {canEdit && canConfigureWarehouses && (data.warehouses.length ? <>
       <OpenPoolForm data={data} />
       <WarehouseServices data={data} />
     </> : <p>No warehouses are available to manage for this market.

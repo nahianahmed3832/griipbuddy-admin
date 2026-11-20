@@ -77,7 +77,7 @@ function CategoryFields({ draft, categories, change, marketId }: { draft: Produc
         {!primary && draft.primaryCategoryId && <option value={draft.primaryCategoryId}>{draft.primaryCategoryId} (review placement)</option>}
         {categories.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
-      <div><Link href={`/dashboard/categories?region=${regionFor(marketId)}`} className="text-link">Open category workspace</Link></div>
+      <div><Link href={`/dashboard/categories?region=${regionFor(marketId)}&catalog=connected`} className="text-link">Open category workspace</Link></div>
     </div>
     {!categories.length && <p className="taxonomy-muted">Create a published subcategory in the category workspace to assign this product.</p>}
     <details>
@@ -105,10 +105,11 @@ function CategoryFields({ draft, categories, change, marketId }: { draft: Produc
   </section>;
 }
 
-export function ConnectedProductAuthoring({ product, categories, marketId }: {
+export function ConnectedProductAuthoring({ product, categories, marketId, allowNewVariants = true }: {
   product: ProductWorkspaceProduct | null;
   categories: readonly ProductCategoryChoice[];
   marketId?: MarketId;
+  allowNewVariants?: boolean;
 }) {
   const serverDraft = useMemo(() => draftProduct(product), [product]);
   const [edit, setEdit] = useState<ProductDraft | null>(null);
@@ -162,7 +163,7 @@ export function ConnectedProductAuthoring({ product, categories, marketId }: {
       <fieldset disabled={operation.pending || archived} className="taxonomy-form">
         <GeneralFields draft={draft} change={change} />
         <CategoryFields draft={draft} categories={categories} marketId={marketId} change={change} />
-        <ConnectedProductVariants draft={draft} product={product} marketId={marketId} change={change}
+        <ConnectedProductVariants draft={draft} product={product} marketId={marketId} change={change} allowNewVariants={allowNewVariants}
           templates={templates.filter(row => row.scope === "VARIANT")} />
       </fieldset>
       <div className="taxonomy-card">

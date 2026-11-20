@@ -155,6 +155,7 @@ export function ConnectedCategoryAssignments({ data, current, categories, query,
 
   return <section className={css.panel} aria-label="Product assignments"><h2>Product assignments</h2>
     <form action={adminPath('/dashboard/categories')} className={css.search}>
+      <input type="hidden" name="catalog" value="connected"/>
       <input type="hidden" name="record" value={current.id}/>{region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
       <label>Placement<select name="scope" defaultValue={scope} disabled={pending}><option value="all">Category and descendants</option>
         <option value="direct">Direct</option><option value="descendants">Descendants</option><option value="search">All products</option></select></label>
@@ -178,8 +179,8 @@ export function ConnectedCategoryAssignments({ data, current, categories, query,
           const chosen = event.target.checked;
           setSelected(values => chosen ? [...values, row.id] : values.filter(id => id !== row.id));
         }}/></td>}
-      <th scope="row"><Link href={'/dashboard/product-details/' + encodeURIComponent(row.id) +
-        (region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '')}>{row.name}</Link></th>
+      <th scope="row"><Link href={'/dashboard/product-details/' + encodeURIComponent(row.id) + '?catalog=connected' +
+        (region === 'INTERNATIONAL' ? '&region=INTERNATIONAL' : '')}>{row.name}</Link></th>
       <td>{row.primaryCategoryId === current.id ? 'Primary' : row.secondaryCategoryIds.includes(current.id) ? 'Additional' :
         row.placement === 'descendant' ? 'Descendant' : 'Unassigned'}</td>
       {canEdit && <td><button className={catalog.outline + ' ' + css.compact} type="button" aria-label={'Edit assignments for ' + row.name}

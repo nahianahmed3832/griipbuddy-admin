@@ -16,9 +16,11 @@ import '@/app/sign-in/production-fonts.css';
 import { ProductionFraudChecker } from './production-fraud';
 import styles from './production-admin-shell.module.css';
 
-type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean; homepage?: 'connected' | 'legacy' };
+type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean; pilot?: boolean; homepage?: 'connected' | 'legacy' };
 const item = (label: string, path: string, permission?: string, connected?: boolean, central?: boolean): Entry =>
   ({ label, path: '/dashboard/' + path, permission, connected, central });
+const pilotItem = (label: string, path: string, permission: string): Entry =>
+  ({ ...item(label, path, permission, true), pilot: true });
 const homepageItem = (label: string, path: string, homepage: NonNullable<Entry['homepage']>, permission?: string): Entry =>
   ({ ...item(label, path, permission), homepage });
 const navigation = [
@@ -39,6 +41,7 @@ const navigation = [
   { title: 'Inventory', groups: [
     { label: 'Products', icon: Package, entries: [
       item('All Products', 'products'), item('Create Product', 'create-product'), item('Stocks Report', 'check-outlet-stocks'),
+      pilotItem('Connected Products', 'products', 'product.view'), pilotItem('Connected Stock', 'check-outlet-stocks', 'stock.view'),
       item('Product Reviews', 'product-reviews'), item('Product Faqs', 'product-faqs'), item('Return Policies', 'return-policies'),
       item('All Brands', 'all-brands'), item('Countries & Currency', 'all-countries'),
       item('Approved Device Models', 'catalog-devices', 'product.view', true, true),
@@ -52,6 +55,7 @@ const navigation = [
     ] },
     { label: 'Categories & Subcategories', icon: Tags, entries: [
       item('All Categories', 'categories'), item('All Subcategories', 'sub-categories'),
+      pilotItem('Connected Categories', 'categories', 'product.view'),
       item('Create Category', 'add-new-category'), item('Create Subcategory', 'add-new-sub-category'),
       item('Category Attributes', 'category-attributes', 'product.view', true),
     ] },
@@ -111,9 +115,9 @@ function subscribeViewport(update: () => void) {
 const isNarrowViewport = () => !window.matchMedia(desktopViewport).matches;
 const isServerNarrowViewport = () => false;
 
-export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog, connectedHomepage }: {
+export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, connectedCatalog, connectedHomepage, catalogPilot }: {
   children: ReactNode; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; path: string; query: string; readOnly: boolean; fraud: boolean;
-  connectedCatalog?: boolean; connectedHomepage?: boolean;
+  connectedCatalog?: boolean; connectedHomepage?: boolean; catalogPilot?: boolean;
 }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -129,7 +133,8 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
     restoreFocus.current = true;
     setMobile(false);
   }, []);
-  const current = currentMenuPath(path);
+  const connectedLane = catalogPilot && new URLSearchParams(query).get('catalog') === 'connected';
+  const current = currentMenuPath(connectedLane && path === '/dashboard/create-product' ? '/dashboard/products' : path);
   const grants = new Set(staff.permissions);
   const canSwitchRegion = grants.has('international.access');
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
@@ -228,8 +233,11 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
           {groups.filter(group => group.label !== 'Reports' || hasReports).map(({ label, icon: Icon, entries }) => {
             const allowed = entries.filter(entry => (!entry.permission || grants.has(entry.permission)) &&
               (!entry.connected || connectedCatalog) && (!entry.central || superAdmin(staff)) &&
+              (!entry.pilot || catalogPilot) &&
               (!entry.homepage || (entry.homepage === 'connected') === Boolean(connectedHomepage)));
-            const selected = allowed.some(entry => entry.path === current);
+            const currentEntry = allowed.find(entry => entry.path === current && Boolean(entry.pilot) === Boolean(connectedLane)) ??
+              allowed.find(entry => entry.path === current);
+            const selected = Boolean(currentEntry);
             const open = expanded[label] ?? selected;
             return <div key={label} className={styles.menugroup}>
               <button type="button" className={styles.menuButton} data-selected={selected} aria-expanded={open}
@@ -237,8 +245,9 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
                 <Icon size={16} aria-hidden="true"/><span>{label}</span><ChevronRight size={16} aria-hidden="true"/>
               </button>
               {open && <ul className={styles.submenu}>
-                {allowed.map(entry => <li key={entry.path} data-mobile-only={entry.path.endsWith('/fraud-checker')}>
-                  <Link href={entry.path + regionQuery} aria-current={entry.path === current ? 'page' : undefined}
+                {allowed.map(entry => <li key={entry.label} data-mobile-only={entry.path.endsWith('/fraud-checker')}>
+                  <Link href={entry.path + (entry.pilot ? (regionQuery ? regionQuery + '&catalog=connected' : '?catalog=connected') : regionQuery)}
+                    aria-current={entry === currentEntry ? 'page' : undefined}
                     onClick={() => { setExpanded({}); setMobile(false); }}>{entry.label}</Link>
                 </li>)}
               </ul>}

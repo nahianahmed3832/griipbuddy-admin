@@ -1,6 +1,7 @@
 import { ApiError, mongoId, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { canChangeCategories } from '@/lib/category-workspace';
-import { connectedCatalogConfigured } from '@/lib/connected-catalog';
+import { legacyCatalogAuthoringRetired } from '@/lib/connected-catalog';
+import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
 
 const invalid = (error: string, status = 400) => Response.json({ error }, { status });
 const maxImage = 8 * 1024 * 1024;
@@ -10,7 +11,7 @@ async function mutate(request: Request, method: 'POST' | 'PATCH') {
   try {
     const auth = await session();
     if (!auth) return invalid('Sign in to manage categories.', 401);
-    if (connectedCatalogConfigured()) return invalid('Use the connected category workspace to save this change.', 410);
+    if (legacyCatalogAuthoringRetired()) return invalid('Use the connected category workspace to save this change.', 410);
     const params = new URL(request.url).searchParams;
     const upload = params.get('upload') === '1';
     const reorder = params.get('reorder') === '1';
@@ -19,6 +20,7 @@ async function mutate(request: Request, method: 'POST' | 'PATCH') {
       if (method !== 'POST' || !(['product.create', 'product.update'] as const).some(permission => canChangeCategories(auth, permission))) {
         return invalid('You do not have access to upload category images.', 403);
       }
+      await verifyScopedLegacyCatalogWrite(auth);
       const size = Number(request.headers.get('content-length'));
       const type = request.headers.get('content-type') ?? '';
       if (!Number.isSafeInteger(size) || size < 1 || size > maxImage || !['image/jpeg','image/png','image/webp'].includes(type)) {
@@ -41,10 +43,12 @@ async function mutate(request: Request, method: 'POST' | 'PATCH') {
     const { depth, id, ...body } = parsed;
     if (typeof depth !== 'number' || !Number.isInteger(depth) || depth < 0 || depth > 3 ||
       (method === 'PATCH' || reorder ? !mongoId(str(id)) : id !== undefined)) return invalid('Choose a valid category.');
+    await verifyScopedLegacyCatalogWrite(auth, typeof id === 'string' ? { kind: 'category', id } : undefined);
     return categoryResponse(await requestApi('/catalog/category-tree/' + depth + (method === 'PATCH' || reorder ? '/' + id : '') + (reorder ? '/reorder' : ''),
       auth.token, { method, body: JSON.stringify(body) }), false, reorder);
   } catch (error) {
     if (error instanceof SyntaxError) return invalid('The category form is invalid.');
+    if (error instanceof ApiError && error.status === 409) return invalid(error.message, error.status);
     return invalid('The category service could not confirm this change. Reload before retrying.',
       error instanceof ApiError ? error.status : 502);
   }
@@ -75,11 +79,12 @@ export async function DELETE(request: Request) {
   try {
     const auth = await session();
     if (!auth) return invalid('Sign in to manage categories.', 401);
-    if (connectedCatalogConfigured()) return invalid('Use the connected category workspace to archive this category.', 410);
+    if (legacyCatalogAuthoringRetired()) return invalid('Use the connected category workspace to archive this category.', 410);
     if (!canChangeCategories(auth, 'product.delete')) return invalid('You do not have access to delete categories.', 403);
     const query = new URL(request.url).searchParams;
     const id = query.get('id') ?? '', depth = query.get('depth') ?? '';
     if (!mongoId(id) || !/^[0-3]$/.test(depth)) return invalid('Choose a valid category.');
+    await verifyScopedLegacyCatalogWrite(auth, { kind: 'category', id });
     const response = await requestApi('/catalog/category-tree/' + depth + '/' + id, auth.token, { method: 'DELETE' });
     if (!response.ok) {
       const payload = obj(await response.json().catch(() => null));
@@ -89,6 +94,7 @@ export async function DELETE(request: Request) {
     }
     return Response.json({ deleted: true });
   } catch (error) {
+    if (error instanceof ApiError && error.status === 409) return invalid(error.message, error.status);
     return invalid('The category service could not confirm removal.', error instanceof ApiError ? error.status : 502);
   }
 }

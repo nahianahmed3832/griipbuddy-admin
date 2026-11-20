@@ -2,7 +2,9 @@ import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import { ApiError, getRegion, obj, workspaceWritesEnabled, type Session } from './api';
 import { isHomepageRequest, type CatalogRequest } from './connected-catalog-contract';
+import { connectedCatalogEndpoint } from './connected-catalog-endpoint';
 import { has, superAdmin, type Region } from './sections';
+import { scopedCatalogPilotRequested, verifyScopedCatalogFence } from './scoped-catalog-pilot';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
 const orderReads = new Set(['orders', 'order', 'order-cases', 'order-case']);
@@ -13,33 +15,18 @@ export function connectedCatalogConfigured() {
   return Boolean(process.env.GRIIP_MAIN_ADMIN_CATALOG_URL || process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET);
 }
 
+export function usesConnectedCatalog(lane?: string) {
+  return scopedCatalogPilotRequested() ? lane === 'connected' : connectedCatalogConfigured();
+}
+
+export function legacyCatalogAuthoringRetired() {
+  return connectedCatalogConfigured() && !scopedCatalogPilotRequested();
+}
+
 export function connectedHomepageConfigured() {
   if (process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_ENABLED !== '1') return false;
   return process.env.GRIIP_ADMIN_TARGET === 'fixture' || (process.env.GRIIP_ADMIN_TARGET === 'integration' &&
     process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
-}
-
-function connectedCatalogEndpoint(homepage: boolean) {
-  const raw = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_URL : process.env.GRIIP_MAIN_ADMIN_CATALOG_URL;
-  const secret = homepage ? process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_SECRET : process.env.GRIIP_MAIN_ADMIN_CATALOG_SECRET;
-  const profile = process.env.GRIIP_ADMIN_TARGET;
-  const protectedDev = profile === 'integration';
-  if (!raw || !secret || Buffer.byteLength(secret, 'utf8') < 32 || !['fixture', 'integration'].includes(profile ?? '')) {
-    throw new ApiError(503, 'The connected catalog is unavailable in this workspace.');
-  }
-  if (protectedDev && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN !== 'https://devadmin.griipbuddy.com') {
-    throw new ApiError(503, 'The connected catalog requires the protected development admin origin.');
-  }
-  let endpoint: URL;
-  try { endpoint = new URL(raw); } catch { throw new ApiError(503, 'The connected catalog endpoint is invalid.'); }
-  if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1' || !endpoint.port || endpoint.username || endpoint.password ||
-      endpoint.search || endpoint.hash || !/^\/(marketplace\/)?api\/internal\/main-admin-catalog$/.test(endpoint.pathname)) {
-    throw new ApiError(503, 'The connected catalog requires its verified private endpoint.');
-  }
-  if (protectedDev && (endpoint.port !== '4401' || endpoint.pathname !== '/marketplace/api/internal/main-admin-catalog')) {
-    throw new ApiError(503, 'The protected admin requires the isolated Marketplace development service.');
-  }
-  return { endpoint, secret };
 }
 
 export function connectedCatalogMarket(auth: Session, region: Region, homepage = false) {
@@ -152,7 +139,12 @@ export async function connectedCatalog<T = unknown>(auth: Session, region: Regio
     if (!has(auth.staff, 'cms.view') || ('action' in request && !mayEditConnectedHomepage(auth))) {
       throw new ApiError(403, 'Homepage access is unavailable for your account.');
     }
-  } else authorizeRequest(auth, request);
+  } else {
+    authorizeRequest(auth, request);
+    if (scopedCatalogPilotRequested() && 'action' in request && !request.action.startsWith('order.')) {
+      await verifyScopedCatalogFence(auth);
+    }
+  }
   const marketId = connectedCatalogMarket(auth, region, homepage);
   if (request.input?.marketId !== undefined && request.input.marketId !== marketId) {
     throw new ApiError(409, 'Select the intended operating region before saving.');

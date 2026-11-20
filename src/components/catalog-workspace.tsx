@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import type { ReactElement } from 'react';
 import { api, ApiError, arr, canWrite, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { reference } from '@/lib/advanced';
@@ -8,11 +9,12 @@ import { currencies, productFields, registries, statusOptions, type Registry } f
 import { catalogFilters, catalogParams, catalogPath, loadCategoryTree } from '@/lib/catalog-list';
 import { categoryName, type CategoryNode } from '@/lib/category-tree';
 import { canChangeCategories, loadCategories } from '@/lib/category-workspace';
-import { connectedCatalog, connectedCatalogConfigured, mayEditConnectedMerchandising, mayEditConnectedTaxonomy } from '@/lib/connected-catalog';
+import { connectedCatalog, mayEditConnectedMerchandising, mayEditConnectedTaxonomy, usesConnectedCatalog } from '@/lib/connected-catalog';
 import type { CatalogRead } from '@/lib/connected-catalog-contract';
 import { taxonomyHref, type CategoryData } from '@/lib/connected-category-data';
 import { columnText, loadResource, param, type Query } from '@/lib/data';
 import { pinnedAdminGatewayConfigured } from '@/lib/pinned-admin-gateway';
+import { scopedCatalogPilotRequested, verifyScopedCatalogFence } from '@/lib/scoped-catalog-pilot';
 import { ProductionCategories, ProductionCategoryEditor } from './production-categories';
 import { ProductionBrandEditor, ProductionFaqEditor, ProductionRegistryDetail, ProductionRegistryList,
   type RegistryProduct, type RegistryRow } from './production-catalog-registry';
@@ -33,6 +35,7 @@ import { ProductionReturnPolicies, ProductionReturnPolicyEditor, type ReturnPoli
 import { StorefrontEditor, type StorefrontSettings } from './storefront-editor';
 import { Badge, Table } from './tables';
 import { ConnectedProductWorkspace } from './connected-catalog-product/workspace';
+import { productPath } from './connected-catalog-product/routes';
 import catalogStyles from './production-catalog.module.css';
 import productEditorStyles from './production-product-editor.module.css';
 
@@ -68,11 +71,14 @@ function RecoveredCategories({ nodes, selected, subcategory, ambiguous }: {
 }
 
 export async function CategoryWorkspace({ auth, q, region, production, subcategory = false }: Props & { subcategory?: boolean }) {
-  if (connectedCatalogConfigured()) {
+  const lane = param(q, 'connectedOrganization') === '1' ? 'connected' : param(q, 'catalog');
+  if (usesConnectedCatalog(lane)) {
+    const pilot = scopedCatalogPilotRequested();
     const requested = (param(q, 'record') ?? param(q, 'category'))?.normalize('NFC');
     const mode = param(q, 'mode');
     const requestedView = param(q, 'view');
     const view: TaxonomyView = requestedView === 'attributes' || requestedView === 'menus' || requestedView === 'collections' ? requestedView : 'categories';
+    const organizationView = view === 'menus' || view === 'collections';
     const rawScope = param(q, 'scope');
     const scope = rawScope === 'direct' || rawScope === 'descendants' || rawScope === 'search' ? rawScope : 'all';
     const rawPage = Number(param(q, 'page'));
@@ -101,17 +107,29 @@ export async function CategoryWorkspace({ auth, q, region, production, subcatego
         return <RecoveredCategories nodes={nodes} selected={selected} subcategory={subcategory}/>;
       }
     }
-    return <ConnectedCategories data={data} region={region} view={view} requested={requested} query={query}
+    const selectedId = data.selectedId ?? requested;
+    const catalogEdits = !pilot || (region === 'BD' && !organizationView && Boolean(selectedId && data.pilotCategoryIds?.includes(selectedId)));
+    return <ConnectedCategories data={pilot ? { ...data, uploadEnabled: false } : data}
+      region={region} view={view} requested={requested} query={query} pilot={pilot}
       mode={mode} assignmentScope={scope} childrenOnly={subcategory} permissions={{
-        create: data.owner && canChangeCategories(auth, 'product.create'),
-        update: data.owner && mayEditConnectedTaxonomy(auth), archive: data.owner && canChangeCategories(auth, 'product.delete'),
-        merchandise: mayEditConnectedMerchandising(auth),
+        create: !pilot && data.owner && canChangeCategories(auth, 'product.create'),
+        update: catalogEdits && data.owner && mayEditConnectedTaxonomy(auth),
+        archive: catalogEdits && data.owner && canChangeCategories(auth, 'product.delete'),
+        merchandise: catalogEdits && mayEditConnectedMerchandising(auth),
       }}/>;
   }
   const data = await loadCategories(auth);
   const ref = param(q, 'record');
   const initial = ref && data.nodes.find(row => row.id === ref || row.slug === ref)?.id;
   const mode = param(q, 'mode');
+  if (scopedCatalogPilotRequested() && mode === 'edit' && ref) {
+    const matches = data.nodes.filter(row => (subcategory ? row.depth > 0 : row.depth === 0) &&
+      (row.id === ref || row.slug === ref));
+    if (matches.length > 1) return <RecoveredCategories nodes={data.nodes} subcategory={subcategory} ambiguous/>;
+    if (matches[0] && await verifyScopedCatalogFence(auth, { kind: 'category', id: matches[0].id })) {
+      redirect(taxonomyHref(region, { record: matches[0].id }));
+    }
+  }
   if (production) {
     const canCreate = data.managed && canChangeCategories(auth, 'product.create');
     const canEdit = data.managed && canChangeCategories(auth, 'product.update');
@@ -155,7 +173,7 @@ function inputValue(record: RecordData, field: string) {
   return asInput(record[field]);
 }
 export async function ProductWorkspace({ auth, q, region, id, production }: Props) {
-  if (connectedCatalogConfigured()) return ConnectedProductWorkspace({ auth, q, region, id });
+  if (usesConnectedCatalog(param(q, 'catalog'))) return ConnectedProductWorkspace({ auth, q, region, id });
   if (!id) return ProductCatalog({ auth, q, region, production });
   const lookupSlug = param(q, 'lookup') === 'slug' && !(production && mongoId(id));
   const creating = id === 'new' && !lookupSlug;
@@ -163,6 +181,9 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
   if (!readId) throw new ApiError(404);
   if (creating && !canEditProduct('create', auth)) throw new ApiError(403);
   const record = creating ? {} : await readProduct(readId, auth, region);
+  if (!creating && scopedCatalogPilotRequested() && await verifyScopedCatalogFence(auth, { kind: 'product', id: readId })) {
+    redirect(productPath(readId, region));
+  }
   const mode = param(q, 'mode');
   const editing = creating || mode === 'edit';
   const variantsOnly = mode === 'variants';

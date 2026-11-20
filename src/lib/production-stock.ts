@@ -27,6 +27,7 @@ export function productionStockFilters(q: Query, region: Region): ProductionStoc
   const product = param(q, 'product') ?? '';
   return {
     region, businessLocation, product: mongoId(product) ? product : undefined, skuQuery: param(q, 'skuQuery')?.trim().slice(0, 100) || undefined,
+    ...(param(q, 'catalog') === 'legacy' && { catalog: 'legacy' }),
     searchQuery: (param(q, 'searchQuery') ?? param(q, 'q'))?.trim().slice(0, 100) || undefined,
     sortBy: sortBy && stockSorts.some(([id]) => id === sortBy) ? sortBy : 'available_quantity',
     sortOrder: param(q, 'sortOrder') === 'asc' ? 'asc' : 'desc',

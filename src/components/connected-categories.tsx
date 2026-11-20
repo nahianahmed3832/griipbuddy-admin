@@ -16,7 +16,8 @@ import catalog from './production-catalog.module.css';
 
 export type TaxonomyView = 'categories' | 'attributes' | 'menus' | 'collections';
 type Props = { data: CategoryData; region: Region; permissions: CategoryPermission; view: TaxonomyView;
-  requested?: string; mode?: string; query?: string; childrenOnly?: boolean; assignmentScope: 'direct' | 'descendants' | 'all' | 'search' };
+  requested?: string; mode?: string; query?: string; childrenOnly?: boolean; pilot?: boolean;
+  assignmentScope: 'direct' | 'descendants' | 'all' | 'search' };
 
 const preorder = (nodes: CatalogCategory[]) => {
   const byParent = new Map<string | null, CatalogCategory[]>();
@@ -50,10 +51,11 @@ function categoryBreadcrumb(current: CatalogCategory, nodes: CatalogCategory[]) 
   return path;
 }
 
-export function ConnectedCategories({ data, region, permissions, view, requested, mode, query, childrenOnly, assignmentScope }: Props) {
+export function ConnectedCategories({ data, region, permissions, view, requested, mode, query, childrenOnly, pilot, assignmentScope }: Props) {
   const current = data.categories.find(row => row.id === (data.selectedId ?? requested));
   const create = mode === 'create' || mode === 'create-child';
   const rows = preorder(data.categories);
+  const editableNodes = pilot ? data.categories.filter(node => data.pilotCategoryIds?.includes(node.id)) : data.categories;
   const visibility = new Map(data.navigation?.categories.map(category => [category.id, category.visible]));
   const options: { key: TaxonomyView; name: string }[] = [
     { key: 'categories', name: 'Categories' }, { key: 'attributes', name: 'Attributes' },
@@ -66,6 +68,7 @@ export function ConnectedCategories({ data, region, permissions, view, requested
         {permissions.create && <Link className={catalog.primary} href={taxonomyHref(region, { mode: 'create' })}><Plus size={16}/>New category</Link>}
       </div>}
     </div>
+    {pilot && <p role="status">Connected editing is limited to the reviewed Bangladesh catalog. Use the existing category list for independent legacy categories.</p>}
     <nav aria-label="Catalog organization" className={css.tabs}>{options.map(option => <Link key={option.key} className={catalog.outline}
       href={taxonomyHref(region, { view: option.key, record: option.key === 'attributes' ? current?.id : undefined })}
       aria-current={view === option.key ? 'page' : undefined}>{option.name}</Link>)}</nav>
@@ -90,15 +93,15 @@ export function ConnectedCategories({ data, region, permissions, view, requested
             <td>{node.state}</td></tr>)}</tbody></table></div>
       </section>
       {current && data.attributes ? <AttributePanel key={current.id + ':' + current.revision} category={current} attributes={data.attributes}
-        region={region} canEdit={permissions.update && !archive(current)}/>
+        region={region} canEdit={permissions.update && !archive(current)} canEditDefinitions={!pilot}/>
         : <section className={css.panel}><h2>Attribute rules</h2><p>{current ? 'Attribute templates require central catalog access.' : 'Select a category.'}</p></section>}
     </div>}
     {view === 'categories' && <div className={css.grid}>
       <section className={css.panel}><h2>{childrenOnly ? 'Subcategories' : 'Category hierarchy'}</h2>
         <CategoryTree rows={childrenOnly ? rows.filter(({ node }) => node.kind === 'SUBCATEGORY') : rows}
           current={current} region={region} visibility={visibility}/>
-        {current && permissions.update && current.kind && !archive(current) && <SiblingOrder key={current.id + ':' + current.revision}
-          current={current} nodes={data.categories} region={region}/>}
+        {current && permissions.update && current.kind && !archive(current) && (!pilot || current.parentId) &&
+          <SiblingOrder key={current.id + ':' + current.revision} current={current} nodes={editableNodes} region={region}/>}
       </section>
       <div className={css.stack}>
         {requested && !current && <section className={css.panel}><h2>Category reference</h2><p role="status">No verified connected category was found for {requested}.</p>
@@ -109,7 +112,7 @@ export function ConnectedCategories({ data, region, permissions, view, requested
           canUpload={data.uploadEnabled === true} startKind={mode === 'create-child' ? 'SUBCATEGORY' : 'CATEGORY'}/> :
           current ? <>
             {current.kind && !archive(current) && permissions.update ? <CategoryEditor key={current.id + ':' + current.revision} current={current}
-              nodes={data.categories} region={region} canUpload={data.uploadEnabled === true}/> : <CategorySummary current={current}/>}
+              nodes={editableNodes} region={region} canUpload={data.uploadEnabled === true}/> : <CategorySummary current={current}/>}
             {data.businessCodes.length > 0 && <section className={css.panel}><h2>Verified business codes</h2>
               {data.businessCodes.map(({ namespace, value }) => <div key={namespace + ':' + value}><span className={css.muted}>{namespace}</span>
                 {' '}<code className={css.mono}>{value}</code></div>)}
@@ -119,10 +122,10 @@ export function ConnectedCategories({ data, region, permissions, view, requested
               current={current} region={region} owner={data.owner} canUpload={data.uploadEnabled === true}
               hiddenByParent={visibility.get(current.id) === false && current.marketPresentations[0]?.visibleInNavigation !== false}/>}
             {data.assignments && <ConnectedCategoryAssignments key={JSON.stringify([current.id, assignmentScope, query, data.assignments.page])}
-              data={data.assignments} current={current} categories={data.categories} query={query} region={region}
+              data={data.assignments} current={current} categories={editableNodes} query={query} region={region}
               scope={assignmentScope} canEdit={permissions.update}/>}
             {data.owner && current.kind && <CategoryLifecycle key={current.id + ':' + current.revision} current={current} region={region}
-              nodes={data.categories} canMove={permissions.update && !archive(current)} canArchive={permissions.archive && !archive(current)}/>}
+              nodes={editableNodes} canMove={permissions.update && !archive(current)} canArchive={permissions.archive && !archive(current)}/>}
             {data.owner && <CategoryHistory history={data.history ?? []}/>}
           </> : <section className={css.panel}><h2>Category details</h2><p>Select a category to view its placements and settings.</p></section>}
       </div>
@@ -370,7 +373,9 @@ function CategoryHistory({ history }: { history: NonNullable<CategoryData['histo
   </section>;
 }
 
-function AttributePanel({ category, attributes, region, canEdit }: { category: CatalogCategory; attributes: Attributes; region: Region; canEdit: boolean }) {
+function AttributePanel({ category, attributes, region, canEdit, canEditDefinitions }: {
+  category: CatalogCategory; attributes: Attributes; region: Region; canEdit: boolean; canEditDefinitions: boolean;
+}) {
   const [attributeId, setAttributeId] = useState(attributes.local[0]?.attributeId ?? attributes.definitions[0]?.id ?? '');
   const confirmNavigation = useConfirmTaxonomyNavigation();
   const selected = attributes.definitions.find(item => item.id === attributeId);
@@ -396,11 +401,11 @@ function AttributePanel({ category, attributes, region, canEdit }: { category: C
         {attributes.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select></label>
         {selected && <AttributeRule key={attributeId} selected={selected} category={category} rule={rule} local={Boolean(local)} region={region}/>}
       </section>
-      <section className={css.panel}><h2>Reusable attribute definitions</h2><label className={css.form}>Definition<select value={definitionId}
+      {canEditDefinitions && <section className={css.panel}><h2>Reusable attribute definitions</h2><label className={css.form}>Definition<select value={definitionId}
         onChange={event => { if (confirmNavigation()) setDefinitionId(event.target.value); }}><option value="">Create a definition</option>
         {attributes.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.name}</option>)}</select></label>
         <AttributeDefinition key={definitionId} definition={attributes.definitions.find(item => item.id === definitionId)} region={region}/>
-      </section>
+      </section>}
     </>}
   </div>;
 }

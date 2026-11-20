@@ -2,6 +2,7 @@ import 'server-only';
 import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
 import { reference } from './advanced';
 import { currencies, productFields, registries, type EditorFields, type Registry } from './catalog-edit-fields';
+import { verifyScopedLegacyCatalogWrite } from './scoped-catalog-pilot';
 import { has, superAdmin, type Region } from './sections';
 import { cmsMediaKey } from './production-cms-media';
 
@@ -276,6 +277,7 @@ export async function productWrite(action: string, id: string, values: RecordDat
   const grant = action === 'delete' ? 'delete' : id ? 'edit' : 'create';
   if (!canEditProduct(grant, auth) || (!id && action !== 'save')) throw new ApiError(403);
   const previous = id ? await readProduct(id, auth, region) : {};
+  await verifyScopedLegacyCatalogWrite(auth, id ? { kind: 'product', id } : undefined);
   if (action === 'delete') return saved('/product/' + id, auth, 'DELETE');
   if (action === 'variants') return saved('/product/variant/' + id, auth, 'PATCH', cleanVariants(values, auth, true));
   if (action === 'delete-variant') {
@@ -296,6 +298,7 @@ export async function productWrite(action: string, id: string, values: RecordDat
 
 export async function catalogImage(request: Request, auth: Session) {
   if (!canEditProduct('create', auth) && !canEditProduct('edit', auth)) throw new ApiError(403);
+  await verifyScopedLegacyCatalogWrite(auth);
   const type = request.headers.get('content-type') ?? '';
   const size = Number(request.headers.get('content-length'));
   if (!Number.isSafeInteger(size) || size < 1 || size > 8 * 1024 * 1024 || !['image/jpeg', 'image/png', 'image/webp'].includes(type)) {

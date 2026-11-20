@@ -1,7 +1,7 @@
 import { ApiError, getRegion, mongoId, obj, sameOrigin, session, str } from '@/lib/api';
 import { catalogImage, productWrite, writeRegistry } from '@/lib/catalog-admin';
 import { registryKind } from '@/lib/catalog-edit-fields';
-import { connectedCatalogConfigured } from '@/lib/connected-catalog';
+import { legacyCatalogAuthoringRetired } from '@/lib/connected-catalog';
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: 'Use the catalog workspace to save changes.' }, { status: 403 });
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     const auth = await session();
     if (!auth) throw new ApiError(401, 'Sign in to edit the catalog.');
     if (new URL(request.url).searchParams.get('upload') === '1') {
-      if (connectedCatalogConfigured()) throw new ApiError(410, 'Upload product media from the connected product workspace.');
+      if (legacyCatalogAuthoringRetired()) throw new ApiError(410, 'Upload product media from the connected product workspace.');
       return Response.json({ url: await catalogImage(request, auth) });
     }
     if (!request.headers.get('content-type')?.startsWith('application/json')) throw new ApiError(415, 'Expected a catalog form.');
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const values = obj(body.values);
     let result: unknown;
     if (kind === 'products') {
-      if (connectedCatalogConfigured()) throw new ApiError(410, 'Save products from the connected product workspace.');
+      if (legacyCatalogAuthoringRetired()) throw new ApiError(410, 'Save products from the connected product workspace.');
       result = await productWrite(action, id, values, auth, region);
     }
     else if (registryKind(kind)) result = await writeRegistry(kind, action, id, values, auth, region);

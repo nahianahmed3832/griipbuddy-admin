@@ -18,6 +18,7 @@ export default defineConfig({
     'connected-catalog.spec.ts', 'connected-category-parity.spec.ts',
     'connected-staff-customer.spec.ts', 'connected-editorial-media.spec.ts', 'connected-variant-gallery.spec.ts',
     'connected-product-attributes-history.spec.ts',
+    ...(process.env.GRIIP_SCOPED_CATALOG_TEST_RECOVERED_ORIGIN ? ['connected-catalog-pilot.spec.ts'] : []),
     ...(process.env.GRIIP_HOMEPAGE_TEST_PRODUCT ? ['connected-homepage.spec.ts'] : []),
   ],
   timeout: 75_000,

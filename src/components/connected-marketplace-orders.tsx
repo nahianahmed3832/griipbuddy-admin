@@ -5,6 +5,7 @@ import { marketplaceCasesPath, marketplaceOrderQueues, marketplaceOrdersPath, na
   type ConnectedOrderDetail, type ConnectedParcel, type OrderList, type PurchasedLine } from '@/lib/connected-order-contract';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
+import { scopedCatalogPilotRequested } from '@/lib/scoped-catalog-pilot';
 import type { Region } from '@/lib/sections';
 import { money, orderDate, statusLabel } from '@/lib/website-orders';
 import { PageHeading } from './dashboard';
@@ -157,7 +158,7 @@ function ParcelSetupActions({ parcel, input, region }: {
   parcel: ConnectedParcel; input: { orderId: string; parcelId: string }; region: Region;
 }) {
   return <>
-    {parcel.splittable && <details className={styles.shipmentAction}>
+    {parcel.splittable && !scopedCatalogPilotRequested() && <details className={styles.shipmentAction}>
       <summary>Create another parcel</summary>
       <p className="muted">Move units from this parcel. The new parcel uses the same warehouse allocation.</p>
       <MarketplaceOrderAction key={parcel.lines.map(line => `${line.id}:${line.quantity}`).join(',')}

@@ -3,6 +3,7 @@ import { ApiError, type Session } from '@/lib/api';
 import { connectedCatalog, mayEditConnectedTaxonomy } from '@/lib/connected-catalog';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
+import { scopedCatalogPilotRequested } from '@/lib/scoped-catalog-pilot';
 import type { Region } from '@/lib/sections';
 import { PageHeading } from './dashboard';
 import { DeviceModelForm, SearchMaintenanceActions, type SearchStatus } from './connected-catalog-discovery-actions';
@@ -22,7 +23,7 @@ const formatDate = (date: string) => new Intl.DateTimeFormat('en', {
 export async function ApprovedDevicesWorkspace({ auth, region, q }: Props & { q: Query }) {
   const search = param(q, 'q')?.trim().slice(0, 100) ?? '';
   const modelId = param(q, 'model');
-  const canEdit = mayEditConnectedTaxonomy(auth);
+  const canEdit = !scopedCatalogPilotRequested() && mayEditConnectedTaxonomy(auth);
   const creating = canEdit && param(q, 'create') === '1';
   const [list, selected] = await Promise.all([
     connectedCatalog<ApprovedDeviceSearch>(auth, region, { read: 'devices', q: search }),
@@ -83,7 +84,7 @@ export async function CatalogSearchMaintenanceWorkspace({ auth, region }: Props)
     <section className="taxonomy-card" aria-labelledby="search-actions">
       <h2 id="search-actions">Search operations</h2>
       <p>Reconciliation uses {data.marketName} · {data.locale}. Index health and rebuilds cover the shared catalog.</p>
-      <SearchMaintenanceActions region={region} canWrite={mayEditConnectedTaxonomy(auth)} canRebuild={data.canRebuild} />
+      <SearchMaintenanceActions region={region} canWrite={!scopedCatalogPilotRequested() && mayEditConnectedTaxonomy(auth)} canRebuild={data.canRebuild} />
     </section>
     <section className="taxonomy-card" aria-labelledby="search-index-status">
       <h2 id="search-index-status">Native index status</h2>

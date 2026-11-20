@@ -3,9 +3,10 @@ import { ApiError, obj, sameOrigin, session, str } from '@/lib/api';
 import { canChangeCategories } from '@/lib/category-workspace';
 import { canEditProduct } from '@/lib/catalog-admin';
 import { requireWrite } from '@/lib/advanced';
-import { connectedCatalogConfigured } from '@/lib/connected-catalog';
+import { legacyCatalogAuthoringRetired } from '@/lib/connected-catalog';
 import { requestPinnedAdmin } from '@/lib/pinned-admin-gateway';
 import { localCmsUpload } from '@/lib/production-cms-media';
+import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
 
 const headers = { 'Cache-Control': 'private, no-store' };
 const origin = 'https://devadmin.griipbuddy.com';
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (!auth) return fail('Sign in to upload media.', 401);
   try {
     const scope = request.nextUrl.searchParams.get('scope');
-    if (connectedCatalogConfigured() && (scope === 'product' || scope === 'category')) {
+    if ((scope === 'product' || scope === 'category') && legacyCatalogAuthoringRetired()) {
       return fail('Upload catalog media from the connected workspace.', 410);
     }
     if (scope === 'product') {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       requireWrite(auth, 'user.view', 'user.create');
       if (request.nextUrl.searchParams.get('kind') !== 'image') return fail('Choose a customer photo.', 400);
     } else requireWrite(auth, 'cms.view', 'cms.update');
+    if (scope === 'product' || scope === 'category') await verifyScopedLegacyCatalogWrite(auth);
     const kind = request.nextUrl.searchParams.get('kind');
     if (kind !== 'video' && kind !== 'image') return fail('Choose an image or video.', 400);
     if (!request.headers.get('content-type')?.startsWith('multipart/form-data;') || !request.body) {

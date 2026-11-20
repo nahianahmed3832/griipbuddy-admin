@@ -3,6 +3,7 @@ import { ApiError, workspaceWritesEnabled, type Session } from "@/lib/api";
 import { connectedCatalog, connectedCatalogMarket, mayCreateConnectedWarehouse, mayEditConnectedOffers, mayEditConnectedStock, mayEditConnectedTaxonomy } from "@/lib/connected-catalog";
 import { param, type Query } from "@/lib/data";
 import { adminPath } from "@/lib/paths";
+import { scopedCatalogPilotRequested } from "@/lib/scoped-catalog-pilot";
 import { has, superAdmin, type Region } from "@/lib/sections";
 import { PageHeading } from "../dashboard";
 import { ConnectedProductAuthoring } from "./connected-product-authoring";
@@ -37,7 +38,7 @@ async function ProductList({ auth, region, q }: Props) {
   const offerMarketId = superAdmin(auth.staff) && isMarketId(rawOfferMarket) ? rawOfferMarket : undefined;
   const data = await connectedCatalog<ProductWorkspaceList>(auth, region, { read: "products", q: search || undefined, page, state, source, offerMarketId });
   const path = "/dashboard/products";
-  const listHref = (number: number) => `${path}?${new URLSearchParams({ region,
+  const listHref = (number: number) => `${path}?${new URLSearchParams({ region, catalog: "connected",
     ...(search && { q: search }), ...(state && { state }), ...(source && { source }),
     ...(offerMarketId && { offerMarket: offerMarketId }),
     ...(number > 1 && { page: String(number) }) })}`;
@@ -45,11 +46,12 @@ async function ProductList({ auth, region, q }: Props) {
     <PageHeading eyebrow="COMMERCE / CATALOG" title="Products"
       description="Manage shared products, physical variants and the offers available in each selling market." />
     <div className="page-actions">
-      {data.owner && workspaceWritesEnabled() && has(auth.staff, "product.create") &&
-        <Link className="button primary" href={`/dashboard/create-product?region=${region}`}>Create Product</Link>}
+      {!scopedCatalogPilotRequested() && data.owner && workspaceWritesEnabled() && has(auth.staff, "product.create") &&
+        <Link className="button primary" href={`/dashboard/create-product?region=${region}&catalog=connected`}>Create Product</Link>}
     </div>
     <form className="panel filters" action={adminPath(path)}>
       <input type="hidden" name="region" value={region} />
+      <input type="hidden" name="catalog" value="connected" />
       <label className="filter-label">Search products or SKU<input name="q" maxLength={120} type="search" defaultValue={search} /></label>
       <label className="filter-label">Status<select name="state" defaultValue={state ?? ""}>
         <option value="">Any status</option>{Object.entries(publicationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -124,16 +126,17 @@ export async function ConnectedStockWorkspace({ auth, q, region }: Props) {
       </nav>}
     </div>
     {warehouses && <ConnectedWarehouseSetup key={region} data={warehouses} marketId={connectedCatalogMarket(auth, region)}
-      region={region} canCreate={mayCreateConnectedWarehouse(auth)} />}
+      region={region} canCreate={!scopedCatalogPilotRequested() && mayCreateConnectedWarehouse(auth)} />}
   </>;
 }
 
 export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) {
   if (!id) return <ProductList {...{ auth, q, region }} />;
-  if (id === "new" && (!workspaceWritesEnabled() || !has(auth.staff, "product.create"))) throw new ApiError(403);
+  const pilot = scopedCatalogPilotRequested();
+  if (id === "new" && (pilot || !workspaceWritesEnabled() || !has(auth.staff, "product.create"))) throw new ApiError(403);
   const data = await connectedCatalog<ProductWorkspace>(auth, region, { read: "product", id });
   const marketId = data.commerce?.market.id ?? (region === "BD" ? "bd" : "us");
-  const list = `/dashboard/products?region=${region}`;
+  const list = `/dashboard/products?region=${region}&catalog=connected`;
   if (id === "new") {
     return <TaxonomyPendingChanges><div className="taxonomy-workspace connected-product-workspace">
       <PageHeading eyebrow="COMMERCE / CATALOG" title="Create Product" description="Set up the shared product and its physical variants." />
@@ -145,7 +148,8 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
   const { product, owner } = data.identity;
   const archived = product.publication === "ARCHIVED";
   const shared = data.shared;
-  const canEditShared = mayEditConnectedTaxonomy(auth);
+  const catalogEdits = !pilot || (region === "BD" && data.pilotEditable === true);
+  const canEditShared = catalogEdits && mayEditConnectedTaxonomy(auth);
   const canViewStock = has(auth.staff, "stock.view");
   const sections = [...(shared && !archived && canEditShared ? sharedSections : []),
     ...(data.commerce ? marketSections.filter(([key]) => key !== "inventory" || canViewStock) : []),
@@ -154,6 +158,7 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
   return <TaxonomyPendingChanges><div className="taxonomy-workspace connected-product-workspace">
     <PageHeading eyebrow="COMMERCE / CATALOG" title={product.name} description={`${product.department.name} · ${product.id}`} />
     <Link className="text-link" href={list}>Back to products</Link>
+    {pilot && <p className="notice" role="status">Connected editing is limited to the reviewed Bangladesh catalog. Use the existing product list for independent legacy products.</p>}
     {(!owner || !canEditShared) && <p className="notice" role="status">Shared product details are read-only in this workspace. Offers and inventory follow your market grants.</p>}
     {!product.foundation && <p className="notice" role="status">This listing awaits an explicit catalog migration. Its legacy identity and stock are preserved.</p>}
     <div className="product-workspace-layout">
@@ -164,9 +169,9 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
         {shared && canEditShared && <ConnectedProductPublication productId={shared.id} publication={shared.publication}
           revision={shared.revision} readiness={data.readiness} />}
         {shared && !archived && canEditShared && <>
-          <ConnectedProductAuthoring product={shared} categories={data.categories} marketId={marketId} />
+          <ConnectedProductAuthoring product={shared} categories={data.categories} marketId={marketId} allowNewVariants={!pilot} />
           <ConnectedProductLocalization product={shared} />
-          <ConnectedProductMedia product={shared} region={region} uploadEnabled={data.uploadEnabled} />
+          <ConnectedProductMedia product={shared} region={region} uploadEnabled={!pilot && data.uploadEnabled} />
         </>}
         {shared && archived && <section className="taxonomy-card" aria-labelledby="retired-variants">
           <h2 id="retired-variants">Archived variants</h2><ul>{shared.variants.map(row => <li key={row.id}>{row.sku} · {row.label}</li>)}</ul>
@@ -177,11 +182,11 @@ export async function ConnectedProductWorkspace({ auth, q, region, id }: Props) 
         {data.commerce && <>
           <section className="taxonomy-card" id="markets" aria-labelledby="main-admin-offers"><h2 id="main-admin-offers">Offers and prices</h2>
             <p className="taxonomy-muted">{data.commerce.market.name} · {data.commerce.market.currency}</p>
-            <ConnectedOffers key={data.commerce.market.id} data={data.commerce} canEdit={!archived && mayEditConnectedOffers(auth)} />
+            <ConnectedOffers key={data.commerce.market.id} data={data.commerce} canEdit={catalogEdits && !archived && mayEditConnectedOffers(auth)} />
           </section>
           {canViewStock && <section className="taxonomy-card" id="inventory" aria-labelledby="main-admin-inventory"><h2 id="main-admin-inventory">Inventory</h2>
             <ConnectedInventory key={data.commerce.market.id} data={data.commerce} actorId={auth.staff.id}
-              canEdit={!archived && mayEditConnectedStock(auth)} />
+              canEdit={catalogEdits && !archived && mayEditConnectedStock(auth)} canConfigureWarehouses={!pilot} />
           </section>}
         </>}
         {shared && <section id="history" className="taxonomy-card" aria-labelledby="product-history">

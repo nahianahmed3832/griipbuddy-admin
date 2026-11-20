@@ -41,7 +41,7 @@ export type Collections = { marketId: string; marketName: string; eligibleCount:
     imageSrc: string | null; imageAlt: string | null; hasOverride: boolean;
     products: { id: string; name: string; visibleInMarket: boolean }[]; history?: MerchandisingHistoryEntry[] }) | null };
 export type CategoryData = { categories: CatalogCategory[]; owner: boolean; markets: string[]; businessCodes: { namespace: string; value: string }[];
-  uploadEnabled?: boolean;
+  uploadEnabled?: boolean; pilotCategoryIds?: string[];
   navigation: Navigation | null; collections: Collections | null; attributes: Attributes | null; assignments: CategoryAssignments | null;
   history?: { id: string; createdAt: string; changes: Record<string, unknown> | null; actor: { name: string } | null }[];
   selectedId?: string | null; impact?: { primary: number; additional: number; descendantProducts: number;
@@ -50,7 +50,7 @@ export type CategoryPermission = { create: boolean; update: boolean; archive: bo
 
 export function taxonomyHref(region: Region, params: Record<string, string | undefined> = {}) {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries({ ...params, ...(region === 'INTERNATIONAL' ? { region } : {}) })) {
+  for (const [key, value] of Object.entries({ catalog: 'connected', ...params, ...(region === 'INTERNATIONAL' ? { region } : {}) })) {
     if (value) query.set(key, value);
   }
   return '/dashboard/categories' + (query.size ? '?' + query.toString() : '');

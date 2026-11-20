@@ -62,7 +62,7 @@ export type ProductWorkspace = {
   readiness: { ready: boolean; issues: string[] } | null;
   history: { id: string; createdAt: string; label: string; actorName: string; market?: MarketId;
     locale?: string; publication?: string; fields?: string; warehouse?: string }[];
-  commerce: ProductWorkspaceCommerceData | null; uploadEnabled: boolean;
+  commerce: ProductWorkspaceCommerceData | null; uploadEnabled: boolean; pilotEditable?: boolean;
 };
 
 export type ProductWorkspaceList = {

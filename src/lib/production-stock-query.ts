@@ -10,6 +10,7 @@ export const stockPageSizes = ['20', '40', '60', '80', '100', 'all'];
 
 export type ProductionStockFilters = {
   region: Region; businessLocation?: string; product?: string; skuQuery?: string; searchQuery?: string;
+  catalog?: 'legacy';
   sortBy: string; sortOrder: 'asc' | 'desc';
 };
 

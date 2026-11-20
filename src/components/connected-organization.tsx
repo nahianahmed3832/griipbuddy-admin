@@ -41,6 +41,7 @@ export function ConnectedMenus({ navigation, region, canEdit, collections }: {
   return <div className={css.grid}>
     <section className={css.panel}><h2>{marketName} menus</h2><p>Menus link to categories, collections or storefront pages.</p>
       <form action={adminPath('/dashboard/categories')} className={css.form}>
+        <input type="hidden" name="catalog" value="connected"/>
         <input type="hidden" name="view" value="menus"/>{region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
         <label>Menu key<input name="menuKey" list="connected-menu-keys" defaultValue={key} maxLength={80} pattern="[a-z0-9]+(-[a-z0-9]+)*" required/></label>
         <datalist id="connected-menu-keys">{existingKeys.map(value => <option key={value} value={value}/>)}</datalist>

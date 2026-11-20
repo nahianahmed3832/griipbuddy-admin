@@ -202,12 +202,13 @@ function thumbnail(images: readonly { src: string; alt: string; isPrimary?: bool
   return images?.find(row => row.isPrimary) ?? images?.[0];
 }
 
-export function ConnectedProductVariants({ draft, product, marketId, templates, change }: {
+export function ConnectedProductVariants({ draft, product, marketId, templates, change, allowNewVariants }: {
   draft: ProductDraft;
   product: ProductWorkspaceProduct | null;
   marketId?: MarketId;
   templates: ProductCategoryAttribute[];
   change: (next: ProductDraft) => void;
+  allowNewVariants: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
@@ -248,8 +249,8 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
   return <section id="variants" className="taxonomy-card">
     <h2>Options and variants</h2>
     <OptionEditor draft={draft} product={product} templates={templates} change={options => change({ ...draft, options })} />
-    <CombinationEditor key={JSON.stringify(draft.options.map(option => [option.id, option.values.map(value => value.id)]))}
-      draft={draft} append={rows => updateRows([...draft.variants, ...rows])} />
+    {allowNewVariants && <CombinationEditor key={JSON.stringify(draft.options.map(option => [option.id, option.values.map(value => value.id)]))}
+      draft={draft} append={rows => updateRows([...draft.variants, ...rows])} />}
     <h3>Variant rows</h3>
     <p className="taxonomy-muted">{draft.variants.filter(row => row.active).length} active · {draft.variants.length} total · Up to {maxDraftVariants} variants</p>
     <div className="taxonomy-fields">
