@@ -2,6 +2,7 @@ import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import { ApiError, getRegion, obj, workspaceWritesEnabled, type Session } from './api';
 import { isHomepageRequest, type CatalogRequest } from './connected-catalog-contract';
+import { isProtectedDevAdminOrigin } from './dev-admin-profile';
 import { has, superAdmin, type Region } from './sections';
 
 const marketMerchandising = new Set(['category.presentation', 'menu.save', 'collection.publish']);
@@ -16,7 +17,7 @@ export function connectedCatalogConfigured() {
 export function connectedHomepageConfigured() {
   if (process.env.GRIIP_MAIN_ADMIN_HOMEPAGE_ENABLED !== '1') return false;
   return process.env.GRIIP_ADMIN_TARGET === 'fixture' || (process.env.GRIIP_ADMIN_TARGET === 'integration' &&
-    process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === 'https://devadmin.griipbuddy.com');
+    isProtectedDevAdminOrigin());
 }
 
 function connectedCatalogEndpoint(homepage: boolean) {
@@ -27,7 +28,7 @@ function connectedCatalogEndpoint(homepage: boolean) {
   if (!raw || !secret || Buffer.byteLength(secret, 'utf8') < 32 || !['fixture', 'integration'].includes(profile ?? '')) {
     throw new ApiError(503, 'The connected catalog is unavailable in this workspace.');
   }
-  if (protectedDev && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN !== 'https://devadmin.griipbuddy.com') {
+  if (protectedDev && !isProtectedDevAdminOrigin()) {
     throw new ApiError(503, 'The connected catalog requires the protected development admin origin.');
   }
   let endpoint: URL;
