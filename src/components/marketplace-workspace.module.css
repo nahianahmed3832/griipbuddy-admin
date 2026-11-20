@@ -4,6 +4,10 @@
   min-width: 0;
 }
 
+.workspace > :global(.page-heading) {
+  flex-wrap: wrap;
+}
+
 .overview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

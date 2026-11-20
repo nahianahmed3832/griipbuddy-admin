@@ -1,8 +1,8 @@
 import Form from 'next/form';
 import Link from 'next/link';
 import { getRegion, url, type Session } from '@/lib/api';
-import { connectedCatalog, connectedCatalogConfigured, connectedMarketplaceConfigured,
-  mayManageConnectedMarketplace, mayReadConnectedMarketplace, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { connectedCatalog, connectedMarketplaceConfigured, mayManageConnectedMarketplace, mayReadConnectedMarketplace,
+  mayUseConnectedMarketplaceOrders } from '@/lib/connected-catalog';
 import { marketplaceWorkspacePath, sellerSearchLimit, type MarketplaceCheckoutPolicy, type MarketplaceSeller,
   type MarketplaceWorkspaceData } from '@/lib/connected-marketplace-contract';
 import { marketplaceOrdersPath } from '@/lib/connected-order-contract';
@@ -183,7 +183,7 @@ export async function MarketplaceWorkspace({ auth, region: selectedRegion, q }: 
   return <div className={styles.workspace} key={region}>
     <PageHeading eyebrow="MARKETPLACE OPERATIONS" title={data.market.name}
       description="Manage sellers, checkout policy and delivery in the selected market.">
-      {connectedCatalogConfigured() && mayReadConnectedOrders(auth) && <Link className="button secondary"
+      {mayUseConnectedMarketplaceOrders(auth) && <Link className="button secondary"
         href={url(marketplaceOrdersPath, { region })}>Marketplace orders</Link>}
     </PageHeading>
     <MarketSettings data={data} region={region} canManage={canManage}/>

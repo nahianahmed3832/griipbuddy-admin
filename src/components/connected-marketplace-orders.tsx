@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ApiError, url, type Session } from '@/lib/api';
-import { connectedCatalog, mayEditConnectedOrder, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { connectedCatalog, mayEditConnectedOrder, mayUseConnectedMarketplaceOrders } from '@/lib/connected-catalog';
 import { marketplaceCasesPath, marketplaceOrderQueues, marketplaceOrdersPath, nativeOrderPrefix,
   type ConnectedOrderDetail, type ConnectedParcel, type OrderList, type PurchasedLine } from '@/lib/connected-order-contract';
 import { param, type Query } from '@/lib/data';
@@ -29,13 +29,14 @@ export function MarketplacePagination({ path, page, hasNext, params }: {
 }
 
 export async function MarketplaceOrders({ auth, region, query }: { auth: Session; region: Region; query: Query }) {
+  if (!mayUseConnectedMarketplaceOrders(auth)) throw new ApiError(403);
   const page = connectedOrdersPage(query);
   const queue = marketplaceOrderQueues.find(([key]) => key === param(query, 'queue'))?.[0] ?? 'queue';
   const { rows, hasNext } = await connectedCatalog<OrderList>(auth, region, { read: 'orders', page, queue });
   return <div className={styles.workspace}>
     <PageHeading eyebrow="WEBSITE ORDERS" title="Marketplace orders" description="Review native checkout orders and their warehouse allocations in the selected market.">
       <Link className="button secondary" href={url('/dashboard/orders', { region })}>Recovered and Hybrid orders</Link>
-      {mayReadConnectedOrders(auth, true) && <Link className="button secondary" href={url(marketplaceCasesPath, { region })}>Order cases</Link>}
+      {mayUseConnectedMarketplaceOrders(auth, true) && <Link className="button secondary" href={url(marketplaceCasesPath, { region })}>Order cases</Link>}
     </PageHeading>
     <section className="panel">
       <form action={adminPath(marketplaceOrdersPath)} className="filters">
@@ -202,13 +203,13 @@ function PackingSlip({ order }: { order: ConnectedOrderDetail }) {
 }
 
 export async function MarketplaceOrder({ auth, region, id }: { auth: Session; region: Region; id: string }) {
-  if (!mayReadConnectedOrders(auth)) throw new ApiError(403);
+  if (!mayUseConnectedMarketplaceOrders(auth)) throw new ApiError(403);
   const order = await connectedCatalog<ConnectedOrderDetail>(auth, region, { read: 'order', id });
   const canAdvance = mayEditConnectedOrder(auth, 'order.advance');
   const canTrack = mayEditConnectedOrder(auth, 'order.tracking');
   const canReceive = mayEditConnectedOrder(auth, 'order.parcel.receive');
   const canRefresh = mayEditConnectedOrder(auth, 'order.parcel.refresh');
-  const mayReviewCases = mayReadConnectedOrders(auth, true);
+  const mayReviewCases = mayUseConnectedMarketplaceOrders(auth, true);
   const price = (minor: number) => money(minor / 100, order.currency);
   const date = (value: string) => new Intl.DateTimeFormat(order.locale,
     { dateStyle: 'medium', timeStyle: 'short', timeZone: order.timeZone }).format(new Date(value));

@@ -53,7 +53,8 @@ import { TransactionPage } from '@/components/transactions';
 import { canReadTransactions } from '@/lib/transactions';
 import { purchasePath, rateFormPath, ratesPath } from '@/lib/purchases';
 import { canOperate } from '@/lib/operations';
-import { connectedCatalogConfigured, connectedHomepageConfigured, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { connectedCatalogConfigured, connectedHomepageConfigured, connectedMarketplaceOrdersConfigured,
+  mayUseConnectedMarketplaceOrders } from '@/lib/connected-catalog';
 import { homepageAdminPath, homepageDeskPath, legacyHomepageViews } from '@/lib/homepage-merchandising';
 import { marketplaceWorkspacePath } from '@/lib/connected-marketplace-contract';
 import { ConnectedHomepage } from './connected-homepage';
@@ -91,6 +92,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const purple = usesPurpleAdminLayout();
   const bangladeshDesk = purple && region === 'BD';
   const marketplaceAvailable = purple && marketplaceWorkspaceAvailable(auth);
+  const marketplaceOrdersAvailable = mayUseConnectedMarketplaceOrders(auth);
+  const marketplaceCasesAvailable = mayUseConnectedMarketplaceOrders(auth, true);
   const nav = visibleSections(auth.staff, marketplaceAvailable).filter(item => operationsOnly()
     ? item.id === 'operations' || item.id === 'staff' : item.id !== 'operations' || operationsEnabled());
   const stockHistoryAvailable = purple && has(auth.staff, 'stock.view');
@@ -122,7 +125,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const fraud = region === 'BD' && has(auth.staff, 'order.view') && !publicSandbox() && !operationsOnly();
   if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
-  if (sectionId === 'orders' && connectedCatalogConfigured() && mayReadConnectedOrders(auth)) tabs.push(['marketplace', 'Marketplace orders']);
+  if (sectionId === 'orders' && marketplaceOrdersAvailable) tabs.push(['marketplace', 'Marketplace orders']);
+  if (sectionId === 'orders' && marketplaceCasesAvailable) tabs.push(['marketplace-cases', 'Marketplace order cases']);
   if (sectionId === 'markets' && marketplaceAvailable) tabs.push(['marketplace', 'Marketplace operations']);
   if (sectionId === 'inventory' && stockHistoryAvailable) tabs.push(['transfer-history', 'Inventory transfer history']);
   if (allowCheckout) {
@@ -167,6 +171,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       .map(([key,label]) => ({label,href:url('/desk/'+item.id+'/'+key,{region}),description:item.label})),
     ...(item.id === 'payments' && accounting ? [{label:'Accounting', href:url('/desk/payments/accounting', {region}), description:'Regional journals and HQ statements'}] : []),
     ...(item.id === 'markets' && marketplaceAvailable ? [{label:'Marketplace operations', href:url(marketplaceWorkspacePath, {region}), description:'Market settings, sellers and listing review'}] : []),
+    ...(item.id === 'orders' && marketplaceOrdersAvailable ? [{label:'Marketplace orders', href:url('/desk/orders/marketplace', {region}), description:'Order queues and seller fulfillment'}] : []),
+    ...(item.id === 'orders' && marketplaceCasesAvailable ? [{label:'Marketplace order cases', href:url('/desk/orders/marketplace-cases', {region}), description:'Order requests and returns'}] : []),
     ...(item.id === 'pos' && newPosSale ? [{label:'New POS sale', href:url('/desk/pos/editor', {region}), description:'Point of sale'}] : []),
     ...(item.id === 'inventory' ? [
       ...inventoryTabs.map(([key, label]) => ({label, href: url(inventoryPath + '/' + key, { region }), description: 'Smart Inventory'})),
@@ -264,12 +270,14 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         editPath: production ? undefined : '/desk/pos/editor' });
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region, production: Boolean(production) });
     else if (sectionId === 'orders' && active === 'marketplace' && view.length === 1) {
-      if (!connectedCatalogConfigured()) throw new ApiError(404);
-      content = await MarketplaceOrders({ auth, region, query: q });
+      if (!connectedMarketplaceOrdersConfigured()) throw new ApiError(404);
+      content = await MarketplaceOrders({ auth, region: getRegion(regionQuery, auth.staff), query: q });
     }
     else if (sectionId === 'orders' && active === 'marketplace-cases' && view.length <= 2) {
-      if (!connectedCatalogConfigured()) throw new ApiError(404);
-      content = view[1] ? await MarketplaceOrderCase({ auth, region, id: view[1] }) : await MarketplaceOrderCases({ auth, region, query: q });
+      if (!connectedMarketplaceOrdersConfigured()) throw new ApiError(404);
+      const marketRegion = getRegion(regionQuery, auth.staff);
+      content = view[1] ? await MarketplaceOrderCase({ auth, region: marketRegion, id: view[1] })
+        : await MarketplaceOrderCases({ auth, region: marketRegion, query: q });
     }
     else if (sectionId === 'orders' && active === 'orders') content = view[1]
       ? await WebsiteOrderDetailPage({ auth, q, region, id: view[1], productionLayout: Boolean(production) }) : await WebsiteOrdersPage({ auth, q, region, productionLayout: Boolean(production) });

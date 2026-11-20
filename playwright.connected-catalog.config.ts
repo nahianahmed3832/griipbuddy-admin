@@ -19,7 +19,8 @@ export default defineConfig({
     'connected-staff-customer.spec.ts', 'connected-editorial-media.spec.ts', 'connected-variant-gallery.spec.ts',
     'connected-product-attributes-history.spec.ts',
     ...(process.env.GRIIP_HOMEPAGE_TEST_PRODUCT ? ['connected-homepage.spec.ts'] : []),
-    ...(process.env.GRIIP_MARKETPLACE_TEST_SELLER_SLUG ? ['connected-marketplace-workspace.spec.ts'] : []),
+    ...(process.env.GRIIP_MARKETPLACE_TEST_SELLER_SLUG || process.env.GRIIP_MARKETPLACE_TEST_ORDER_US
+      ? ['connected-marketplace-workspace.spec.ts'] : []),
   ],
   timeout: 75_000,
   expect: { timeout: 15_000 },

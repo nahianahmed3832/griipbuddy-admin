@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { ChevronLeft, Download, Filter, Plus } from 'lucide-react';
-import { api, ApiError, canWrite, integratedCheckoutEnabled, mongoId, obj, url, type Session } from '@/lib/api';
+import { api, ApiError, canWrite, getRegion, integratedCheckoutEnabled, mongoId, obj, url, type Session } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
-import { connectedCatalogConfigured } from '@/lib/connected-catalog';
+import { connectedMarketplaceOrdersConfigured } from '@/lib/connected-catalog';
 import { nativeOrderId, nativeOrderPrefix } from '@/lib/connected-order-contract';
 import { canOperate } from '@/lib/operations';
 import { canManage } from '@/lib/managed';
@@ -109,8 +109,8 @@ export async function WebsiteOrderDetailPage({ auth, q, region, id, productionLa
   if (!has(auth.staff, 'order.view')) throw new ApiError(403);
   if (id.startsWith(nativeOrderPrefix)) {
     const native = nativeOrderId(id);
-    if (!native || !connectedCatalogConfigured()) throw new ApiError(404);
-    return MarketplaceOrder({ auth, region, id: native });
+    if (!native || !connectedMarketplaceOrdersConfigured()) throw new ApiError(404);
+    return MarketplaceOrder({ auth, region: getRegion(param(q, 'region') ?? region, auth.staff), id: native });
   }
   const hybrid = hybridOrderId(id);
   const source = param(q, 'source');

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ApiError, url, type Session } from '@/lib/api';
-import { connectedCatalog, mayEditConnectedOrder, mayReadConnectedOrders } from '@/lib/connected-catalog';
+import { connectedCatalog, mayEditConnectedOrder, mayUseConnectedMarketplaceOrders } from '@/lib/connected-catalog';
 import { marketplaceCasesPath, marketplaceOrdersPath, orderIdentifier, type CaseList, type ConnectedOrderCaseDetail } from '@/lib/connected-order-contract';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
@@ -12,6 +12,7 @@ import { connectedOrderHref, connectedOrdersPage, MarketplacePagination, Marketp
 import styles from './connected-marketplace-orders.module.css';
 
 export async function MarketplaceOrderCases({ auth, region, query }: { auth: Session; region: Region; query: Query }) {
+  if (!mayUseConnectedMarketplaceOrders(auth, true)) throw new ApiError(403);
   const page = connectedOrdersPage(query);
   const closed = param(query, 'closed') === '1';
   const { rows, hasNext } = await connectedCatalog<CaseList>(auth, region, { read: 'order-cases', page, closed });
@@ -83,7 +84,7 @@ function CaseActions({ record, region }: { record: ConnectedOrderCaseDetail; reg
 }
 
 export async function MarketplaceOrderCase({ auth, region, id }: { auth: Session; region: Region; id: string }) {
-  if (!mayReadConnectedOrders(auth, true)) throw new ApiError(403);
+  if (!mayUseConnectedMarketplaceOrders(auth, true)) throw new ApiError(403);
   if (!orderIdentifier.test(id)) throw new ApiError(404);
   const record = await connectedCatalog<ConnectedOrderCaseDetail>(auth, region, { read: 'order-case', id });
   const { order, events, returnLines } = record;
