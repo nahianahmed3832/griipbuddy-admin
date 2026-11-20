@@ -14,6 +14,14 @@ Use `npx playwright test -c playwright.connected-catalog.config.ts --project=des
 
 Use the isolated recovery API for local verification. Set `GRIIP_ADMIN_TARGET=fixture`, point `GRIIP_ADMIN_FIXTURE_PORT` to its loopback port, and set `NEXT_PUBLIC_GRIIP_ADMIN_PREFIX=/admin` both when building and when starting to test the mounted routes. The backend branch `codex/editable-admin-order-paging` supports the numeric production page sizes.
 
+### Homepage merchandising
+
+Open **Homepage**, choose a market and language template, and add a **Category and collection tiles** section. Select image shortcuts, a portrait grid, a collection showcase, or a discovery grid. The selected catalog reference sets each tile’s published destination. Change the tile order with Move up and Move down. Discovery can include purchasable products and shows the market’s current price.
+
+Keep the catalog image or select or upload an approved desktop image. An optional mobile image can show the same subject at a different crop. Horizontal and vertical focus use percentages from 0 to 100. Save the draft, choose a preview market and time, and switch the preview between Desktop and Mobile. Publish the saved draft from the existing Publication and history controls. Earlier releases can be restored through the same controls.
+
+The tile acceptance case in `tests/connected-homepage.spec.ts` requires the configured loopback fixtures and a `GRIIP_HOMEPAGE_TEST_CATEGORY` label from the disposable catalog. It exercises destination selection, ordering, mobile crop, private preview, publication and return to inheritance.
+
 Use `tests/editable-production-routes.mjs` for a fixture HTTP sweep of all 102 route patterns. Set `GRIIP_ADMIN_ROUTE_FIXTURE` to the isolated backend fixture module and `GRIIP_ADMIN_ROUTE_RECORDS` to the JSON mapping printed by the backend’s `recovery/seed-editable-admin-routes.cjs`. Seed both comparison fixtures with their respective API port offsets. This sweep checks reachability and response status.
 
 Set `GRIIP_ADMIN_PARITY_EDITABLE_TARGET=1` when running the original admin comparator against the source build. Provide two loopback origins and synthetic accounts. The comparator then checks the visible experience without requiring identical JavaScript and CSS hashes.
