@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, Search } from 'lucide-react';
+import { ChevronLeft, Plus, Search } from 'lucide-react';
 import { ApiError, url, type Session } from '@/lib/api';
 import { param, perPage, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
@@ -19,7 +19,7 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
   const add = supplierWrite(auth.staff, 'create');
   const edit = supplierWrite(auth.staff, 'update');
   const remove = supplierWrite(auth.staff, 'delete');
-  const listUrl = url(suppliersPath, { region });
+  const listUrl = url(param(q, 'from') === 'directory' ? '/dashboard/suppliers/all' : suppliersPath, { region });
   const back = <Link className="button secondary" href={listUrl}>Back to suppliers</Link>;
   const livePath = '/dashboard/suppliers/all';
   const liveList = url(livePath, { region });
@@ -59,17 +59,29 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
     const requested = param(q, 'limit') ?? '20';
     const size = sizes.includes(requested) ? requested : '20';
     const limit = size === 'all' ? suppliers.length : Number(size);
-    const currentPage = size === 'all' ? 1 : page;
+    const currentPage = size === 'all' ? 1 : Math.min(page, Math.max(1, Math.ceil(suppliers.length / limit)));
     const start = (currentPage - 1) * limit;
     const current = suppliers.slice(start, start + limit);
     const headings = ['Sl No.', 'Name', 'Type', 'Email', 'Phone', 'Address', 'Actions'];
     const link = (page: number) => url(livePath, { region, q: search, type, page: String(page), limit: size });
     return <section className={styles.page}>
-      <header className={styles.header}><h1>Suppliers ({suppliers.length})</h1></header>
-      <div className={styles.tableBorder + ' ' + design.scroll}><table className={styles.table}>
+      <header className={styles.header}><h1>Suppliers ({suppliers.length})</h1>
+        {add && <Link className={styles.primary} href={url('/dashboard/suppliers/create', { region })}><Plus size={16}/> Add supplier</Link>}
+      </header>
+      <form action={adminPath(livePath)} className="panel padded supplier-list-filters">
+        <input type="hidden" name="region" value={region}/>
+        <input type="hidden" name="limit" value={size}/>
+        <label className="filter-label">Search suppliers<input name="q" maxLength={80} placeholder="Name, email, phone or reference" defaultValue={search}/></label>
+        <label className="filter-label">Supplier type<select name="type" defaultValue={type || ''}><option value="">All types</option>
+          {supplierTypes.map(value => <option value={value} key={value}>{value[0] + value.slice(1).toLowerCase()}</option>)}
+        </select></label>
+        <div className="page-actions"><button className="button primary">Apply filters</button><Link className="button secondary" href={liveList}>Reset</Link></div>
+      </form>
+      <div className={styles.tableBorder + ' ' + design.scroll} role="region" tabIndex={0} aria-label="Supplier directory"><table className={styles.table}>
         <thead><tr>{headings.map(heading => <th scope="col" key={heading}>{heading}</th>)}</tr></thead>
         <tbody>{current.map((row, index) => <tr key={row.id}>
-          <td>{start + index + 1}</td><td>{row.name}</td><td>{row.type}</td><td>{row.email || 'N/A'}</td>
+          <td>{start + index + 1}</td><td><Link href={url(suppliersPath + '/' + row.id, { region, from: 'directory' })}>{row.name}</Link></td>
+          <td>{row.type}</td><td>{row.email || 'N/A'}</td>
           <td>{row.phone || 'N/A'}</td><td>{row.address || 'N/A'}</td>
           <td>{(edit || remove) && <ProductionSupplierActions id={row.id} name={row.name} region={region}
             href={url('/dashboard/update-supplier/' + row.id, { region })} canEdit={edit} canDelete={remove}/>}</td>

@@ -1,13 +1,15 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Filter, List, Plus, Search } from 'lucide-react';
-import { api, ApiError, arr, mongoId, obj, str, url, type Session } from '@/lib/api';
+import { api, ApiError, arr, mongoId, obj, operationsEnabled, str, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, perPage, printable, type Query } from '@/lib/data';
 import { canOperate } from '@/lib/operations';
 import { adminPath } from '@/lib/paths';
 import { canEditPurchase, maxRateLines, purchaseList, purchasePage, purchasePath, purchaseRecord, purchaseStatuses, rateFormPath, ratesPath, suppliers } from '@/lib/purchases';
+import { opsApi, type Access } from '@/lib/operations-desk';
+import { purchasesPath } from '@/lib/purchasing';
 import type { PurchaseEditRecord } from '@/lib/purchase-edit';
-import { has, type Region } from '@/lib/sections';
+import { has, hasOperations, type Region } from '@/lib/sections';
 import { PurchaseActions, PrintInvoice } from './purchase-controls';
 import { PurchaseRateForm } from './purchase-rate-form';
 import { PurchaseRecordForm } from './purchase-record-form';
@@ -52,17 +54,23 @@ function Pagination({ path, query, page, total }: {
 
 export async function AllPurchases({ auth, region, q, production = false }: { auth: Session; region: Region; q: Query; production?: boolean }) {
   if (!has(auth.staff, 'purchase.view')) throw new ApiError(403);
-  const [{ rows, page, total, filters, size, limit }, vendors, locations] = await Promise.all([
+  const [{ rows, page, total, filters, size, limit }, vendors, locations, operations] = await Promise.all([
     purchaseList(auth, region, q, production), suppliers(auth),
     has(auth.staff, 'business_locations.view') ? loadLocations(auth, region) : [],
+    operationsEnabled() && hasOperations(auth.staff) ? opsApi<Access>(auth, region, 'access').catch(error => {
+      if (!(error instanceof ApiError)) throw error;
+      return undefined;
+    }) : undefined,
   ]);
+  const purchasing = operations?.purchasing;
   const canEdit = canEditPurchase(auth.staff);
   const canSeeCosts = has(auth.staff, 'purchase.price.view');
   const columns = [production ? 'Purchases Id' : 'Purchase ID', 'Date', 'Business Location', 'Supplier', 'Total Items', 'Purchase Status',
     ...(canSeeCosts ? ['Total Cost'] : []), 'Added By', ...(canEdit || canSeeCosts ? ['Actions'] : [])];
   return <div className={'purchases-workspace ' + (production ? productionStyles.purchases : '')}>
     <header className="purchase-heading"><h1>All Purchases ({total.toLocaleString('en')})</h1>
-      {!production && region === 'BD' && has(auth.staff, 'operations.purchase') && <Link className="button secondary" href={url('/desk/operations/purchases', {region})}>Purchasing and receiving</Link>}
+      {purchasing && (purchasing.buy || purchasing.receive || purchasing.finance) &&
+        <Link className="button secondary" href={url(purchasesPath, { region })}>Purchasing and receiving</Link>}
     </header>
     {production ? <ProductionPurchaseFilters filters={filters} locations={locations} vendors={vendors}
       statuses={purchaseStatuses.map(value => ({ value, label: statusLabel(value) }))} region={region} limit={limit}/>
@@ -216,7 +224,9 @@ export async function PurchaseRecordPage({ auth, region, id, q, production = fal
       <PurchaseRecordForm record={record} suppliers={vendors} locations={locations} region={region}/></div>;
   }
   const withCost = has(auth.staff, 'purchase.price.view');
-  const columns = ['Product', 'SKU', 'Quantity', ...(withCost ? ['Unit cost', 'Discount', 'Tax'] : [])];
+  const movementPurchase = row.inventory_ordered === true;
+  const columns = ['Product', 'SKU', movementPurchase ? 'Ordered' : 'Recorded quantity', 'Received', 'Lot',
+    ...(withCost ? ['Unit cost', 'Discount', 'Tax'] : [])];
   return <div className="purchases-workspace">
     <header className="purchase-heading"><h1>Purchase {purchaseNumber(row.purchase_number)}</h1>
       <div className="page-actions"><Link className="button secondary" href={url(purchasePath, { region })}>Back to purchases</Link>
@@ -230,10 +240,16 @@ export async function PurchaseRecordPage({ auth, region, id, q, production = fal
         <div><dt>Supplier</dt><dd>{name(row.supplier)}</dd></div>
         <div><dt>Business location</dt><dd>{name(row.business_location)}</dd></div>
         <div><dt>Purchase date</dt><dd><PurchaseDate value={row.purchase_date}/></dd></div>
-        <div><dt>Received</dt><dd><PurchaseDate value={row.received_at}/></dd></div>
+        <div><dt>Last receipt date</dt><dd>{str(row.status) === 'received' || arr(row.items).some(item => Number(obj(item).qty_received) > 0)
+          ? <PurchaseDate value={row.received_at}/> : '—'}</dd></div>
         <div><dt>Status</dt><dd><PurchaseStatus status={str(row.status)}/></dd></div>
         <div><dt>Added by</dt><dd>{str(obj(row.created_by).full_name) || '—'}</dd></div>
       </dl>
+      {withCost && <dl className="details-grid" aria-label="Recorded supplier balances">
+        <div><dt>Total cost</dt><dd>{cost(row.total_cost)}</dd></div>
+        <div><dt>Supplier paid (recorded)</dt><dd>{cost(row.supplier_paid)}</dd></div>
+        <div><dt>Supplier due (recorded)</dt><dd>{cost(row.supplier_due)}</dd></div>
+      </dl>}
       <h3>Purchase notes</h3><p>{str(row.additional_notes) || 'No notes recorded.'}</p>
     </section>
     <section className="panel padded"><h2>Purchase lines</h2>
@@ -241,6 +257,8 @@ export async function PurchaseRecordPage({ auth, region, id, q, production = fal
         <thead><tr>{columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead>
         <tbody>{arr(row.items).map(obj).map((item, index) => <tr key={str(item._id) || index}>
           <td>{name(item.product)}</td><td><code>{str(obj(item.variant).sku) || '—'}</code></td><td>{number(item.qty)}</td>
+          <td>{!movementPurchase && str(row.status) === 'received' ? number(item.qty) : number(item.qty_received)}</td>
+          <td>{str(item.lot_number) || reference(item.lot) || '—'}</td>
           {withCost && <><td>{cost(item.unit_cost)}</td><td>{cost(item.discount ?? 0)}</td><td>{cost(item.tax ?? 0)}</td></>}
         </tr>)}</tbody>
       </table></div>

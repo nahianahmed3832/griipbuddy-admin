@@ -3,7 +3,7 @@ export const purchasesPath = '/desk/operations/purchases';
 export type PurchaseAccess = { buy: boolean; receive: boolean; finance: boolean };
 export type PurchaseChoice = { _id: string; name?: string; business_location_name?: string };
 export type SupplierChoice = PurchaseChoice & {
-  contact_id: number; address?: string; phone?: string; email?: string; default_payment_terms?: string;
+  contact_id: number; updatedAt?: string; address?: string; phone?: string; email?: string; default_payment_terms?: string;
 };
 export type VariantChoice = {
   variant: string; product: string; sku: string; name: string; supplierSku?: string; sourceVariant?: string;
@@ -30,7 +30,7 @@ export type PurchaseBalance = {
 };
 export type ReceiptLine = {
   _id: string; receipt: string; variant?: string; item?: string; sku?: string; name?: string; seen: number; held: number;
-  rejected: number; posted: number; returned?: number; toOrder: number; exceptions: string[]; referenceResolved: boolean;
+  rejected: number; posted: number; returned?: number; receivedAt?: string; toOrder: number; exceptions: string[]; referenceResolved: boolean;
 };
 export type PurchaseAudit = { id: string; at: string; actor?: string; kind: string; payload?: {
   evidence?: Evidence; receivedAt?: string; reference?: string; reason?: string; evidenceReference?: string; status?: string;
@@ -50,13 +50,13 @@ export type Purchase = {
   supplier: string; state: string; canReceive: boolean; expectedAt?: string; approvedAt?: string; closed: boolean;
   quote?: Quote; editor?: Quote; blockers: string[];
   lines: (VariantChoice & { stockUnits: number })[]; totals: PurchaseBalance[]; receiptLines: ReceiptLine[];
-  postings: { _id: string; line: string; quantity: number; corrected: number; returned?: number; movement: string; lot: string }[];
+  postings: { _id: string; line: string; quantity: number; corrected: number; returned?: number; returnable?: number; movement: string; lot: string }[];
   audit: PurchaseAudit[]; finance?: PurchaseFinance; overflow: boolean;
 };
 export type PurchaseList = { orders: {
   id: string; reference: string; supplier: string; warehouse: string; expected: number; expectedAt?: string;
   state: string; expired: boolean; test: boolean;
-}[]; overflow: boolean };
+}[]; overflow: boolean; page: number; pageSize: number; total: number; pages: number };
 
 export const remainingPosting = (posting: Purchase['postings'][number]) =>
-  Math.max(0, posting.quantity - posting.corrected - (posting.returned ?? 0));
+  posting.returnable ?? Math.max(0, posting.quantity - posting.corrected - (posting.returned ?? 0));

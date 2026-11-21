@@ -124,3 +124,12 @@
   .purchase-invoice .table-scroll { overflow: visible; }
   .purchase-invoice tr { break-inside: avoid; }
 }
+
+.supplier-list-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr));
+  align-items: end;
+  gap: 12px;
+}
+.supplier-list-filters :is(input, select) { width: 100%; }
+.supplier-list-filters .page-actions { flex-wrap: wrap; }

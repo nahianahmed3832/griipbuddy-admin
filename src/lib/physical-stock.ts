@@ -8,10 +8,11 @@ export type StockLocation = { id: string; name: string; region: Region; country:
 export type StockRow = { id: string; variant: string; product: string; sku: string | null; name: string; location: string; owner: string;
   onHand: number; unavailable: number; usable: number; threshold: number | null; thresholdRevision: string | null; low: boolean;
   pool?: { onHand: number; reserved: number; unavailable: number; available: number } | null };
-export type StockLot = { id: string; number: string; bin: string | null; quantity: number; status: string; expiresAt: string | null; unitCost?: number };
-export type StockDetail = { stock: StockRow; lots: StockLot[]; movements: {
+export type StockLot = { id: string; number: string; bin: string | null; quantity: number; status: string; expiresAt: string | null; usable?: boolean; unitCost?: number };
+export type StockDetail = { stock: StockRow; lots: StockLot[]; nextMovement?: string | null; movements: {
   id: string; type?: string | null; quantity?: number | null; lot: string | null; from: string | null; to: string | null;
-  reference: string | null; actor: string | null; reason: string | null; at: string | null; unitCost?: number }[] };
+  reference: string | null; actor: string | null; reason: string | null; at: string | null; unitCost?: number;
+  damagedQuantity?: number | null; linkedMovement?: string | null }[] };
 
 export function mayReadPhysicalStock(auth: Session) {
   return has(auth.staff, 'stock.view') && has(auth.staff, 'business_locations.view');
@@ -37,8 +38,8 @@ export async function physicalStocks(auth: Session, filters: ReturnType<typeof p
   return api(url(`${recoveredStockPath}/stocks`, { ...filters, limit: '30' }), auth.token) as Promise<{ items: StockRow[]; next: string | null }>;
 }
 
-export async function physicalStockDetail(auth: Session, id: string, filters: ReturnType<typeof physicalStockFilters>) {
+export async function physicalStockDetail(auth: Session, id: string, filters: ReturnType<typeof physicalStockFilters>, beforeMovement?: string) {
   if (!mongoId(id)) throw new ApiError(404);
   return api(url(`${recoveredStockPath}/stocks/${id}`, { region: filters.region, market: filters.market,
-    location: filters.location }), auth.token) as Promise<StockDetail>;
+    location: filters.location, beforeMovement }), auth.token) as Promise<StockDetail>;
 }

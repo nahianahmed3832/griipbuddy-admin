@@ -12,5 +12,3 @@
 .card > header h3 { margin: 0 auto 0 0; font-size: 16px; }
 .card footer { flex-wrap: wrap; }
 .card footer > :first-child { flex: 1; background: #023344; }
-.toast { position: fixed; z-index: 5; inset: auto 24px 24px auto; padding: 12px 18px; background: white; border: 1px solid var(--catalog-border); box-shadow: 0 5px 16px #0002; border-radius: 8px; animation: end-toast 3s both; }
-@keyframes end-toast { 0%, 95% { opacity: 1; } 100% { opacity: 0; } }

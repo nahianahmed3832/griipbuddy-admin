@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { api, ApiError, arr, canWrite, mongoId, obj, requestApi, str, url, type RecordData, type Session } from './api';
 import { barcodePattern, receiptLimit } from './barcode-data';
 import { has, type Region, type Staff } from './sections';
@@ -282,23 +283,23 @@ export async function executeOperation(id: OperationId, recordId: string, values
       return { barcodes: arr(generated.barcodes).map(row => str(obj(row).barcode)).filter(Boolean) };
     }
     case 'barcode-receive': {
-      const barcodes = barcodeList(input.barcodes);
+      const barcodes = barcodeList(input.barcodes).sort();
       const receiving = await locationInRegion(input.location, region, auth);
       await verifyScopedLegacyCatalogWrite(auth);
       // Inspect small batches sequentially so a single scan does not fan out into unbounded requests.
       const products = new Set<string>();
       for (const barcode of barcodes) {
         const unit = obj(await api('/barcode/' + barcode, auth.token));
-        if (unit.is_used_barcode === true) invalid('A scanned barcode has already been received.', 409);
         products.add(refId(unit.product));
       }
       for (const product of products) await productInRegion(product, region, auth);
-      const response = await requestApi(url('/barcode/create-purchase-from-barcodes', { region }), auth.token, {
-        method: 'POST', body: JSON.stringify({
-          barcodes, business_location: refId(receiving), admin_note: input.note,
-          purchase_date: input.purchaseDate ? utcDate(input.purchaseDate).toISOString() : undefined,
-        }),
+      const body = JSON.stringify({
+        barcodes, business_location: refId(receiving), admin_note: input.note,
+        purchase_date: input.purchaseDate ? utcDate(input.purchaseDate).toISOString() : undefined,
       });
+      const receiptKey = createHash('sha256').update(region).update(':').update(body).digest('hex');
+      const response = await requestApi(url('/barcode/create-purchase-from-barcodes', { region }), auth.token,
+        { method: 'POST', body }, receiptKey);
       const result = obj(await response.json().catch(() => null));
       if (!response.ok) throw new ApiError(response.status, str(result.message).slice(0, 320) || undefined);
       if (result.success !== true) throw new ApiError(502);

@@ -188,7 +188,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     getRegion(q.region, auth.staff);
     if (!ownProfile && !nav.some(item => item.id === sectionId)) throw new ApiError(403);
     if (sectionId === 'operations') content = await OperationsDesk({ auth, region, view, query: {
-      from: param(q, 'from'), to: param(q, 'to'), q: param(q, 'q'), state: param(q, 'state'), proposal: param(q, 'proposal'),
+      from: param(q, 'from'), to: param(q, 'to'), q: param(q, 'q'), page: param(q, 'page'), state: param(q, 'state'),
+      proposal: param(q, 'proposal'), supplierSearch: param(q, 'supplierSearch'),
     } });
     else if (sectionId === 'overview' && view.length === 1 && view[0] === 'classic') content = production ? await ProductionClassicOverview({auth,q,region}) : await ClassicDashboard({auth,q,region});
     else if (sectionId === 'overview' && !view.length) content = await Dashboard({auth,q,region,production:Boolean(production)});

@@ -25,7 +25,9 @@ async function saveInventory<T>(action: 'barcode-generate' | 'barcode-receive', 
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, values, region }),
     });
   } catch {
-    throw new Error('The connection was interrupted. Check All Barcodes before retrying.');
+    throw new Error(action === 'barcode-receive' ?
+      'Receiving could not be confirmed. Check purchase history or retry this same batch.' :
+      'The connection was interrupted. Check All Barcodes before retrying.');
   }
   if (!response.ok) throw new Error((await response.text()).slice(0, 320) || 'The change could not be confirmed.');
   return response.json();

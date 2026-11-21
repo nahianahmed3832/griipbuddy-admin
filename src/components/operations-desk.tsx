@@ -315,7 +315,7 @@ export async function OperationsDesk({ auth, region, view, query }: Props & { vi
   switch (page) {
     case 'purchases': {
       if (!showPurchases) throw new ApiError(403);
-      content = await PurchasingDesk({ auth, region, access: purchasing, id, proposal: query.proposal });
+      content = await PurchasingDesk({ auth, region, access: purchasing, id, query });
       break;
     }
     case 'queue': content = id ? await IssuePage({ auth, region, access, id }) : await QueuePage({ auth, region, access, state: query.state }); break;

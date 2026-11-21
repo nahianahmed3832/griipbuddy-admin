@@ -2,6 +2,7 @@
 .card { padding: clamp(.8rem, 2.2vw, 1.4rem); }
 .card :is(h2, p) { margin: 0; }
 .fields { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; }
+fieldset.fields { margin: 0; padding: 0; border: 0; min-width: 0; }
 .fields label { display: grid; gap: .3rem; flex: 1 1 10rem; min-width: 0; }
 .fields :is(input, select, textarea) { width: 100%; }
 .actions > p { margin: 0; }
@@ -19,6 +20,9 @@
 .history li { border: 1px solid #e6e1ed; border-radius: .5rem; padding: .7rem; overflow-wrap: anywhere; }
 .history li div, .paging { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .45rem; }
 .history li p { margin: .25rem 0; }
+.provenance { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin: .35rem 0 0; font-size: .82rem; }
+.provenance dt { font-weight: 650; }
+.provenance dd { margin: 0; }
 @media (max-width: 650px) {
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resultTable thead { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }

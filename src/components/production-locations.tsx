@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Building2, CalendarDays, Eye, MapPin, Package, Pencil, Phone, UserRound, Warehouse } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { adminPath } from '@/lib/paths';
-import type { LocationRecord } from '@/lib/locations';
+import { locationsPath, type LocationRecord } from '@/lib/locations';
 import type { Region } from '@/lib/sections';
 import { ProductionCatalogActions } from './production-catalog-actions';
 import { RegistryPageSize } from './production-registry-size';
@@ -22,8 +22,9 @@ const local = (path: string, region: Region, query: Record<string, string> = {})
   return path + (params.size ? '?' + params : '');
 };
 
-export function ProductionLocationDirectory({ rows, region, limit, page, total, canEdit, canDelete }: {
-  rows: DirectoryLocation[]; region: Region; limit: string; page: number; total: number; canEdit: boolean; canDelete: boolean;
+export function ProductionLocationDirectory({ rows, region, limit, page, total, canCreate, canEdit, canDelete }: {
+  rows: DirectoryLocation[]; region: Region; limit: string; page: number; total: number;
+  canCreate: boolean; canEdit: boolean; canDelete: boolean;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<DirectoryLocation>();
@@ -43,11 +44,14 @@ export function ProductionLocationDirectory({ rows, region, limit, page, total, 
     finally { pending.current = false; setBusy(false); }
   }
   return <section className={styles.page}>
-    <header className={styles.header}><h1>Business Locations ({total})</h1></header>
+    <header className={styles.header}><h1>Business Locations ({total})</h1>
+      {canCreate && <Link className={styles.primary} href={local('/dashboard/business-location/create', region)}>Add Business Location</Link>}
+    </header>
     <div className={locationStyles.list}><table className={styles.table}>
       <thead><tr>{['Sl No.', 'Name', 'Type', 'District', 'Address', 'Manager Info', 'Actions'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => <tr key={row.id}>
-        <td>{String(index + 1).padStart(2, '0')}</td><td>{row.name}</td><td>{row.type}</td><td>{row.address.district || 'N/A'}</td>
+        <td>{String(index + 1).padStart(2, '0')}</td>
+        <td><Link className="table-link" href={local(locationsPath + '/' + row.id, region)}>{row.name}</Link></td><td>{row.type}</td><td>{row.address.district || 'N/A'}</td>
         <td>{row.address.local_address || 'N/A'}</td><td>Name: {row.manager_name || 'N/A'}<br/>Phone: {row.contact_numbers.join(', ') || 'N/A'}</td>
         <td><div className={design.tableActions}>{canEdit && <Link href={local('/dashboard/business-location/edit/' + row.id, region)}
           className={styles.outline} aria-label={'Edit ' + row.name}><Pencil size={16}/></Link>}
@@ -73,8 +77,9 @@ export function ProductionLocationDirectory({ rows, region, limit, page, total, 
   </section>;
 }
 
-export function ProductionLocationManagement({ rows }: { rows: DirectoryLocation[] }) {
-  const [selected, setSelected] = useState('');
+export function ProductionLocationManagement({ rows, region, canViewStock, canAdjust, canTransfer }: {
+  rows: DirectoryLocation[]; region: Region; canViewStock: boolean; canAdjust: boolean; canTransfer: boolean;
+}) {
   return <section className={styles.page + ' ' + locationStyles.management}>
     <header><h1>Warehouse &amp; Outlet Management</h1><p>Manage and monitor all outlet and warehouse locations and their inventory</p></header>
     {([['WAREHOUSE', 'Warehouses', 'warehouse', Warehouse], ['OUTLET', 'Outlets', 'outlet', Building2]] as const).map(([type, title, label, Icon]) => {
@@ -88,13 +93,21 @@ export function ProductionLocationManagement({ rows }: { rows: DirectoryLocation
           {row.contact_numbers.length > 0 && <p><Phone size={17}/>{row.contact_numbers.join(', ')}</p>}
           {row.latitude !== undefined && row.longitude !== undefined && <p>Coordinates: {row.latitude.toFixed(4)}, {row.longitude.toFixed(4)}</p>}
           {row.created && <p><CalendarDays size={14}/>Created: {new Date(row.created).toLocaleDateString('en-GB', { timeZone: 'Asia/Dhaka' })}</p>}
-          <footer><button type="button" className={styles.primary} onClick={() => setSelected(row.id + ':view')}><Eye size={16}/> View Inventory</button>
-            <button type="button" className={styles.outline} onClick={() => setSelected(row.id + ':update')}><Package size={16}/> Update Inventory</button></footer>
+          {canViewStock && <footer>
+            <Link className={styles.primary} href={local('/dashboard/inventory/view/' + label, region, { [label + '_id']: row.id })}>
+              <Eye size={16}/> View Inventory
+            </Link>
+            {type === 'WAREHOUSE' && canAdjust && <Link className={styles.outline} href={local('/dashboard/inventory/warehouse-update', region)}>
+              <Package size={16}/> Adjust Stock
+            </Link>}
+            {type === 'OUTLET' && canTransfer && <Link className={styles.outline} href={local('/dashboard/inventory/outlet-update', region, { outlet_id: row.id })}>
+              <Package size={16}/> Transfer Stock
+            </Link>}
+          </footer>}
         </article>)}</div> : <div className={locationStyles.card}>
           <p>No {type === 'WAREHOUSE' ? 'warehouse' : 'outlets'} found</p><p>Get started by adding your first {String(label)} location.</p>
         </div>}
       </section>;
     })}
-    {selected && <p key={selected} className={locationStyles.toast} role="status" onAnimationEnd={() => setSelected('')}>Feature coming soon!</p>}
   </section>;
 }

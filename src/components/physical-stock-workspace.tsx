@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, Download, Search } from 'lucide-react';
-import { ApiError, type Session, url, workspaceWritesEnabled } from '@/lib/api';
+import { ApiError, mongoId, type Session, url, workspaceWritesEnabled } from '@/lib/api';
 import { param, type Query } from '@/lib/data';
 import { adminPath } from '@/lib/paths';
 import { mayReadPhysicalStock, physicalLocations, physicalStockDetail, physicalStockFilters, physicalStocks, recoveredStockPage } from '@/lib/physical-stock';
@@ -23,13 +23,17 @@ export async function PhysicalStockWorkspace({ auth, region, q, production }: { 
   const stockId = param(q, 'stock');
   const market = filters.market ?? (region === 'BD' ? 'BD' : 'International');
   if (stockId && location) {
-    const detail = await physicalStockDetail(auth, stockId, scope);
+    const cursor = param(q, 'beforeMovement');
+    if (cursor && !mongoId(cursor)) throw new ApiError(400, 'Use a valid movement history link.');
+    const detail = await physicalStockDetail(auth, stockId, scope, cursor);
     const { stock, lots, movements } = detail;
     const writable = workspaceWritesEnabled();
     const canSeeCost = has(auth.staff, 'purchase.price.view') && lots.some(row => row.unitCost !== undefined);
     const operationScope = new URLSearchParams({ region, location: location.id, ...(filters.market && { market: filters.market }), id: stock.id }).toString();
+    const movementPage = (beforeMovement?: string) => url(path, { ...scope, stock: stock.id, beforeMovement }) + '#movement-history';
+    const locationName = (id: string) => locations.find(row => row.id === id)?.name ?? id;
     return <div className={styles.workspace}>
-      <WorkspaceHeading title={stock.sku ?? "Historical stock"} detail={`${stock.name} · ${location.name} · ${market}`}>
+      <WorkspaceHeading title={stock.sku ?? "Historical stock"} detail={`${stock.name} · ${location.name} · ${market} · First-party stock`}>
         <Link className="button secondary" href={url(path, { ...scope })}><ArrowLeft size={16} aria-hidden="true"/> Back to stock</Link>
       </WorkspaceHeading>
       <dl className={styles.metrics}>
@@ -38,7 +42,7 @@ export async function PhysicalStockWorkspace({ auth, region, q, production }: { 
       </dl>
       {stock.pool && <section className={`panel ${styles.card}`} aria-label="Shared SKU pool">
         <h2>Shared SKU pool</h2><p className="muted">These totals and holds apply across warehouses for this recovered variant.</p>
-        <p>{stock.pool.onHand} on hand · {stock.pool.reserved} reserved · {stock.pool.available} available</p>
+        <p>{stock.pool.onHand} on hand · {stock.pool.unavailable} unavailable · {stock.pool.reserved} reserved · {stock.pool.available} available</p>
       </section>}
       <PhysicalStockActions detail={detail} scope={operationScope} canThreshold={writable && has(auth.staff, 'stock.update')}
         canDamage={writable && has(auth.staff, 'stock.create')}/>
@@ -53,16 +57,29 @@ export async function PhysicalStockWorkspace({ auth, region, q, production }: { 
       <section className={`panel ${styles.card}`} aria-labelledby="movement-history">
         <h2 id="movement-history">Movement history</h2>
         {movements.length ? <ol className={styles.history}>{movements.map(move => <li key={move.id}>
-          <div><strong>{move.type?.replaceAll('_', ' ') ?? 'Historical movement'}</strong><span>{move.quantity == null ? "Quantity unavailable" : `${move.quantity} units`} · {date(move.at)}</span></div>
-          <p>{move.reason || move.reference || 'Recorded stock movement'}</p>
-          {move.lot && <small>Lot ID {move.lot}</small>}
-        </li>)}</ol> : <WorkspaceEmpty title="No movement history for this row"/>}
+          <div><strong>{move.type?.replaceAll('_', ' ') ?? 'Historical movement'}</strong><span>{date(move.at)}</span></div>
+          <p>{move.quantity == null ? 'Stock change unavailable' : `${move.quantity > 0 ? '+' : ''}${move.quantity} units stock change`}
+            {!!move.damagedQuantity && ` · ${move.damagedQuantity} units recorded as damaged`}</p>
+          {move.reason && <p>{move.reason}</p>}
+          <dl className={styles.provenance}>
+            {move.lot && <div><dt>Lot ID</dt><dd>{move.lot}</dd></div>}
+            {move.reference && <div><dt>Operation reference</dt><dd>{move.reference}</dd></div>}
+            {move.from && <div><dt>From</dt><dd>{locationName(move.from)}</dd></div>}
+            {move.to && <div><dt>To</dt><dd>{locationName(move.to)}</dd></div>}
+            {move.actor && <div><dt>Operator ID</dt><dd>{move.actor}</dd></div>}
+            {move.linkedMovement && <div><dt>Related movement ID</dt><dd>{move.linkedMovement}</dd></div>}
+          </dl>
+        </li>)}</ol> : <WorkspaceEmpty title={cursor ? 'No older movements' : 'No movement history for this row'}/>}
+        {(cursor || detail.nextMovement) && <nav className={styles.paging} aria-label="Movement history pages">
+          {cursor && <Link href={movementPage()}>Newest movements</Link>}
+          {detail.nextMovement && <Link href={movementPage(detail.nextMovement)}>Older movements</Link>}
+        </nav>}
       </section>
     </div>;
   }
   const result = location ? await physicalStocks(auth, scope) : null;
   return <div className={styles.workspace}>
-    <WorkspaceHeading title="Physical warehouse stock" detail={`${market} · Recovered inventory`}>
+    <WorkspaceHeading title="Physical warehouse stock" detail={`${market} · First-party recovered inventory`}>
       {location && <a className="button secondary" href={adminPath(url('/api/physical-stock', { ...scope, after: undefined }))} download>
         <Download size={16} aria-hidden="true"/> Export CSV</a>}
     </WorkspaceHeading>

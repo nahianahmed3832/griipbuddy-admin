@@ -34,7 +34,7 @@ async function run(request: Request, method: 'GET' | 'PUT' | 'POST') {
     const body = await request.text();
     if (Buffer.byteLength(body) > 20_000) return fail('The stock command is too large.', 413);
     const idempotency = request.headers.get('idempotency-key') ?? undefined;
-    if (method === 'POST' && (!idempotency || !/^[a-zA-Z0-9._:/-]{1,120}$/.test(idempotency))) return fail('Include a unique operation key.', 400);
+    if (method === 'POST' && (!idempotency || !/^[a-zA-Z0-9._-]{8,80}$/.test(idempotency))) return fail('Include a unique operation key.', 400);
     const response = await requestApi(url(`${recoveredStockPath}/stocks/${id}/${method === 'PUT' ? 'threshold' : 'damage'}`,
       { region, market: filters.market, location: filters.location }), auth.token, { method, body }, idempotency);
     const result = obj(await response.json().catch(() => null));

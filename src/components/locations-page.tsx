@@ -5,6 +5,7 @@ import { param, type Query } from '@/lib/data';
 import { locationsEndpoint, locationsPath, locationTypes, marketLabel, type LocationRecord } from '@/lib/locations';
 import { adminPath } from '@/lib/paths';
 import { has, type Region } from '@/lib/sections';
+import { canAccessStockChanges } from '@/lib/stock-changes';
 import { PageHeading } from './dashboard';
 import { LocationForm } from './location-form';
 import { ProductThumbnail } from './product-thumbnail';
@@ -138,9 +139,11 @@ export async function LocationsPage({ auth, region, q, id, production = false }:
       const geo = obj(original.location);
       return { ...record(raw), created: str(original.createdAt), latitude: coordinate(geo.latitude), longitude: coordinate(geo.longitude) };
     }).filter(row => mongoId(row.id));
-    if (management) return <ProductionLocationManagement rows={rows}/>;
+    if (management) return <ProductionLocationManagement rows={rows} region={region} canViewStock={has(auth.staff, 'stock.view')}
+      canAdjust={canWrite(auth.staff) && canAccessStockChanges(auth.staff, 'warehouse-update')}
+      canTransfer={canWrite(auth.staff) && canAccessStockChanges(auth.staff, 'outlet-update')}/>;
     return <ProductionLocationDirectory rows={rows} region={region} limit={limit} page={page} total={Number(obj(payload.meta).total) || 0}
-      canEdit={allowEdit} canDelete={canWrite(auth.staff) && has(auth.staff, 'business_locations.delete')}/>;
+      canCreate={allowCreate} canEdit={allowEdit} canDelete={canWrite(auth.staff) && has(auth.staff, 'business_locations.delete')}/>;
   }
   if (!id) return Directory({ auth, region, q, allowCreate });
 

@@ -23,6 +23,8 @@
 .po-add label { flex: 1 1 200px; }
 .po-form .button { min-height: 42px; }
 .po-back { width: fit-content; }
+.po-pager { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .65rem; margin-top: .9rem; }
+.po-pager .button, .po-add .button { min-height: 42px; }
 .po-timeline, .po-list { margin: .75rem 0 0; padding: 0; list-style: none; }
 .po-timeline li, .po-list li { padding: .75rem 0; border-top: 1px solid #dbe3ec; overflow-wrap: anywhere; }
 .po-list li { display: flex; justify-content: space-between; gap: 1.2rem; }

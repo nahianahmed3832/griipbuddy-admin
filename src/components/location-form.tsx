@@ -59,8 +59,7 @@ export function LocationForm({ location, region, cancelHref, production = false 
       });
       if (!result.ok) throw new Error((await result.text()) || 'The location could not be saved.');
       const saved: { id: string } = await result.json();
-      router.replace(production ? cancelHref : locationsPath + '/' + saved.id + '?' + new URLSearchParams({ region, saved: id ? 'updated' : 'created' }));
-      if (production) router.refresh();
+      router.replace(locationsPath + '/' + saved.id + '?' + new URLSearchParams({ region, saved: id ? 'updated' : 'created' }));
     } catch (failure) {
       setError(failure instanceof Error && !(failure instanceof TypeError) ? failure.message
         : 'The connection was interrupted. Check the directory before trying again.');
@@ -76,7 +75,7 @@ export function LocationForm({ location, region, cancelHref, production = false 
   };
   const pickupFields = type === 'OUTLET' && pickupSupported && <section className="location-editor-section" aria-label="Pickup listing">
     <div className="location-section-heading"><MapPin size={18} aria-hidden="true"/><div>
-      <h2>Pickup directory</h2><p>Publish the address and public phone for this outlet in {pickupMarket}.</p>
+      <h2>Pickup directory</h2><p>List the address and public phone for this outlet in {pickupMarket}. Clear the checkbox and save to retire the listing.</p>
     </div></div>
     <label><input type="checkbox" checked={pickup} onChange={event => { setPickup(event.currentTarget.checked); setPickupTouched(true); }}/>
       {' '}Show in pickup directory</label>

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { ApiError, url, type Session } from '@/lib/api';
+import { adminPath } from '@/lib/paths';
 import { exactMoney, label, operationsPath, opsApi, opsDate } from '@/lib/operations-desk';
-import { purchasesPath, type Purchase, type PurchaseAccess, type PurchaseChoices, type PurchaseList, type Quote,
+import { purchasesPath, remainingPosting, type Purchase, type PurchaseAccess, type PurchaseChoices, type PurchaseList, type Quote,
   type ReviewedProposal } from '@/lib/purchasing';
 import type { Region } from '@/lib/sections';
 import { CorrectionsForm, FinanceForms, PrintPurchase, PurchaseControls, QuoteForm, ReceiptLabels, ReceivingForm, SupplierForm,
@@ -75,10 +76,14 @@ function ReceiptSummary({ purchase, region }: { purchase: Purchase; region: Regi
       {purchase.receiptLines.map(row => <li key={row._id}>
         <strong>{row.sku ?? row.item}</strong> · {row.seen} counted · {row.posted} accepted · {row.held} held · {row.rejected} rejected
         {!!row.returned && <> · {row.returned} returned to supplier</>}
-        <small>Receipt line {row._id}{row.toOrder !== row.seen && <> · {row.toOrder} applied to order</>}</small>
+        <small>{row.receivedAt && <>{date(row.receivedAt, region)} · </>}Receipt line {row._id}{row.toOrder !== row.seen && <> · {row.toOrder} applied to order</>}</small>
         {row.exceptions.length > 0 && <small>{row.exceptions.map(label).join(' · ')}</small>}
-        {purchase.postings.filter(post => post.line === row._id && post.quantity > post.corrected)
-          .map(post => <ReceiptLabels key={post._id} region={region} id={purchase.id} posting={post._id} />)}
+        {purchase.postings.filter(post => post.line === row._id).map(post => <div key={post._id}>
+          <small>Lot {post.lot} · Movement {post.movement} · {post.quantity} originally posted
+            {post.corrected > 0 && <> · {post.corrected} corrected</>}
+            {!!post.returned && <> · {post.returned} returned</>}</small>
+          {remainingPosting(post) > 0 && <ReceiptLabels region={region} id={purchase.id} posting={post._id} />}
+        </div>)}
       </li>)}
     </ul>}
   </section>;
@@ -130,7 +135,8 @@ function Audit({ purchase, region }: { purchase: Purchase; region: Region }) {
           {row.payload?.evidenceReference && <small>Supporting evidence {row.payload.evidenceReference}</small>}
           {movements.map(movement => <small key={movement.movement}>Stock movement {movement.movement} · {movement.quantity} units</small>)}
           {row.payload?.movement && <small>{row.kind === 'supplier-return' ? 'Supplier return movement' : 'Compensating movement'}
-            {' '}{row.payload.movement} · Original {row.payload.original}</small>}
+            {' '}{row.payload.movement} · Original {row.payload.original}
+            {row.payload.lot && <> · Lot {row.payload.lot}</>}</small>}
           {row.payload?.issue && <Link href={url(operationsPath + '/queue/' + row.payload.issue, { region })}>Review issue</Link>}
         </li>;
       })}
@@ -138,38 +144,68 @@ function Audit({ purchase, region }: { purchase: Purchase; region: Region }) {
   </details>;
 }
 
-export async function PurchasingDesk({ auth, region, access, id, proposal: proposalId }: {
-  auth: Session; region: Region; access: PurchaseAccess; id?: string; proposal?: string;
+export async function PurchasingDesk({ auth, region, access, id, query }: {
+  auth: Session; region: Region; access: PurchaseAccess; id?: string; query: Record<string, string | undefined>;
 }) {
+  const term = query.q?.trim().slice(0, 80) || undefined;
+  const page = /^\d{1,6}$/.test(query.page ?? '') ? String(Math.max(1, Number(query.page))) : undefined;
   const path = (value = '') => url(purchasesPath + value, { region });
+  const listPath = (value?: number) => url(purchasesPath, { region, q: term, page: value && value > 1 ? String(value) : undefined });
   if (!id) {
-    const data = await opsApi<PurchaseList>(auth, region, 'purchases');
+    const data = await opsApi<PurchaseList>(auth, region, 'purchases', { q: term, page });
     return <div className="po-desk">
       <WorkspaceHeading title={access.buy || access.finance ? 'Purchases and receiving' : 'Expected deliveries'}
         detail={region === 'BD' ? 'Bangladesh' : 'International'}>
         {access.buy && <div className="po-buttons"><Link href={path('/new')} className="button primary">New purchase draft</Link>
           <Link href={path('/suppliers')} className="button secondary">Suppliers</Link></div>}</WorkspaceHeading>
-      <section className="ops-panel">
-        {data.orders.length === 0 ? <WorkspaceEmpty title="No purchase orders for this workspace"/> : <ul className="po-list">{data.orders.map(row => <li key={row.id}>
-          <div><Link href={path('/' + row.id)}>{row.reference}</Link><p>{row.supplier} · {row.warehouse}</p></div>
-          <div><strong>{row.state}</strong>{row.expired && <p>Quote expired</p>}
-            {row.expectedAt && <p>{row.expected} still expected · {date(row.expectedAt, region)}</p>}</div>
-        </li>)}</ul>}
-        {data.overflow && <p>Showing the 100 most recently updated records.</p>}
+      <section className="ops-panel" aria-label="Purchase history">
+        <form action={adminPath(purchasesPath)} className="po-add po-fields">
+          <input type="hidden" name="region" value={region} />
+          <label>Search purchases<input name="q" defaultValue={term} maxLength={80} placeholder="Reference, supplier or warehouse" /></label>
+          <button className="button secondary">Search</button>
+          {term && <Link href={path()} className="button secondary">Clear</Link>}
+        </form>
+        {data.orders.length === 0 ? <WorkspaceEmpty title={term ? 'No purchases match this search' : 'No purchase orders for this workspace'}/> :
+          <ul className="po-list">{data.orders.map(row => <li key={row.id}>
+            <div><Link href={url(purchasesPath + '/' + row.id, { region, q: term, page: data.page > 1 ? String(data.page) : undefined })}>
+              {row.reference}</Link><p>{row.supplier} · {row.warehouse}</p></div>
+            <div><strong>{row.state}</strong>{row.expired && <p>Quote expired</p>}
+              {row.expectedAt && <p>{row.expected} still expected · {date(row.expectedAt, region)}</p>}</div>
+          </li>)}</ul>}
+        <nav className="po-pager" aria-label="Purchase history pages">
+          <span>{data.total.toLocaleString('en')} records · Page {data.page} of {data.pages}</span>
+          <div className="po-buttons">
+            {data.page > 1 && <Link href={listPath(data.page - 1)} className="button secondary">Previous</Link>}
+            {data.page < data.pages && <Link href={listPath(data.page + 1)} className="button secondary">Next</Link>}
+            {data.orders.length > 0 && <a className="button secondary" download
+              href={adminPath(url('/api/purchases/export', { region, q: term, page: String(data.page) }))}>Export listing page</a>}
+          </div>
+        </nav>
       </section>
     </div>;
   }
   if (id === 'new' || id === 'suppliers') {
     if (!access.buy) throw new ApiError(403);
+    const proposalId = query.proposal;
     const proposal = proposalId && id === 'new' && /^[a-f\d]{64}$/.test(proposalId) ?
       await opsApi<ReviewedProposal>(auth, region, 'purchases/proposal/' + proposalId) : undefined;
+    const supplierSearch = id === 'suppliers' ? query.supplierSearch?.trim().slice(0, 80) || undefined : undefined;
     const choices = await opsApi<PurchaseChoices>(auth, region, 'purchases/choices',
-      proposal ? { variant: proposal.variant, supplier: proposal.supplier } : undefined);
+      proposal ? { variant: proposal.variant, supplier: proposal.supplier } : { supplierSearch });
     return <div className="po-desk">
       <Link href={path()} className="po-back">Back to purchases</Link>
       <WorkspaceHeading title={id === 'new' ? 'New purchase draft' : 'Supplier records'} detail={region === 'BD' ? 'Bangladesh' : 'International'}/>
       <section className="ops-panel">
-        {id === 'new' ? <QuoteForm region={region} choices={choices} proposal={proposal} /> : <SupplierForm region={region} suppliers={choices.suppliers} />}
+        {id === 'new' ? <QuoteForm region={region} choices={choices} proposal={proposal} /> : <>
+          <form action={adminPath(purchasesPath + '/suppliers')} className="po-add po-fields">
+            <input type="hidden" name="region" value={region} />
+            <label>Find supplier<input name="supplierSearch" defaultValue={supplierSearch} maxLength={80} placeholder="Name or contact ID" /></label>
+            <button className="button secondary">Find</button>
+            {supplierSearch && <Link href={path('/suppliers')} className="button secondary">Clear</Link>}
+          </form>
+          {supplierSearch && !choices.suppliers.length && <p>No suppliers match this search.</p>}
+          <SupplierForm key={supplierSearch} region={region} suppliers={choices.suppliers} />
+        </>}
       </section>
     </div>;
   }
@@ -177,7 +213,7 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
   const purchase = await opsApi<Purchase>(auth, region, 'purchases/' + id);
   const choices = access.buy && purchase.editor ? await opsApi<PurchaseChoices>(auth, region, 'purchases/choices') : undefined;
   return <div className="po-desk po-detail">
-    <Link href={path()} className="po-back">Back to purchases</Link>
+    <Link href={listPath(Number(page))} className="po-back">Back to purchases</Link>
     <WorkspaceHeading title={purchase.reference}
       detail={[region === 'BD' ? 'Bangladesh' : 'International', purchase.supplier, purchase.warehouse, purchase.test && 'Test record'].filter(Boolean).join(' · ')}>
       <WorkspaceStatus tone="active">{purchase.state}</WorkspaceStatus>
@@ -193,7 +229,9 @@ export async function PurchasingDesk({ auth, region, access, id, proposal: propo
     {purchase.canReceive && <>
       <ReceiptSummary purchase={purchase} region={region} />
       {access.receive && <section className="ops-panel">
-        <h2>Record a physical receipt</h2><ReceivingForm region={region} purchase={purchase} />
+        <h2>Record a physical receipt</h2>
+        <p>Receiving warehouse <strong>{purchase.warehouse}</strong></p>
+        <ReceivingForm region={region} purchase={purchase} />
       </section>}
       {access.buy && <section className="ops-panel"><h2>Inspections and corrections</h2>
         <CorrectionsForm region={region} purchase={purchase} />

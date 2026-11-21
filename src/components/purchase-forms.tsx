@@ -54,6 +54,32 @@ function EvidenceFields({ region, prefix = '', documentOnly = false, dated = fal
   </fieldset>;
 }
 
+type RetryIdentity = { fingerprint: string; key: string; timestamp: string };
+
+async function retryIdentity(storageKey: string, body: string): Promise<RetryIdentity> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
+  const fingerprint = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+  const identity = { fingerprint, key: crypto.randomUUID(), timestamp: new Date().toISOString() };
+  try {
+    const previous: RetryIdentity | null = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    if (previous?.fingerprint === fingerprint && /^[a-f0-9-]{36}$/.test(previous.key) &&
+      Number.isFinite(Date.parse(previous.timestamp))) return previous;
+    sessionStorage.setItem(storageKey, JSON.stringify(identity));
+  } catch {
+    // The form keeps its request identity in memory when browser storage is unavailable.
+  }
+  return identity;
+}
+
+function clearRetryIdentity(storageKey: string, key: string) {
+  try {
+    const current: RetryIdentity | null = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    if (current?.key === key) sessionStorage.removeItem(storageKey);
+  } catch {
+    // Successful submissions also clear their in-memory request identity.
+  }
+}
+
 function Form({ region, id, title, children, action, fields, onSaved, onReset }: {
   region: Region; id?: string; title: string; children: ReactNode; action: string;
   fields: (form: FormData) => object; onSaved?: (result: { order?: string; id?: string }) => void; onReset?: () => void;
@@ -64,7 +90,8 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
   const [feedback, setFeedback] = useState('');
   const element = useRef<HTMLFormElement>(null);
   const inFlight = useRef(false);
-  const last = useRef<{ body: string; data: string } | null>(null);
+  const last = useRef<{ body: string; identity: RetryIdentity } | null>(null);
+  const storageKey = ['griip-purchase-command', region, id || 'new', action].join(':');
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (inFlight.current || saved) return;
@@ -74,18 +101,19 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
     try {
       const input = { action, ...fields(new FormData(event.currentTarget)) };
       const body = JSON.stringify(input);
-      if (!last.current || last.current.body !== body) last.current = {
-        body, data: JSON.stringify({ ...input, key: crypto.randomUUID() }, (name, value) =>
-          name === 'at' && value === '' ? new Date().toISOString() : value),
-      };
+      if (!last.current || last.current.body !== body) last.current = { body, identity: await retryIdentity(storageKey, body) };
+      const { key, timestamp } = last.current.identity;
+      const payload = JSON.stringify({ ...input, key }, (name, value) => name === 'at' && value === '' ? timestamp : value);
       const response = await fetch(adminPath('/api/operations/purchases' + (id ? '/' + id : '') + '?region=' + region), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: last.current.data,
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.success) {
         setFeedback(result?.message ?? 'The request could not be confirmed. Check the purchase and retry with the same details.');
         return;
       }
+      clearRetryIdentity(storageKey, key);
+      last.current = null;
       setSaved(true);
       const status = result.data?.status;
       setFeedback(status === 'reference-conflict' ? 'Reference conflict recorded for review. Stock did not change.' :
@@ -95,7 +123,8 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
       if (onSaved) onSaved(result.data);
       else router.refresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'Check the latest purchase status before retrying.');
+      setFeedback(error instanceof TypeError ? 'Network interruption. Check the purchase or retry with the same details.' :
+        error instanceof Error ? error.message : 'Check the latest purchase status before retrying.');
     } finally { inFlight.current = false; setPending(false); }
   }
   return <form className="po-form" ref={element} onSubmit={submit} onReset={onReset}>
@@ -219,11 +248,12 @@ export function SupplierForm({ region, suppliers }: { region: Region; suppliers:
   const [selected, setSelected] = useState('');
   const current = suppliers.find(row => row._id === selected);
   return <Form region={region} title="Save supplier" action="supplier" fields={form => ({
-    id: selected || undefined, name: get(form, 'name'), contactId: integer(form, 'contactId'), phone: opt(form, 'phone'),
+    id: selected || undefined, expectedUpdatedAt: current?.updatedAt, name: get(form, 'name'),
+    contactId: integer(form, 'contactId'), phone: opt(form, 'phone'),
     email: opt(form, 'email'), address: opt(form, 'address'), paymentTerms: opt(form, 'paymentTerms'),
   })}>
     <label>Supplier record<select value={selected} onChange={event => setSelected(event.target.value)}>
-      <option value="">New record</option>{suppliers.map(row => <option key={row._id} value={row._id}>{row.name}</option>)}
+      <option value="">New record</option>{suppliers.map(row => <option key={row._id} value={row._id}>{row.name} ({row.contact_id})</option>)}
     </select></label>
     <div className="po-grid" key={selected}>
       <label>Supplier name<input name="name" required defaultValue={current?.name} maxLength={120} /></label>
@@ -301,15 +331,26 @@ export function ReceivingForm({ region, purchase }: { region: Region; purchase: 
       variant: row.variant, received: integer(form, 'seen' + index), accepted: integer(form, 'accepted' + index),
       held: integer(form, 'held' + index), rejected: integer(form, 'rejected' + index), barcodes: barcodes(form, 'labels' + index),
     })).filter(line => line.received || line.accepted || line.held || line.rejected || line.barcodes.length);
+    for (const line of lines) {
+      const sku = purchase.lines.find(row => row.variant === line.variant)?.sku;
+      if (line.received !== line.accepted + line.held + line.rejected) {
+        throw new Error(sku + ': accepted, held and rejected units must add up to the physically received count.');
+      }
+      if (line.barcodes.length && line.barcodes.length !== line.accepted) {
+        throw new Error(sku + ': provide one unused label for each accepted unit, or leave the label field blank.');
+      }
+    }
     if (extra) {
       const received = integer(form, 'unidentified');
       const rejected = integer(form, 'unidentifiedRejected');
+      if (rejected > received) throw new Error('Additional rejected units cannot exceed the physically received count.');
       return { at: date(form, 'at', region) ?? '', deliveryReference: opt(form, 'deliveryReference'), evidenceReference: opt(form, 'evidenceReference'),
         note: opt(form, 'note'), physicallyCounted: true, lines: [...lines, {
           variant: variant?.variant, reportedItem: opt(form, 'reportedItem'), received,
           accepted: 0, held: received - rejected, rejected, barcodes: [],
         }] };
     }
+    if (!lines.length) throw new Error('Enter the physically received count for at least one line.');
     return { at: date(form, 'at', region) ?? '', deliveryReference: opt(form, 'deliveryReference'), evidenceReference: opt(form, 'evidenceReference'),
       note: opt(form, 'note'), physicallyCounted: true, lines };
   }}>
@@ -353,12 +394,18 @@ export function SupplierReturnForm({ region, purchase }: { region: Region; purch
   const posting = eligible.find(post => post._id === selected);
   return <section className="ops-panel" aria-labelledby="supplier-return-heading" id="supplier-returns">
     <h2 id="supplier-return-heading">Supplier returns</h2>
-    <p>Record a dispatch from its original receipt lot. The warehouse verifies that the scanned units are available before deducting them.</p>
+    <p>Dispatch from {purchase.warehouse} using the original received labels. Remaining receipt units are an upper limit.
+      The warehouse checks current availability and reservations when posting the dispatch.</p>
     {!eligible.length ? <p className="po-hint">No original postings have units remaining for a supplier return.</p> :
-      <Form id={purchase.id} region={region} action="supplier-return" title="Record supplier dispatch" fields={form => ({
-        posting: get(form, 'posting'), quantity: integer(form, 'quantity'), reason: get(form, 'reason'),
-        evidence: evidence(form, region), barcodes: barcodes(form, 'barcodes'), dispatched: form.get('dispatched') === 'on',
-      })}>
+      <Form id={purchase.id} region={region} action="supplier-return" title="Record supplier dispatch" fields={form => {
+        const quantity = integer(form, 'quantity');
+        const labels = barcodes(form, 'barcodes');
+        if (new Set(labels).size !== quantity || labels.length !== quantity) {
+          throw new Error('Scan one distinct original label for each dispatched unit.');
+        }
+        return { posting: get(form, 'posting'), quantity, reason: get(form, 'reason'), evidence: evidence(form, region),
+          barcodes: labels, dispatched: form.get('dispatched') === 'on' };
+      }}>
         <div className="po-grid">
           <label>Original receipt posting<select name="posting" required value={posting?._id ?? ''} onChange={event => setSelected(event.target.value)}>
             <option value="">Choose a posting</option>{eligible.map(post => {
