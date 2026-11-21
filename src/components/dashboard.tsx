@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { Suspense, useId, type ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { canReadTransactions, readTransactions, transactionsPath } from '@/lib/transactions';
-import { ArrowRight, BellRing, Boxes, ChevronRight, CircleAlert, ClipboardList, Info, Package, RefreshCw, ShoppingBag, TrendingUp, Truck, Wallet } from 'lucide-react';
+import { ArrowRight, BellRing, Boxes, ChevronRight, CircleAlert, ClipboardList, Package, RefreshCw, ShoppingBag, TrendingUp, Truck, Wallet } from 'lucide-react';
 import { api, arr, operationsEnabled, mongoId, obj, str, url, type RecordData, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, printable, valueAt, type Query } from '@/lib/data';
@@ -14,6 +14,7 @@ import { TrendChart } from './trend-chart';
 import { ProductionReportChart } from './production-report-chart';
 import { ProductThumbnail } from './product-thumbnail';
 import { OverviewFilters } from './overview-filters';
+import { OverviewMetricHelp } from './overview-metric-help';
 import { WorkspaceEmpty, WorkspaceHeading } from './workspace-screen';
 import './production-overview.css';
 
@@ -36,7 +37,6 @@ function Metric({ title, value, detail, current, prior, lowerIsBetter = false, d
   title: string; value: string; detail?: string; current?: unknown; prior?: unknown; lowerIsBetter?: boolean;
   definition?: string; estimated?: string; href?: string; production?: boolean; tone?: MetricTone;
 }) {
-  const helpId = useId();
   const baseline = number(prior);
   const actual = number(current);
   const change = baseline && actual !== undefined ? (actual - baseline) / Math.abs(baseline) : undefined;
@@ -44,14 +44,8 @@ function Metric({ title, value, detail, current, prior, lowerIsBetter = false, d
   const name = production ? <span>{title}</span> : <h3>{title}</h3>;
   const body = <>
     <div className="overview-metric-title">{name}
-      {definition && <span className="overview-metric-help">
-        <button type="button" aria-label={title + ' definition'} aria-describedby={helpId}><Info size={14} aria-hidden="true"/></button>
-        <span id={helpId} role="tooltip">{definition}</span>
-      </span>}
-      {estimated && <span className="overview-metric-help">
-        <button type="button" className="overview-estimated" aria-describedby={helpId + '-estimated'}>Estimated</button>
-        <span id={helpId + '-estimated'} role="tooltip">{estimated}</span>
-      </span>}
+      {definition && <OverviewMetricHelp title={title} definition={definition}/>}
+      {estimated && <OverviewMetricHelp title={title} definition={estimated} estimated/>}
     </div><div className="overview-value"><strong>{value}</strong>
       {change !== undefined && <span className={'overview-delta ' + (neutralChange ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
         aria-label={percent(Math.abs(change)) + (neutralChange ? ' change' : change < 0 ? ' lower than previous period' : ' higher than previous period')}>
@@ -224,13 +218,23 @@ const productionPanels = {
     tone: 'preorders', icon: ClipboardList, count: 4 },
 } as const;
 
-function OverviewPanelState({ auth, region, query, section, error }: PanelRequest & { error?: boolean }) {
+function dashboardReportScope(query: OverviewQuery, dated: boolean) {
+  const { region, locations, currency, from, to, compare } = query.scope;
+  return {
+    region: region === 'BD' ? undefined : region,
+    locations,
+    currency,
+    ...(dated && { period: query.period, from, to, compare }),
+  };
+}
+
+function OverviewPanelState({ auth, query, section, error }: PanelRequest & { error?: boolean }) {
   const config = productionPanels[section];
   const { title, detail, tone, icon: Icon, count } = config;
   const report = 'report' in config ? config.report : undefined;
   const { period, scope } = query;
   const link = report && has(auth.staff, 'report.' + report[1] + '.view')
-    ? { href: url('/dashboard/reports/' + report[0], { region: region === 'BD' ? undefined : region, ...(section === 'sales' || section === 'fulfilment' ? { period } : {}) }), label: report[2] }
+    ? { href: url('/dashboard/reports/' + report[0], dashboardReportScope(query, section === 'sales' || section === 'fulfilment')), label: report[2] }
     : undefined;
   return <Panel title={title} detail={detail} tone={tone} icon={<Icon size={20}/>} link={link}
     id={section === 'actions' ? 'work-queue' : undefined} production>
@@ -331,8 +335,8 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const cost = (value: unknown) => formatMoney(value, 'BDT');
   const overviewPath = production ? '/dashboard/overview' : '/desk/overview';
   const reportPath = production ? '/dashboard/reports/' : '/desk/reports/';
-  const link = (id: string, permission: string, title: string, filters = {}) => grant('report.' + permission + '.view')
-    ? { href:url(reportPath + id, production ? { region: region === 'BD' ? undefined : region, ...filters } : { ...scope,...filters }),label:title } : undefined;
+  const link = (id: string, permission: string, title: string, filters = {}, dated = false) => grant('report.' + permission + '.view')
+    ? { href:url(reportPath + id, production ? { ...dashboardReportScope(query, dated), ...filters } : { ...scope,...filters }),label:title } : undefined;
   const meta = obj(sales?.meta);
   const comparison = obj(meta.compare);
   const asOf = Object.values(payload).map(item => str(obj(item?.meta).generated_at)).filter(Boolean).sort()[0];
@@ -494,7 +498,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
       </Panel>}
       {sales && <Panel title="Sales" production={production}
         detail={production ? 'Orders placed (demand) and orders delivered (revenue) are counted separately.' : 'Bookings track orders placed. Delivered sales track product value on delivered orders.'}
-        tone="sales" icon={production ? <TrendingUp size={20}/> : <ShoppingBag size={23}/>} link={link('sales-summary','sales_summary','Sales report', production ? {period} : {})}>
+        tone="sales" icon={production ? <TrendingUp size={20}/> : <ShoppingBag size={23}/>} link={link('sales-summary','sales_summary','Sales report', {}, true)}>
         <div className="overview-metrics">
           {!production && headlineMetrics}
           <Metric title="Average order value" value={money(delivered.avgOrderValue)} current={delivered.avgOrderValue} prior={obj(delivered.previous).avgOrderValue} detail={production ? undefined : 'Delivered orders'}
@@ -520,7 +524,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
       </Panel>}
       {fulfilment && <Panel title="Fulfilment" production={production}
         detail={production ? 'How quickly orders go out, and how many reach the customer.' : 'Dispatch speed, delivery outcomes and time to reach the customer.'}
-        tone="fulfilment" icon={<Truck size={production ? 20 : 23}/>} link={link('order-status','order_status','Order status report', production ? {period} : {})}>
+        tone="fulfilment" icon={<Truck size={production ? 20 : 23}/>} link={link('order-status','order_status','Order status report', {}, true)}>
         <Funnel data={obj(fulfilment.funnel)} production={production}/>
         <div className="overview-metrics overview-metrics-three">
           <Metric title="Dispatched" value={count(dispatch.orders)} current={dispatch.orders} prior={obj(dispatch.previous).orders}

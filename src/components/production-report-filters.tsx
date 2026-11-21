@@ -2,7 +2,7 @@
 
 import * as Select from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProductionLocationFilter } from './production-location-filter';
 import { productionReportPeriods } from '@/lib/production-report-period';
@@ -75,12 +75,17 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const [pending, startTransition] = useTransition();
   const nextQuery = useRef(new URLSearchParams(params.toString()));
 
   useEffect(() => { nextQuery.current = new URLSearchParams(params.toString()); }, [params]);
 
   function update(changes: Record<string, string>) {
     const query = new URLSearchParams(nextQuery.current);
+    if (query.has('location')) {
+      if (selectedLocations.length) query.set('locations', selectedLocations.join(','));
+      query.delete('location');
+    }
     for (const [key, value] of Object.entries(changes)) {
       if (value) query.set(key, value);
       else query.delete(key);
@@ -88,13 +93,13 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
     query.delete('page');
     query.delete('refresh');
     query.delete('filterApplied');
-    query.delete('location');
     if (region === 'INTERNATIONAL') query.set('region', region);
     nextQuery.current = query;
-    router.replace(path + (query.size ? '?' + query : ''), { scroll: false });
+    startTransition(() => router.replace(path + (query.size ? '?' + query : ''), { scroll: false }));
   }
 
   return <div className="production-report-filters panel" aria-label="Report filters" role="group">
+    <span className="production-report-visually-hidden" role="status">{pending ? 'Updating report…' : ''}</span>
     {usesPeriod && <ProductionReportSelect label="Period" value={period}
       options={period === 'last90' ? [...productionReportPeriods, { value: 'last90', label: 'Last 90 days' }] : productionReportPeriods}
       change={value => update({ period: value, ...(value === 'custom' && { from, to }) })}/>}

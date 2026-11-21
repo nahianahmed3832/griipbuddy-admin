@@ -111,6 +111,7 @@ export function suggestVariantSku(
 
 export function variantDraftIssues(draft: ProductDraft) {
   const issues: string[] = [];
+  const skuErrors = new Map<string, string>();
   const fold = (value: string) => value.trim().normalize("NFKC").toLowerCase();
   const optionKeys = new Set<string>();
   for (const option of draft.options) {
@@ -134,8 +135,12 @@ export function variantDraftIssues(draft: ProductDraft) {
     const sku = foldedSku(row.sku);
     const tuple = variantTuple(draft.options, row.selections);
     const signature = variantOptionSignature(row.selections);
-    if (!validDraftSku(sku)) issues.push(tuple + " needs a valid SKU of up to 60 characters.");
-    else if (skus.has(sku)) issues.push(sku + " is used in more than one variant.");
+    const skuError = !validDraftSku(sku) ? tuple + " needs a valid SKU of up to 60 characters."
+      : skus.has(sku) ? sku + " is used in more than one variant." : null;
+    if (skuError) {
+      issues.push(skuError);
+      skuErrors.set(row.id, skuError);
+    }
     if (Object.keys(row.selections).length !== draft.options.length || !draft.options.every(option =>
       option.values.some(value => value.id === row.selections[option.id]))) {
       issues.push((sku || tuple) + " needs one value from every option.");
@@ -143,7 +148,7 @@ export function variantDraftIssues(draft: ProductDraft) {
     skus.add(sku);
     combinations.add(signature);
   }
-  return [...new Set(issues)];
+  return { issues: [...new Set(issues)], skuErrors };
 }
 
 export function withAttribute(values: AttributeValues, key: string, value: AttributeValue | undefined) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { formatMoney, markets, type MarketId } from "./markets";
 import { catalogMediaPath, validCatalogImage } from "./media-path";
 import { regionFor } from "./routes";
@@ -187,7 +187,7 @@ function CombinationEditor({ draft, append }: { draft: ProductDraft; append: (ro
         const entry = choices[signature] ?? { selected: false, sku: "" };
         return <div className="taxonomy-fields" key={signature}>
           <label className="taxonomy-check"><input type="checkbox" checked={entry.selected} aria-label={`Include ${tuple}`}
-            onChange={event => setChoices(previous => ({ ...previous, [signature]: { ...entry, selected: event.target.checked } }))} />{tuple}</label>
+            onChange={event => setChoices(previous => ({ ...previous, [signature]: { ...entry, selected: event.target.checked } }))} /><span>{tuple}</span></label>
           <label>SKU for {tuple}<input disabled={!entry.selected} value={entry.sku} maxLength={60}
             onChange={event => setChoices(previous => ({ ...previous, [signature]: { ...entry, sku: event.target.value } }))} /></label>
         </div>;
@@ -232,19 +232,24 @@ function thumbnail(images: readonly { src: string; alt: string; isPrimary?: bool
   return images?.find(row => row.isPrimary) ?? images?.[0];
 }
 
-export function ConnectedProductVariants({ draft, product, marketId, templates, change, allowNewVariants }: {
+export function ConnectedProductVariants({ draft, product, marketId, templates, change, allowNewVariants, skuErrors, reviewSku }: {
   draft: ProductDraft;
   product: ProductWorkspaceProduct | null;
   marketId?: MarketId;
   templates: ProductCategoryAttribute[];
   change: (next: ProductDraft) => void;
   allowNewVariants: boolean;
+  skuErrors?: ReadonlyMap<string, string>;
+  reviewSku: Ref<() => void>;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [checked, setChecked] = useState<string[]>([]);
-  const [bulk, setBulk] = useState<{ staged: string[]; failures: string[] } | null>(null);
+  const [bulk, setBulk] = useState<{ revision: number | null; staged: string[]; failures: string[] } | null>(null);
+  const [skuReview, setSkuReview] = useState<{ id: string }>();
+  const skuInput = useRef<HTMLInputElement>(null);
+  const bulkResult = useRef<HTMLDivElement>(null);
   const [selectedAttributeVariant, setSelectedAttributeVariant] = useState("");
   const needle = query.trim().toLowerCase();
   const filtered = draft.variants.filter(row => (!needle || `${row.sku} ${row.id} ${variantTuple(draft.options, row.selections)}`.toLowerCase().includes(needle))
@@ -258,6 +263,21 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
     (templates.length > 0 || Object.keys(row.attributeValues).length > 0));
   const attributeRow = activeForAttributes.find(row => row.id === selectedAttributeVariant) ?? activeForAttributes[0];
 
+  useImperativeHandle(reviewSku, () => () => {
+    const index = draft.variants.findIndex(row => skuErrors?.has(row.id) && !issued.has(row.id));
+    if (index < 0) return;
+    setQuery("");
+    setStatus("all");
+    setPage(Math.floor(index / pageSize) + 1);
+    setSkuReview({ id: draft.variants[index].id });
+  });
+  useEffect(() => {
+    if (skuReview) skuInput.current?.focus();
+  }, [skuReview]);
+  useEffect(() => {
+    if (bulk) bulkResult.current?.focus();
+  }, [bulk]);
+
   function updateRows(variants: DraftVariant[]) {
     change(normalizeVariantDraft(draft, variants));
   }
@@ -267,17 +287,17 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
     const failures = selectable.filter(row => !row.active || !issued.has(row.id)).map(row =>
       `${row.sku}: ${row.active ? "remove the unsaved row instead" : "already staged or archived"}`);
     if (draft.publication === "ACTIVE" && staged.length === draft.variants.filter(row => row.active).length) {
-      setBulk({ staged: [], failures: [...failures, ...staged.map(row => `${row.sku}: a published product needs at least one active variant`)] });
+      setBulk({ revision: draft.revision, staged: [], failures: [...failures, ...staged.map(row => `${row.sku}: a published product needs at least one active variant`)] });
       return;
     }
     const ids = new Set(staged.map(row => row.id));
     if (ids.size) updateRows(draft.variants.map(row => ids.has(row.id) ? { ...row, active: false } : row));
-    setBulk({ staged: staged.map(row => row.sku), failures });
+    setBulk({ revision: draft.revision, staged: staged.map(row => row.sku), failures });
     setChecked([]);
   }
 
-  return <section id="variants" className="taxonomy-card">
-    <h2>Options and variants</h2>
+  return <section id="variants" className="taxonomy-card" aria-labelledby="variants-title" tabIndex={-1}>
+    <h2 id="variants-title">Options and variants</h2>
     <OptionEditor draft={draft} product={product} templates={templates} change={options => change({ ...draft, options })} />
     {allowNewVariants && <CombinationEditor key={JSON.stringify(draft.options.map(option => [option.id, option.values.map(value => value.id)]))}
       draft={draft} append={rows => updateRows([...draft.variants, ...rows])} />}
@@ -296,17 +316,19 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
           <option key={row.id} value={row.id}>{variantTuple(draft.options, row.selections)} · {row.sku}</option>)}
       </select>
     </label>}
-    {visible.length ? <>
+    {draft.variants.length > 0 &&
       <div className="taxonomy-actions">
-        <button type="button" className={button} onClick={() => setChecked(previous => [...new Set([...previous, ...visible.map(row => row.id)])])}>Select this page</button>
+        <button type="button" className={button} disabled={!visible.length}
+          onClick={() => setChecked(previous => [...new Set([...previous, ...visible.map(row => row.id)])])}>Select this page</button>
         <button type="button" className={button} disabled={!checked.length} onClick={() => setChecked([])}>Clear selection</button>
         <button type="button" className={button} disabled={!selectable.length} onClick={stageArchive}>Stage archive for selected</button>
         <span className="taxonomy-muted" role="status">{selectable.length} selected. Product save applies staged changes together.</span>
-      </div>
-      {bulk && <div className="taxonomy-impact" role="status">
-        {bulk.staged.length > 0 && <p>Staged for archive · {bulk.staged.join(", ")}</p>}
-        {!!bulk.failures.length && <ul>{bulk.failures.map(detail => <li key={detail}>{detail}</li>)}</ul>}
       </div>}
+    {bulk && bulk.revision === draft.revision && <div className="taxonomy-impact" role="status" tabIndex={-1} ref={bulkResult}>
+      {bulk.staged.length > 0 && <p>Staged for archive · {bulk.staged.join(", ")}</p>}
+      {!!bulk.failures.length && <ul>{bulk.failures.map(detail => <li key={detail}>{detail}</li>)}</ul>}
+    </div>}
+    {visible.length ? <>
       <div className="taxonomy-scroll variant-scroll" role="region" aria-label="Variant matrix" tabIndex={0}>
         <table className="taxonomy-table variant-matrix" role="table" aria-label="Physical variants">
         <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Select</th><th scope="col" role="columnheader">Variant</th>
@@ -319,6 +341,8 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
           const ownImage = thumbnail(stored?.images) ?? (stored?.imageSrc && stored.imageAlt ? { src: stored.imageSrc, alt: stored.imageAlt } : null);
           const image = ownImage ?? thumbnail(product?.images);
           const tuple = variantTuple(draft.options, row.selections);
+          const skuError = skuErrors?.get(row.id);
+          const errorId = `variant-sku-error-${row.id}`;
           const label = !row.active ? stored?.archivedAt ? "Archived" : stored?.active === false ? "Inactive" : "Archive staged"
             : issued.has(row.id) ? "Active" : "New";
           return <tr key={row.id} role="row">
@@ -329,18 +353,24 @@ export function ConnectedProductVariants({ draft, product, marketId, templates, 
               {issued.has(row.id) && <code className="variant-id">{row.id}</code>}
             </th>
             <td role="cell" data-field="SKU">{issued.has(row.id) ? row.sku : <input aria-label={`Edit SKU for ${tuple}`} value={row.sku} maxLength={60}
-              onChange={event => updateRows(draft.variants.map(item => item.id === row.id ? { ...item, sku: event.target.value } : item))} />}</td>
+              aria-invalid={Boolean(skuError)} aria-describedby={skuError ? errorId : undefined}
+              ref={skuReview?.id === row.id ? skuInput : undefined}
+              onChange={event => updateRows(draft.variants.map(item => item.id === row.id ? { ...item, sku: event.target.value } : item))} />}
+              {skuError && <p className="taxonomy-error variant-sku-error" id={errorId}>{skuError}</p>}</td>
             <td role="cell" data-field="Image">{image && validCatalogImage(image.src) ? <Image width={46} height={46} alt={image.alt} src={catalogMediaPath(image.src, regionFor(marketId))} unoptimized
               style={{ width: 46, height: 46, objectFit: "cover", borderRadius: 6 }} /> : <span className="taxonomy-muted">None</span>}
             {image && !ownImage && <span className="taxonomy-muted">Shared</span>}</td>
             <td role="cell" data-field="Status"><span className="taxonomy-badge" data-state={row.active ? issued.has(row.id) ? "active" : "draft" : "archived"}>{label}</span></td>
-            <td role="cell" data-field="Offer">{offer && marketId ? <>{formatMoney(offer.amountMinor, markets[marketId])}<div className="taxonomy-muted">
+            <td role="cell" data-field={marketId ? `${markets[marketId].name} offer` : "Market offer"}>{offer && marketId ? <>{formatMoney(offer.amountMinor, markets[marketId])}<div className="taxonomy-muted">
               {offer.publication === "ACTIVE" ? draft.publication !== "ACTIVE" ? "Active offer · product unpublished"
                 : offer.eligible ? "Published" : "Browse only" : offer.publication === "ARCHIVED" ? "Archived" : "Draft"}
             </div></> : <span className="taxonomy-muted">{marketId ? "No offer" : "Select a market"}</span>}</td>
             <td role="cell" data-field="Action">{!issued.has(row.id) ? <button type="button" className={button} onClick={() => updateRows(draft.variants.filter(item => item.id !== row.id))}>Remove draft</button>
               : !row.active && stored?.active && <button type="button" className={button}
-                onClick={() => updateRows(draft.variants.map(item => item.id === row.id ? { ...item, active: true } : item))}>Undo staged archive</button>}</td>
+                onClick={() => {
+                  setBulk(null);
+                  updateRows(draft.variants.map(item => item.id === row.id ? { ...item, active: true } : item));
+                }}>Undo staged archive</button>}</td>
           </tr>;
         })}</tbody>
       </table></div>

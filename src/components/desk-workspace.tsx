@@ -365,7 +365,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
       description={denied ? 'Your account does not have access to this view or operating region.' : 'The recovery API could not load this view.'}/>
       <div className="notice warn"><ShieldAlert size={18}/> {denied ? 'Review your permissions in Settings.' : 'Try refreshing or return to the overview.'}</div></>;
   }
-  const staff = { name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions };
+  const staff = { id: auth.staff.id, name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions };
   const environment = connection().name;
   const showMarket = !(sectionId === 'pos' && counterPosEnabled() &&
     (active === 'counter-sales' || active === 'counter-receipt' || (active === 'editor' && view.length === 1)));

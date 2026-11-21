@@ -48,6 +48,9 @@
 }
 .quickSearch input::placeholder { color: var(--orders-muted); }
 .headerActions { margin-inline-start: auto; }
+.selectedOrders,
+.selectedOrders form { flex-wrap: wrap; }
+.selectedOrders input { max-width: 100%; }
 
 .headerActions, .filterToggle, .dateControls, .pageLinks {
   gap: 8px;
@@ -230,16 +233,16 @@
   font-size: 14px;
 }
 
-.statuses {
+.statuses { padding: 12px; }
+
+.statusLinks {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 16px;
-  padding: 16px;
-  border-radius: 8px;
+  gap: 8px;
 }
 
-.statuses a {
+.statusLinks a {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -253,15 +256,17 @@
   white-space: nowrap;
 }
 
-.statuses a:hover {
+.statusLinks a:hover {
   background: color-mix(in oklab, var(--orders-accent) 8%, transparent);
 }
 
-.statuses a[aria-current=page] {
+.statusLinks a[aria-current=page] {
   border-color: var(--orders-accent);
   background: var(--orders-accent);
   color: #fafafa;
 }
+
+.statusSelect { display: none; }
 
 .tablePanel {
   padding: 8px;
@@ -269,6 +274,11 @@
 
 .tableScroll {
   overflow: auto;
+}
+
+.orders :is(button, a, select, input, .tableScroll):focus-visible {
+  outline: 2px solid var(--orders-accent);
+  outline-offset: 2px;
 }
 
 .tableScroll table {
@@ -280,7 +290,7 @@
 }
 
 .tableScroll table[data-populated=true] { min-width: 1200px; table-layout: fixed; }
-.tableScroll table[data-populated=true] th:nth-child(1) { width: 66px; }
+.tableScroll table[data-populated=true] th:nth-child(1) { width: 76px; }
 .tableScroll table[data-populated=true] th:nth-child(2) { width: 118px; }
 .tableScroll table[data-populated=true] th:nth-child(3) { width: 135px; }
 .tableScroll table[data-populated=true] th:nth-child(4) { width: 115px; }
@@ -317,7 +327,7 @@
 }
 
 .tableScroll table[data-populated=true] td { height: 97px; }
-.tableScroll td[data-field='actions'] { text-align:center; }
+.rowActions { display:flex; align-items:center; justify-content:center; gap:4px; }
 .tableScroll td[data-field='order'] small { margin-top:4px; color:var(--orders-muted); }
 .tableScroll tbody tr:last-child td { border-bottom: 0; }
 
@@ -350,13 +360,36 @@
   .tableScroll tbody tr:last-child td { border-bottom:1px solid var(--orders-border); }
   .tableScroll td[data-label]::before { content:attr(data-label); display:block; margin-bottom:4px; color:var(--orders-muted); font-size:.72rem; font-weight:650; }
   .tableScroll td[data-field='actions'] { grid-column:2; grid-row:1; justify-self:end; }
-  .tableScroll td[data-field='order'] { grid-column:1; grid-row:1; }
+  .tableScroll td[data-field='order'] { grid-column:1; grid-row:1; align-self:center; }
+  .tableScroll td[data-field='order'] .orderNumber { display:inline-flex; align-items:center; min-height:24px; font-weight:650; }
   .tableScroll tr > :is(td[data-field='actions'],td[data-field='order'],td:last-child) { border-bottom:0; }
   .tableScroll .empty { grid-column:1/-1; }
   .headerActions { flex-wrap:wrap; }
   .panelHeader { align-items:center; flex-wrap:wrap; gap:8px; }
-  .statuses { gap:6px; padding:10px; }
-  .statuses a { font-size:.78rem; }
+  .statuses { padding:8px; }
+  .statusLinks { display:none; }
+  .statusSelect {
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    align-items:center;
+    gap:8px;
+    padding-inline-start:4px;
+    font-size:14px;
+    font-weight:650;
+  }
+  .statusSelect select {
+    width:100%;
+    min-width:0;
+    min-height:44px;
+    border:1px solid var(--orders-border);
+    border-radius:8px;
+    padding-inline:10px 32px;
+    background:var(--orders-surface);
+    color:inherit;
+    font:inherit;
+    font-weight:500;
+    text-overflow:ellipsis;
+  }
 }
 
 .tableScroll .empty {
@@ -384,6 +417,7 @@
 
 .iconButton, .smallButton {
   display: inline-flex;
+  align-items: center;
   min-height: 30px;
   padding: 2px 6px;
 }
@@ -420,6 +454,14 @@
 .products strong { font-weight: 500; }
 .products small { display: block; margin-top: 4px; }
 .callActions { display: flex; justify-content: center; gap: 4px; }
+
+@media (max-width: 860px) {
+  .products { min-width:0; }
+  .products > div { gap:6px; }
+  .products :global(.website-order-thumb) { width:36px; height:36px; flex:none; }
+  .products > div > span { min-width:0; }
+  .iconButton { width:44px; height:44px; }
+}
 
 .pagination {
   display: grid;
@@ -464,9 +506,17 @@
   .firstRow > *, .secondRow > * { flex: 0 1 auto; }
   .dateField { width: 100%; }
   .dateControls { align-items: flex-start; flex-direction: column; }
-  .pageLinks .primary { width: 36px; padding: 0; }
+  .pagination { grid-template-columns: auto minmax(0,1fr) auto; }
+  .pagination > span:nth-child(2) { text-align:center; }
+  .pageSize { min-height:44px; }
+  .pageSize select { min-height:42px; }
+  .pageLinks .primary { min-height:44px; width:44px; padding:0; }
   .pageLinks svg { display: block; }
   .pageLinks span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+}
+
+@media (max-width: 360px) {
+  .statusSelect { grid-template-columns:minmax(0,1fr); padding-inline-start:0; gap:4px; }
 }
 
 .orderMenu {
@@ -501,7 +551,7 @@
 .orderMenuSeparator { height: 1px; margin: 4px -4px; background: var(--border, #e4e4e7); }
 
 
-.stockActions { display: flex; gap: 4px; margin-top: 6px; }
+.stockActions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .stockActions .primary { background: #00a63e; min-height: 26px; padding: 3px 10px; font-size: 12px; }
 .stockActions .smallButton { color: #e7000b; min-height: 26px; padding: 3px 10px; }
 .customerNote { color: #d96300; white-space: normal; }

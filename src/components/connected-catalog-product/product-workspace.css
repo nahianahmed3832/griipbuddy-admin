@@ -37,8 +37,15 @@
 .connected-product-workspace .product-save { scroll-margin-block: 20px; }
 .product-save:focus-visible { outline: 2px solid var(--color-plum); outline-offset: 2px; }
 .product-save .taxonomy-error ul { margin: 6px 0; padding-inline-start: 1.15rem; }
+.connected-product-workspace #variants :is(legend, label, .taxonomy-impact) { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.connected-product-workspace #variants .taxonomy-check input { flex: 0 0 auto; }
+.connected-product-workspace #variants :is(input, select, button, .variant-scroll, .taxonomy-impact):focus-visible {
+  outline: 2px solid var(--color-plum);
+  outline-offset: 2px;
+}
 .variant-matrix :is(td,th) { overflow-wrap: anywhere; }
 .variant-matrix td[data-field="SKU"] { min-width: 182px; }
+.variant-sku-error { margin-top: 5px; padding: 6px 8px; font-size: .8rem; }
 .variant-id { display: block; color: var(--color-muted); font-size: .72rem; font-weight: 500; }
 .variant-scroll { scroll-margin-block: 77px; }
 .variant-proposals > .taxonomy-fields { align-items: center; border-bottom: 1px solid var(--color-line); padding-block: 4px 10px; }
@@ -60,9 +67,12 @@
     display: block; min-width: 0; border: 0; padding: 8px; overflow-wrap: anywhere; white-space: normal;
   }
   .connected-product-workspace .product-workspace-table th[scope="row"] { grid-column: 1 / -1; border-bottom: 1px solid var(--color-line); }
-  .connected-product-workspace .variant-matrix th[scope="row"] { grid-column: 1; grid-row: 1; }
-  .connected-product-workspace .variant-matrix td[data-field="Select"] { grid-column: 2; grid-row: 1; justify-self: end; }
-  .connected-product-workspace .variant-matrix td[data-field="SKU"] { grid-column: 1 / -1; }
+  .connected-product-workspace .variant-matrix tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; overflow: visible; }
+  .connected-product-workspace .variant-matrix th[scope="row"] { grid-column: 1 / 3; grid-row: 1; }
+  .connected-product-workspace .variant-matrix td[data-field="Select"] { grid-column: 3; grid-row: 1; align-self: start; }
+  .connected-product-workspace .variant-matrix td[data-field="SKU"] { grid-column: 1 / -1; min-width: 0; }
+  .connected-product-workspace .variant-matrix td[data-field="Action"] { grid-column: 1 / -1; }
+  .connected-product-workspace .variant-matrix td[data-field="Action"]:empty { display: none; }
   .connected-product-workspace :is(.variant-matrix, .product-workspace-table) td[data-field]::before {
     content: attr(data-field); display: block; margin-bottom: 3px; color: var(--color-muted); font-size: .73rem; font-weight: 700;
   }

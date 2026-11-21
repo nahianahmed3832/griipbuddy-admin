@@ -21,7 +21,7 @@
   display: flex;
   align-items: center;
   gap: .62rem;
-  min-height: 2.3rem;
+  min-height: var(--sidebar-row-height, 2.3rem);
   width: 100%;
   margin-block: .12rem;
   appearance: none;
@@ -29,7 +29,7 @@
   border: 1px solid transparent;
   border-radius: 8px;
   color: #e8e9f3;
-  padding: .4rem .58rem;
+  padding: var(--sidebar-row-padding, .4rem) .58rem;
   font-size: .79rem;
   font-weight: 560;
   text-align: left;
@@ -37,7 +37,7 @@
 
 .menuButton:hover { background: #30344d; }
 .menuButton[data-selected='true'] { color: #fff; background: #2e3249; }
-.menuButton > span { flex: 1; }
+.menuButton > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .menuButton > svg { flex: none; color: #c5b2f1; }
 .menuButton[aria-expanded='true'] > svg:last-child { transform: rotate(90deg); }
 
@@ -75,4 +75,3 @@
 .fraudResult button:first-child { position: absolute; top: .5rem; right: .5rem; }
 
 @media (max-width: 1170px) { .fraud { display: none; } }
-@media (max-width: 850px) { .menuButton { min-height: 2.65rem; } }

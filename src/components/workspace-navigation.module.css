@@ -1,0 +1,89 @@
+.shell:global(.m03-admin) {
+  --sidebar-row-height: 2.3rem;
+  --sidebar-row-padding: .4rem;
+  --sidebar-group-gap: 1rem;
+}
+
+.shell:global(.m03-admin)[data-sidebar-density='compact'] {
+  --sidebar-row-height: 2rem;
+  --sidebar-row-padding: .27rem;
+  --sidebar-group-gap: .62rem;
+}
+
+.shell:global(.m03-admin) > :global(.sidebar) nav a {
+  min-height: var(--sidebar-row-height);
+  padding-block: var(--sidebar-row-padding);
+  overflow-wrap: anywhere;
+}
+
+.shell:global(.m03-admin) > :global(.sidebar) nav a > span {
+  min-width: 0;
+}
+
+.shell:global(.m03-admin) > :global(.sidebar) :global(.nav-group) {
+  margin-bottom: var(--sidebar-group-gap);
+}
+
+.shell :global(.topbar) :is(button, summary, select, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shell :global(.topbar .crumb) {
+  flex: 1;
+}
+
+.shell :global(.account-menu .header-pop) {
+  width: min(14rem, calc(100vw - 1.5rem));
+}
+
+.shell :global(.account-density) {
+  display: grid;
+  gap: .3rem;
+  padding: .45rem 0;
+  font-size: .78rem;
+}
+
+.shell :global(.account-density) select {
+  min-height: 2.2rem;
+  width: 100%;
+  font: inherit;
+}
+
+.shell :global(.account-density) small {
+  line-height: 1.4;
+}
+
+@media (max-width: 850px) {
+  .shell:global(.m03-admin),
+  .shell:global(.m03-admin)[data-sidebar-density='compact'] {
+    --sidebar-row-height: 2.75rem;
+    --sidebar-row-padding: .4rem;
+    --sidebar-group-gap: .8rem;
+  }
+
+  .shell:global(.m03-admin) :global(.topbar .crumb) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .12rem;
+    max-width: none;
+    line-height: 1.25;
+  }
+
+  .shell:global(.m03-admin) :global(.topbar .workspace-context) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: .67rem;
+  }
+
+  .shell:global(.m03-admin) :global(.sidebar) nav {
+    overscroll-behavior: contain;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell:global(.m03-admin) > :global(.sidebar) {
+    transition: none;
+  }
+}

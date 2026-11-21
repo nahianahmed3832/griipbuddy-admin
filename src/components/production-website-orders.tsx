@@ -21,7 +21,7 @@ import styles from './production-website-orders.module.css';
 const statusTabs = [
   ['', 'All'], ['PLACED', 'Placed'], ['ACCEPTED', 'Accepted'], ['IN_REVIEW', 'In Review'],
   ['HANDED_OVER_TO_COURIER', 'Handed over to courier'], ['IN_TRANSIT', 'In Transit'], ['DELIVERED', 'Delivered'],
-  ['PENDING_RETURN', 'Pending Return'], ['PARTIAL', 'Partial'], ['RETURN_REQUESTED', 'Returned Requested'],
+  ['PENDING_RETURN', 'Pending Return'], ['PARTIAL', 'Partial'], ['RETURN_REQUESTED', 'Return Requested'],
   ['RETURNED', 'Returned'], ['CANCELLED', 'Cancelled'], ['FAILED', 'Failed'], ['INCOMPLETE', 'Incomplete'],
   ['NO_RESPONSE', 'No Response'], ['PRE_ORDER', 'Pre Order'], ['AWAITING_STOCK', 'Awaiting Stock'],
 ] as const;
@@ -167,7 +167,6 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const selection = rows.filter(order => selected.includes(order._id));
   const cancelIds = selection.filter(cancellable).map(order => order._id);
   const exportIds = selection.filter(exportable).map(order => order._id);
-  const counts = listing?.counts ?? {};
   const total = listing?.total ?? 0;
   const page = listing?.page ?? 1;
   const size = listing?.size ?? 20;
@@ -238,9 +237,13 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   }
 
   const visibleStatuses = status && !statusTabs.some(([key]) => key === status)
-    ? [...statusTabs, [status, status.replaceAll('_', ' ').toLowerCase()]]
+    ? [...statusTabs, [status, status.split(',').map(statusLabel).join(', ')]]
     : statusTabs;
-
+  const statusText = (key: string, label: string) => {
+    if (!listing) return label;
+    const count = key.includes(',') ? listing.total : listing.counts[key || 'ALL'] ?? 0;
+    return `${label} · ${count.toLocaleString('en')}`;
+  };
 
   return <section className={styles.orders} aria-label={assigned ? 'Assigned orders' : 'Website orders'}>
     <WorkspaceHeading title={(assigned ? 'Assigned Orders' : executive ? 'Sales Executive' : 'All Orders') + (listing ? ` (${total.toLocaleString('en')})` : '')}
@@ -266,7 +269,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           </a>
         </div>}
       </div>
-      {!!exportIds.length && <div className="page-actions padded" aria-label="Selected orders">
+      {!!exportIds.length && <div className={`page-actions padded ${styles.selectedOrders}`} aria-label="Selected orders">
         <a className={styles.outlineAction} href={ordersApi('export', region, { selected:exportIds.join(',') })} download>
           <FileSpreadsheet size={16}/> Export {exportIds.length} selected
         </a>
@@ -345,11 +348,23 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
     {listing?.hybridUnavailable && <p role="alert" className={styles.notice}>Checkout orders are temporarily unavailable.</p>}
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     <nav className={`${styles.panel} ${styles.statuses}`} aria-label="Filter orders by status">
-      {visibleStatuses.map(([key, label]) => <Link key={key} href={path({ ...formFilters, filter: key })}
-        aria-current={status === key ? 'page' : undefined} scroll={false}
-        onClick={() => { clearTimeout(searchTimer.current); setFormFilters(value => ({ ...value, filter: key })); }}>
-        {label} - {(counts[key || 'ALL'] ?? 0).toLocaleString('en')}
-      </Link>)}
+      <div className={styles.statusLinks}>
+        {visibleStatuses.map(([key, label]) => <Link key={key} href={path({ ...formFilters, filter: key })}
+          aria-current={status === key ? 'page' : undefined} scroll={false}
+          onClick={() => { clearTimeout(searchTimer.current); setFormFilters(value => ({ ...value, filter: key })); }}>
+          {statusText(key, label)}
+        </Link>)}
+      </div>
+      <label className={styles.statusSelect}>Order status
+        <SelectField name="Order status" value={status} onChange={filter => {
+          clearTimeout(searchTimer.current);
+          const value = { ...formFilters, filter };
+          setFormFilters(value);
+          startTransition(() => router.push(path(value), { scroll: false }));
+        }}>
+          {visibleStatuses.map(([key, label]) => <option key={key} value={key}>{statusText(key, label)}</option>)}
+        </SelectField>
+      </label>
     </nav>
     {pending && <p className={styles.notice} role="status">Loading orders…</p>}
     <section className={`${styles.panel} ${styles.tablePanel}`} aria-label="Orders table" aria-busy={pending}>
@@ -370,7 +385,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             const date = orderDateParts(order.order_date || order.createdAt, region);
             const address = addressLabel(order.delivery_address);
             return <tr key={order._id} role="row">
-              <td role="cell" data-field="actions">{exportable(order) && <input type="checkbox" aria-label={'Select order ' + number}
+              <td role="cell" data-field="actions"><div className={styles.rowActions}>{exportable(order) && <input type="checkbox" aria-label={'Select order ' + number}
                 disabled={batchBusy || (!selected.includes(order._id) && exportIds.length >= 25)}
                 checked={selected.includes(order._id)} onChange={event => setSelected(ids => event.target.checked
                   ? [...ids.filter(id => exportIds.includes(id)), order._id] : ids.filter(id => id !== order._id))}/>}
@@ -381,7 +396,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                   if (kind === 'delivered' || kind === 'pending-return') {
                     void updateStatus(order._id, kind === 'delivered' ? 'DELIVERED' : 'PENDING_RETURN');
                   } else open(kind, order);
-                }}/></td>
+                }}/></div></td>
               <td role="cell" data-field="order"><Link className={styles.orderNumber} href={href}>{number}</Link>
                 <small>{date.day}{date.time && ' · ' + date.time}</small>
                 {order.order_note && <small>Customer note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
@@ -440,12 +455,14 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
       }}>
         {pageSizes.map(option => <option key={option} value={option}>{option === 'all' ? 'All' : option}</option>)}
       </SelectField>
-      <span>{total ? Math.min((page - 1) * size + 1, total) : 0} - {Math.min(page * size, total)} of {total}</span>
+      <span aria-live="polite">{listing
+        ? `${total ? Math.min((page - 1) * size + 1, total) : 0}–${Math.min(page * size, total)} of ${total.toLocaleString('en')}`
+        : 'Order count unavailable'}</span>
       <div className={styles.pageLinks}>
-        {pageSize !== 'all' && page > 1 ? <Link className={styles.primary} href={path(formFilters, page - 1)} scroll={false}>{!assigned && <ChevronLeft size={18}/>}<span>Previous</span></Link>
-          : <button type="button" className={styles.primary} disabled>{!assigned && <ChevronLeft size={18}/>}<span>Previous</span></button>}
-        {pageSize !== 'all' && page * size < total ? <Link className={styles.primary} href={path(formFilters, page + 1)} scroll={false}>{!assigned && <ChevronRight size={18}/>}<span>Next</span></Link>
-          : <button type="button" className={styles.primary} disabled>{!assigned && <ChevronRight size={18}/>}<span>Next</span></button>}
+        {pageSize !== 'all' && page > 1 ? <Link className={styles.primary} href={path(formFilters, page - 1)} scroll={false}><ChevronLeft size={18} aria-hidden="true"/><span>Previous</span></Link>
+          : <button type="button" className={styles.primary} disabled><ChevronLeft size={18} aria-hidden="true"/><span>Previous</span></button>}
+        {pageSize !== 'all' && page * size < total ? <Link className={styles.primary} href={path(formFilters, page + 1)} scroll={false}><ChevronRight size={18} aria-hidden="true"/><span>Next</span></Link>
+          : <button type="button" className={styles.primary} disabled><ChevronRight size={18} aria-hidden="true"/><span>Next</span></button>}
       </div>
     </nav>
     {dialog && <OrderDialog key={dialog.kind} state={dialog} region={region} locations={locations} close={() => setDialog(undefined)}

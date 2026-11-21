@@ -147,7 +147,13 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
   ];
   const transactionDate = managed.data?.payment?.transactionAt || order.payment?.date;
   return <div className={styles.detail}>
-    <div className={styles.return}><Link href={back}><ChevronLeft size={16}/> Back to Orders</Link></div>
+    <div className={styles.toolbar}>
+      <Link href={back}><ChevronLeft size={16} aria-hidden="true"/> Back to Orders</Link>
+      <div className={styles.actions} role="group" aria-label="Order actions">
+        {actions.length > 0 && <button type="button" disabled={updating.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
+        <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16} aria-hidden="true"/></button>
+      </div>
+    </div>
     {!!(managed.notice || notice) && <p role="status" className="notice">{managed.notice || notice}</p>}
     <div className={styles.grid}>
       <Invoice order={order} region={region} fulfillment={hybridFulfillment}
@@ -156,13 +162,6 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
           priorReference={order.payment?.reference} priorDate={transactionDate && orderDate(transactionDate, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
-        <section className={styles.card}>
-          <div className={styles.actions}>
-            <h2>Actions</h2>
-            {actions.length > 0 && <button type="button" disabled={updating.has(order._id)} onClick={() => setDialog('actions')}>Order Actions</button>}
-            <button type="button" onClick={() => window.print()}>Print Invoice <Printer size={16}/></button>
-          </div>
-        </section>
         {managedOperations && <ProductionManagedShipments operations={managed} editable={access.update} canReturn={access.return}/>}
         {hybridFulfillment && <ProductionHybridFulfillment orderId={order._id} state={hybridFulfillment}/>}
         {hybridFulfillment && <ProductionHybridReturns orderId={order._id} state={hybridFulfillment}/>}

@@ -22,6 +22,7 @@ import { hybridOrderId } from '@/lib/hybrid-orders';
 import { hybridReportLocations } from '@/lib/hybrid-orders';
 import { canMergeHybridReport, reportWithHybrid } from '@/lib/hybrid-delivery-reports';
 import { ReportDownloads } from './report-downloads';
+import { OverviewMetricHelp } from './overview-metric-help';
 import './production-reports.css';
 
 const shortcuts = [
@@ -81,11 +82,11 @@ function ReportMetrics({ kpis, currency, production, showChange }: {
       const showPrevious = previous !== null && (!production || showChange);
       const hasDelta = delta !== null && (production ? showPrevious && kpi.type !== 'percent' : delta !== 0);
       const label = str(kpi.label);
+      const definition = str(kpi.definition);
       return <article className={'panel overview-card report-metric ' + tone(kpi.tone)} key={str(kpi.key)}>
         <div className="report-metric-heading"><h2>{label}</h2>
-          {str(kpi.definition) && <details className="report-definition">
-            <summary aria-label={production ? 'What does this mean?' : 'About ' + label}><Info size={production ? 13 : 15}/></summary><p>{str(kpi.definition)}</p>
-          </details>}
+          {definition && (production ? <OverviewMetricHelp title={label} definition={definition}/> :
+            <details className="report-definition"><summary aria-label={'About ' + label}><Info size={15}/></summary><p>{definition}</p></details>)}
         </div>
         <div className="overview-value"><strong>{reportDisplayValue(kpi.value, kpi.type, currency, production)}</strong>
           {hasDelta && <span className={'overview-delta ' + (production && stable ? 'neutral' : improved ? 'good' : 'bad')}
@@ -172,7 +173,7 @@ function ReportTable({ table, auth, region, currency, path, query, production }:
         const content = href ? <Link className="table-link" href={href}>{status}</Link> : status;
         const cellClass = [
           numericTypes.includes(str(col.type)) ? 'report-numeric' : production || unbrokenColumns.includes(key) ? 'report-nowrap' : '',
-          production && col.image === true ? 'report-image-cell' : production && col.type === 'text' ? 'report-text-cell' : '',
+          production && col.image === true ? 'report-image-cell' : production && col.type === 'text' && !unbrokenColumns.includes(key) ? 'report-text-cell' : '',
         ].filter(Boolean).join(' ');
         return <td key={key} className={cellClass} title={production && col.type === 'text' ? str(row[key]) : undefined}>
           {col.image === true ? <div className="overview-product"><ProductThumbnail source={row._image}/><span>{content}</span></div> : content}
@@ -211,7 +212,7 @@ type ReportProps = {
 
 export async function Reports(props: ReportProps) {
   if (!props.production) return ReportContent(props);
-  return <Suspense key={JSON.stringify([props.region, props.id, props.q])} fallback={
+  return <Suspense key={JSON.stringify([props.region, props.id])} fallback={
     <div className="panel padded production-report-loading" role="status" aria-busy="true">
       <RefreshCw size={18} aria-hidden="true"/>{props.id ? 'Loading report…' : 'Loading reports…'}
     </div>
@@ -226,6 +227,10 @@ async function ProductionReportContent(props: ReportProps) {
     if (error.status === 404) notFound();
     if (error.status === 401 || error.status === 403) return <Empty title="Access restricted" detail="Your account does not have access to this report."/>;
     const path = '/dashboard/reports' + (props.id ? '/' + props.id : '');
+    if (error.status === 400) return <section className="panel padded stack-form" role="alert">
+      <p>These report filters could not be applied.</p>
+      <Link className="button secondary" href={url(path, { region: props.region })}>Reset filters</Link>
+    </section>;
     const query = new URLSearchParams();
     for (const [name, value] of Object.entries(props.q)) {
       for (const entry of Array.isArray(value) ? value : [value]) if (entry !== undefined) query.append(name, entry);

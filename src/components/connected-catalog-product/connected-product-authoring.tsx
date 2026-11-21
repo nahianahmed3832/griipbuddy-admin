@@ -115,6 +115,7 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   const [edit, setEdit] = useState<ProductDraft | null>(null);
   const [confirmed, setConfirmed] = useState<ProductDraft | null>(null);
   const [showIssues, setShowIssues] = useState(false);
+  const reviewSku = useRef<(() => void) | null>(null);
   const feedback = useRef<HTMLDivElement>(null);
   const markDirty = useTaxonomyDirty();
   const router = useRouter();
@@ -123,7 +124,9 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   const draft = edit ?? latest;
   const templates = categories.find(row => row.id === draft.primaryCategoryId)?.templates ?? [];
   const archived = draft.publication === "ARCHIVED";
-  const issues = showIssues ? variantDraftIssues(draft) : [];
+  const validation = showIssues ? variantDraftIssues(draft) : null;
+  const firstEditableSkuError = draft.variants.find(row =>
+    validation?.skuErrors.has(row.id) && !draft.issuedVariantIds.includes(row.id));
 
   function change(next: ProductDraft) {
     setEdit(next);
@@ -131,7 +134,7 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
   }
 
   async function save() {
-    if (variantDraftIssues(draft).length > 0) {
+    if (variantDraftIssues(draft).issues.length > 0) {
       setShowIssues(true);
       feedback.current?.focus();
       return;
@@ -173,13 +176,18 @@ export function ConnectedProductAuthoring({ product, categories, marketId, allow
         <GeneralFields draft={draft} change={change} />
         <CategoryFields draft={draft} categories={categories} marketId={marketId} change={change} />
         <ConnectedProductVariants draft={draft} product={product} marketId={marketId} change={change} allowNewVariants={allowNewVariants}
-          templates={templates.filter(row => row.scope === "VARIANT")} />
+          templates={templates.filter(row => row.scope === "VARIANT")} skuErrors={validation?.skuErrors}
+          reviewSku={reviewSku} />
       </fieldset>
       <div className="taxonomy-card product-save" id="save-product" tabIndex={-1} ref={feedback}>
-        {issues.length > 0 && <div className="taxonomy-error" role="alert">
+        {Boolean(validation?.issues.length) && <div className="taxonomy-error" role="alert">
           <strong>Review the options and variants before saving.</strong>
-          <ul>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
-          <a href="#variants" className="text-link">Review options and variants</a>
+          <ul>{validation?.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
+          <div className="taxonomy-actions">
+            <a href="#variants" className="text-link">Review options and variants</a>
+            {firstEditableSkuError && <button type="button" className="taxonomy-button"
+              onClick={() => reviewSku.current?.()}>Find first SKU to fix</button>}
+          </div>
         </div>}
         <TaxonomyFeedback {...operation} />
         {archived ? <p className="taxonomy-muted">Archived products remain available for reference.</p>

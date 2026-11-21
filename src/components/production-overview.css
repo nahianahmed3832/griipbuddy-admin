@@ -201,20 +201,19 @@
 .production-overview .overview-value { gap: 6px; }
 .overview-metric-title { display: flex; gap: 6px; align-items: center; }
 .overview-metric-title a:hover { text-decoration: underline; }
-.overview-metric-help { position: relative; flex: none; color: #90a1b9; }
-.overview-metric-help summary { cursor: pointer; list-style: none; }
-.overview-metric-help summary::-webkit-details-marker { display: none; }
-.overview-metric-help summary svg { display: block; }
-.production-overview .overview-metric-help p {
-  position: absolute;
-  inset-inline-end: 0;
-  z-index: 2;
-  width: min(210px, 55vw);
-  padding: 8px;
-  border: 1px solid var(--over-border);
+.overview-metric-help { position: relative; flex: none; color: #62748e; }
+.overview-metric-help button { display: grid; place-items: center; min-width: 24px; min-height: 24px; color: inherit; cursor: help; }
+.overview-definition-popup {
+  z-index: 80;
+  width: min(260px, calc(100vw - 16px), var(--radix-popover-content-available-width, 260px));
+  padding: 8px 10px;
   border-radius: 8px;
-  background: var(--over-surface);
-  box-shadow: var(--over-shadow);
+  background: #172539;
+  color: #fff;
+  font-size: 12px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px #0002;
 }
 .production-overview .overview-attention .overview-card {
   border-color: var(--attention-border);
@@ -294,16 +293,12 @@
 .overview-metric-link { position:absolute; inset:0; z-index:1; border-radius:inherit; }
 .overview-metric-link:focus-visible { outline:2px solid var(--section-color); }
 .production-overview .overview-metric-help { z-index:2; }
-.overview-metric-help button { display:grid; place-items:center; color:inherit; cursor:help; }
-.overview-metric-help [role=tooltip] { display:none; position:absolute; z-index:3; inset-inline-start:-12px; top:calc(100% + 6px); width:min(260px,60vw); padding:8px; border-radius:8px; background:#172539; color:#fff; font-size:12px; line-height:17px; box-shadow:0 2px 8px #0002; }
-.overview-metric-help:is(:hover,:focus-within) [role=tooltip] { display:block; }
 .production-overview .overview-metric-success { border-left-color:#009966; }
 .production-overview .overview-metric-success .overview-value strong { color:#007a55; }
 .production-overview .overview-metric-warning { border-left-color:#fe9a00; }
 .production-overview .overview-metric-warning .overview-value strong { color:#bb4d00; }
 .production-overview .overview-metric-danger { border-left-color:#e7000b; }
 .production-overview .overview-metric-danger .overview-value strong { color:#c10007; }
-@media (max-width: 550px) { .overview-metric-help [role=tooltip] { inset-inline-start:auto; inset-inline-end:-8px; } }
 .production-overview-locations fieldset label[hidden] { display:none; }
 .production-overview-locations fieldset input[type=search] { padding:7px 10px; border:1px solid var(--over-border); border-radius:6px; }
 
@@ -338,7 +333,6 @@
 @media (max-width:639px) {
   .production-overview .overview-headline { grid-template-columns:minmax(0,1fr); }
   .production-overview .overview-headline .overview-card { min-height:0; }
-  .production-overview .overview-metric-help :is([role=tooltip],p) { overflow-wrap:anywhere; }
 }
 
 .production-overview .overview-subpanel h3 { margin-bottom:8px; }

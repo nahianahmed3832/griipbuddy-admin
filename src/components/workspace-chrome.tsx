@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowRight, ChevronDown, Command, Globe2, LogOut, Search, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react';
 import { adminPath } from '@/lib/paths';
 import type { Region, Staff } from '@/lib/sections';
 
@@ -30,7 +30,7 @@ export function useWorkspaceNavigation() {
   const mobile = narrow && opened;
 
   const close = useCallback((restore = true) => {
-    restoreFocus.current = restore;
+    restoreFocus.current = restore && isNarrowViewport();
     setOpened(false);
   }, []);
 
@@ -43,6 +43,9 @@ export function useWorkspaceNavigation() {
       return;
     }
     closeButton.current?.focus();
+    function containFocus(event: FocusEvent) {
+      if (!sidebar.current?.contains(event.target as Node)) closeButton.current?.focus();
+    }
     function keyboard(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -50,7 +53,7 @@ export function useWorkspaceNavigation() {
         return;
       }
       if (event.key !== 'Tab') return;
-      const focusable = [...(sidebar.current?.querySelectorAll<HTMLElement>('a[href], button, select, summary') ?? [])]
+      const focusable = [...(sidebar.current?.querySelectorAll<HTMLElement>('a[href], button, select, summary, input, textarea, [tabindex]') ?? [])]
         .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length > 0);
       const first = focusable[0];
       const last = focusable.at(-1);
@@ -66,9 +69,11 @@ export function useWorkspaceNavigation() {
     function resize() { if (media.matches) close(false); }
     media.addEventListener('change', resize);
     window.addEventListener('keydown', keyboard);
+    window.addEventListener('focusin', containFocus);
     return () => {
       media.removeEventListener('change', resize);
       window.removeEventListener('keydown', keyboard);
+      window.removeEventListener('focusin', containFocus);
     };
   }, [close, mobile]);
 
@@ -78,6 +83,66 @@ export function useWorkspaceNavigation() {
   }
 
   return { mobile, collapsed, narrow, sidebar, toggleButton, closeButton, toggle, close };
+}
+
+type SidebarDensity = 'standard' | 'compact';
+const densityEvent = 'griip-admin-sidebar-density';
+const defaultDensity = () => 'standard' as const;
+
+function subscribeDensity(update: () => void) {
+  window.addEventListener('storage', update);
+  window.addEventListener(densityEvent, update);
+  return () => {
+    window.removeEventListener('storage', update);
+    window.removeEventListener(densityEvent, update);
+  };
+}
+
+export function useSidebarDensity(staffId: string) {
+  const key = 'griipbuddy.admin.sidebar-density.' + staffId;
+  const [temporary, setTemporary] = useState<{ key: string; value: SidebarDensity }>();
+  const snapshot = useCallback((): SidebarDensity => {
+    if (temporary?.key === key) return temporary.value;
+    try { return window.localStorage.getItem(key) === 'compact' ? 'compact' : 'standard'; }
+    catch { return 'standard'; }
+  }, [key, temporary]);
+  const density = useSyncExternalStore(subscribeDensity, snapshot, defaultDensity);
+
+  function setDensity(value: SidebarDensity) {
+    try {
+      window.localStorage.setItem(key, value);
+      setTemporary(undefined);
+      window.dispatchEvent(new Event(densityEvent));
+    } catch {
+      setTemporary({ key, value });
+    }
+  }
+
+  return { density, setDensity };
+}
+
+function useHeaderDisclosure() {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function dismissOutside(event: Event) {
+      if (ref.current?.open && !ref.current.contains(event.target as Node)) ref.current.open = false;
+    }
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('focusin', dismissOutside);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('focusin', dismissOutside);
+    };
+  }, []);
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDetailsElement>) {
+    if (event.key !== 'Escape' || !event.currentTarget.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.open = false;
+    event.currentTarget.querySelector('summary')?.focus();
+  }
+  return { ref, onKeyDown };
 }
 
 function destinationSearch(href: string, term: string, sku = false) {
@@ -140,6 +205,7 @@ export const regionNames: Record<Region, string> = { BD: 'Bangladesh', INTERNATI
 export function WorkspaceMarket({ region, canSwitch, hrefForRegion, beforeSwitch }: {
   region: Region; canSwitch: boolean; hrefForRegion: (region: Region) => string; beforeSwitch?: () => boolean;
 }) {
+  const disclosure = useHeaderDisclosure();
   const name = regionNames[region];
   const symbol = region === 'BD' ? 'BD' : 'Intl.';
   const content = <><Globe2 size={16} aria-hidden="true"/><span className="workspace-market-name">{name}</span>
@@ -151,7 +217,7 @@ export function WorkspaceMarket({ region, canSwitch, hrefForRegion, beforeSwitch
     event.currentTarget.closest('details')?.removeAttribute('open');
   }
 
-  return <details className="header-menu workspace-market">
+  return <details className="header-menu workspace-market" {...disclosure}>
     <summary aria-label={'Operating region: ' + name}>{content}<ChevronDown size={14} aria-hidden="true"/></summary>
     <div className="header-pop">
       <strong>Operating region</strong>
@@ -161,17 +227,31 @@ export function WorkspaceMarket({ region, canSwitch, hrefForRegion, beforeSwitch
   </details>;
 }
 
-export function WorkspaceAccount({ staff, readOnly, profilePath }: {
+export function WorkspaceAccount({ staff, readOnly, profilePath, density, setDensity }: {
   staff: Pick<Staff, 'name' | 'role'>; readOnly?: boolean; profilePath?: string;
+  density: SidebarDensity; setDensity: (value: SidebarDensity) => void;
 }) {
+  const disclosure = useHeaderDisclosure();
+  const densityId = useId();
   const initials = staff.name.trim().split(/\s+/).slice(0, 2).map(word => word.charAt(0)).join('').toUpperCase() || 'GB';
   const role = staff.role.replaceAll('_', ' ');
-  return <details className="header-menu account-menu">
+  return <details className="header-menu account-menu" {...disclosure}>
     <summary aria-label="Account menu"><span className="avatar" aria-hidden="true">{initials}</span>
       <span className="account-label">{staff.name}</span><ChevronDown size={13} aria-hidden="true"/></summary>
     <div className="header-pop">
       <strong>{staff.name}</strong><small>{role}</small>
-      {profilePath && <Link href={profilePath}>My profile</Link>}
+      {profilePath && <Link href={profilePath} onClick={() => {
+        if (disclosure.ref.current) disclosure.ref.current.open = false;
+      }}>My profile</Link>}
+      {!readOnly && <div className="account-density">
+        <label htmlFor={densityId}>Sidebar spacing</label>
+        <select id={densityId} aria-describedby={densityId + '-hint'} value={density}
+          onChange={event => setDensity(event.target.value === 'compact' ? 'compact' : 'standard')}>
+          <option value="standard">Standard</option>
+          <option value="compact">Compact</option>
+        </select>
+        <small id={densityId + '-hint'}>Saved for this account in this browser.</small>
+      </div>}
       {!readOnly && <form method="post" action={adminPath('/api/session')}>
         <button className="button subtle" name="action" value="signout"><LogOut size={15} aria-hidden="true"/> Sign out</button>
       </form>}

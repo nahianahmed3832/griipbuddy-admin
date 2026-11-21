@@ -9,8 +9,9 @@ import { catalogBeforeRegionChange } from '@/lib/connected-catalog-client';
 import { superAdmin, type Region, type Section, type Staff } from '@/lib/sections';
 import { SectionIcon } from './icons';
 import {
-  useWorkspaceNavigation, WorkspaceAccount, WorkspaceMarket, WorkspaceNotice, WorkspaceSearch, type Destination,
+  useSidebarDensity, useWorkspaceNavigation, WorkspaceAccount, WorkspaceMarket, WorkspaceNotice, WorkspaceSearch, type Destination,
 } from './workspace-chrome';
+import navigationStyles from './workspace-navigation.module.css';
 
 export type { Destination } from './workspace-chrome';
 type Nav = Pick<Section, 'id' | 'label' | 'group' | 'icon' | 'description'>;
@@ -23,25 +24,27 @@ export function Brand() {
 
 export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, fraud, international, destinations,
   reportLinks, activeReport, purchaseLinks, activePurchase, children, showMarket = true, profilePath }: {
-  section: Nav; nav: Nav[]; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; regionPath: string;
+  section: Nav; nav: Nav[]; staff: Pick<Staff, 'id' | 'name' | 'role' | 'permissions'>; region: Region; regionPath: string;
   environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[]; showMarket?: boolean; profilePath?: string;
   reportLinks: (Destination & { id: string })[]; activeReport?: string;
   purchaseLinks: (Destination & { id: string })[]; activePurchase?: string; children: ReactNode;
 }) {
   const { mobile, collapsed, narrow, sidebar, toggleButton, closeButton, toggle, close } = useWorkspaceNavigation();
+  const { density, setDensity } = useSidebarDensity(staff.id);
   const regionQuery = region === 'INTERNATIONAL' ? '?region=INTERNATIONAL' : '';
   const hasOverview = nav.some(item => item.id === 'overview');
   const alerts = hasOverview ? '/desk/overview' + regionQuery + '#work-queue' : '/desk/operations/queue' + regionQuery;
   const home = '/desk/' + (hasOverview ? 'overview' : 'operations') + regionQuery;
 
-  return <div className="shell m03-admin" data-collapsed={collapsed} data-mobile-open={mobile}>
+  return <div className={`shell m03-admin ${navigationStyles.shell}`} data-collapsed={collapsed}
+    data-mobile-open={mobile} data-sidebar-density={density}>
     <a className="skip-link" href="#main" inert={mobile}>Skip to content</a>
     {mobile && <div className="nav-overlay" aria-hidden="true" onClick={() => close()}/>}
     <aside ref={sidebar} className={'sidebar ' + (mobile ? 'sidebar-open' : '')} id="navigation"
       role={mobile ? 'dialog' : undefined} aria-modal={mobile || undefined} aria-label={mobile ? 'Navigation' : 'Sidebar'}
       inert={!mobile && (narrow || collapsed)}>
       <div className="workspace-brand-row">
-        <Link className="brand-link" href={home} onClick={() => close(false)}><Brand/></Link>
+        <Link className="brand-link" href={home} onClick={() => close()}><Brand/></Link>
         {mobile && <button className="icon-button sidebar-close" ref={closeButton} aria-label="Close navigation"
           onClick={() => close()}><X size={19} aria-hidden="true"/></button>}
       </div>
@@ -50,21 +53,21 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
           <div className="nav-label">{group}</div>
           {nav.filter(item => item.group === group).map(item => <div key={item.id}>
             <Link href={'/desk/' + item.id + regionQuery}
-              aria-current={section.id === item.id && !activeReport && !activePurchase ? 'page' : undefined} onClick={() => close(false)}>
+              aria-current={section.id === item.id && !activeReport && !activePurchase ? 'page' : undefined} onClick={() => close()}>
               <SectionIcon name={item.icon}/><span>{item.label}</span>
             </Link>
             {item.id === 'inventory' && purchaseLinks.length > 0 && <details className="purchase-nav" open={Boolean(activePurchase)}>
               <summary><ShoppingCart size={17} aria-hidden="true"/><span>Purchases</span><ChevronDown size={15} aria-hidden="true"/></summary>
               <ul className="report-sidebar-links">
                 {purchaseLinks.map(link => <li key={link.id}><Link href={link.href}
-                  aria-current={activePurchase === link.id ? 'page' : undefined} onClick={() => close(false)}>{link.label}</Link></li>)}
+                  aria-current={activePurchase === link.id ? 'page' : undefined} onClick={() => close()}>{link.label}</Link></li>)}
               </ul>
             </details>}
             {item.id === 'reports' && section.id === 'reports' && reportLinks.length > 0 &&
               <ul className="report-sidebar-links">
-                <li><Link href={'/desk/reports' + regionQuery} onClick={() => close(false)}>All Reports</Link></li>
+                <li><Link href={'/desk/reports' + regionQuery} onClick={() => close()}>All Reports</Link></li>
                 {reportLinks.map(report => <li key={report.id}><Link href={report.href}
-                  aria-current={activeReport === report.id ? 'page' : undefined} onClick={() => close(false)}>{report.label}</Link></li>)}
+                  aria-current={activeReport === report.id ? 'page' : undefined} onClick={() => close()}>{report.label}</Link></li>)}
               </ul>}
           </div>)}
         </div>)}
@@ -89,7 +92,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
           {fraud && <Link className="icon-button notification" aria-label="Fraud checker" title="Fraud checker"
             href={'/desk/orders/fraud-check' + regionQuery}><Search size={17} aria-hidden="true"/></Link>}
           <Link className="icon-button notification" aria-label="Operational alerts" href={alerts}><Bell size={18} aria-hidden="true"/></Link>
-          <WorkspaceAccount staff={staff} readOnly={readOnly} profilePath={profilePath}/>
+          <WorkspaceAccount staff={staff} readOnly={readOnly} profilePath={profilePath} density={density} setDensity={setDensity}/>
         </div>
       </header>
       <main id="main" className="main-content" tabIndex={-1}>{readOnly && <p className="notice">Read-only workspace · Sample data</p>}{children}</main>
