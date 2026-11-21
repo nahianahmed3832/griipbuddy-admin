@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { supplierFields, suppliersPath, supplierTypes, type SupplierRecord } from '@/lib/supplier-fields';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
 import type { Region } from '@/lib/sections';
 import design from './production-catalog-details.module.css';
 import styles from './production-catalog.module.css';
@@ -12,6 +13,7 @@ import { ProductionCatalogActions } from './production-catalog-actions';
 
 export function SupplierEditor({ selected, region, inline = false, production = false }: { selected?: SupplierRecord; region: Region; inline?: boolean; production?: boolean }) {
   const router = useRouter();
+  const ready = useBrowserReady();
   const dialog = useRef<HTMLDialogElement>(null);
   const pending = useRef(false);
   const title = useId();
@@ -21,7 +23,7 @@ export function SupplierEditor({ selected, region, inline = false, production = 
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current) return;
+    if (!ready || pending.current) return;
     pending.current = true;
     setBusy(true);
     setError('');
@@ -71,8 +73,8 @@ export function SupplierEditor({ selected, region, inline = false, production = 
         pattern={name === 'contact_id' ? '[0-9]{1,8}' : undefined} inputMode={name === 'contact_id' ? 'numeric' : undefined} defaultValue={selected?.[name]}/>
       {name === 'tax_info' && <small className={design.muted}>e.g., NID, TIN, VAT number</small>}
     </label>;
-    return <form className={design.forms + ' ' + design.supplierForm} onSubmit={save}>
-      <fieldset className={design.supplierFields} disabled={busy}>
+    return <form className={design.forms + ' ' + design.supplierForm} method="post" onSubmit={save}>
+      <fieldset className={design.supplierFields} disabled={!ready || busy}>
         {editableFields.slice(0, 2).map(field)}
         <label className={styles.field}><span>Supplier Type <em aria-hidden="true">*</em></span>
           <select className={styles.select} name="type" aria-label="Supplier Type" defaultValue={recordType} required>
@@ -90,14 +92,14 @@ export function SupplierEditor({ selected, region, inline = false, production = 
       </fieldset>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <div className={design.submit}>
-        <button className={styles.primary} disabled={busy}>{busy ? 'Saving…' : selected ? 'Update Supplier' : 'Create Supplier'}</button>
+        <button className={styles.primary} disabled={!ready || busy}>{busy ? 'Saving…' : selected ? 'Update Supplier' : 'Create Supplier'}</button>
       </div>
     </form>;
   }
 
-  const form = <form className={inline ? 'panel padded stack-form' : 'stack-form'} onSubmit={save}>
+  const form = <form className={inline ? 'panel padded stack-form' : 'stack-form'} method="post" onSubmit={save}>
     {!inline && <h2 id={title}>{label}</h2>}
-    <fieldset className="supplier-fields" disabled={busy}>
+    <fieldset className="supplier-fields" disabled={!ready || busy}>
       <label className="filter-label">Supplier type<select name="type" defaultValue={selected?.type || 'BUSINESS'} required>
         {supplierTypes.map(type => <option key={type} value={type}>{type[0] + type.slice(1).toLowerCase()}</option>)}
       </select></label>
@@ -109,8 +111,8 @@ export function SupplierEditor({ selected, region, inline = false, production = 
     </fieldset>
     {error && <p className="notice warn" role="alert">{error}</p>}
     <div className="page-actions">
-      {!inline && <button type="button" className="button secondary" disabled={busy} onClick={() => dialog.current?.close()}>Cancel</button>}
-      <button className="button primary" disabled={busy}>{busy ? 'Saving…' : inline ? 'Save supplier' : 'Confirm'}</button>
+      {!inline && <button type="button" className="button secondary" disabled={!ready || busy} onClick={() => dialog.current?.close()}>Cancel</button>}
+      <button className="button primary" disabled={!ready || busy}>{busy ? 'Saving…' : inline ? 'Save supplier' : 'Confirm'}</button>
     </div>
   </form>;
   if (inline) return form;

@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
 import { BarcodePrint } from './barcode-labels';
 import type { BarcodeLabel } from '@/lib/barcode-data';
 import { purchasesPath, remainingPosting, type Purchase, type PurchaseChoices, type ReviewedProposal, type VariantChoice } from '@/lib/purchasing';
@@ -85,6 +86,7 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
   fields: (form: FormData) => object; onSaved?: (result: { order?: string; id?: string }) => void; onReset?: () => void;
 }) {
   const router = useRouter();
+  const ready = useBrowserReady();
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -94,7 +96,7 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
   const storageKey = ['griip-purchase-command', region, id || 'new', action].join(':');
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current || saved) return;
+    if (!ready || inFlight.current || saved) return;
     inFlight.current = true;
     setPending(true);
     setFeedback('');
@@ -127,9 +129,9 @@ function Form({ region, id, title, children, action, fields, onSaved, onReset }:
         error instanceof Error ? error.message : 'Check the latest purchase status before retrying.');
     } finally { inFlight.current = false; setPending(false); }
   }
-  return <form className="po-form" ref={element} onSubmit={submit} onReset={onReset}>
-    <fieldset className="po-fields" disabled={pending || saved}>{children}</fieldset>
-    <div className="po-buttons"><button className="button primary" disabled={pending || saved} type="submit">{pending ? 'Saving…' : title}</button>
+  return <form className="po-form" method="post" ref={element} onSubmit={submit} onReset={onReset}>
+    <fieldset className="po-fields" disabled={!ready || pending || saved}>{children}</fieldset>
+    <div className="po-buttons"><button className="button primary" disabled={!ready || pending || saved} type="submit">{pending ? 'Saving…' : title}</button>
       {saved && !onSaved && <button className="button secondary" type="button" onClick={() => {
         if (onReset) element.current?.reset();
         last.current = null;

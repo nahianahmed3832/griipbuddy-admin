@@ -56,6 +56,7 @@ async function active(page, width) {
   await page.getByRole('link', { name: 'Add supplier', exact: true }).click();
   const create = page.getByRole('button', { name: 'Create Supplier', exact: true });
   const form = page.locator('form').filter({ has: create });
+  await expect(create).toBeEnabled();
   await form.getByLabel('Supplier Name').fill(supplier);
   await form.getByLabel('Contact ID').fill(String(randomInt(1000000, 9999999)));
   await form.getByLabel('Supplier Type').selectOption('COMPANY');
@@ -171,14 +172,16 @@ async function managed(page, width) {
   await item.click();
 
   const receipt = page.getByRole('heading', { name: 'Record a physical receipt' }).locator('..');
+  const finalizeReceipt = receipt.getByRole('button', { name: 'Finalize physical receipt', exact: true });
+  await expect(finalizeReceipt).toBeEnabled();
   await receipt.getByLabel('Physically received ' + sku).fill('2');
   await receipt.getByLabel('Accepted for sale ' + sku).fill('1');
   await receipt.getByRole('checkbox', { name: /I physically counted/ }).check();
-  await receipt.getByRole('button', { name: 'Finalize physical receipt' }).click();
+  await finalizeReceipt.click();
   await expect(receipt.getByRole('status')).toContainText('must add up');
   await receipt.getByLabel('Accepted for sale ' + sku).fill('2');
   await receipt.getByLabel('Supplier delivery reference').fill(reference + '-RECEIPT');
-  await receipt.getByRole('button', { name: 'Finalize physical receipt' }).click();
+  await finalizeReceipt.click();
   await expect.poll(async () => (await detail()).totals[0].physical).toBe(2);
   order = await detail();
   assert.equal(order.totals[0].expected, 1);
@@ -193,7 +196,9 @@ async function managed(page, width) {
   const dispatch = page.getByRole('region', { name: 'Supplier returns', exact: true });
   await expect.poll(() => Math.floor(Date.now() / 1000) * 1000).toBeGreaterThanOrEqual(Date.parse(order.receiptLines[0].receivedAt));
   const dispatchAt = dateTime();
+  const send = dispatch.getByRole('button', { name: 'Record supplier dispatch', exact: true });
   const fillDispatch = async () => {
+    await expect(send).toBeEnabled();
     await dispatch.getByLabel('Original receipt posting').selectOption(posting._id);
     await dispatch.getByLabel('Units dispatched').fill('1');
     await dispatch.getByLabel('Reason for return').fill('Fixture inspection rejection');
@@ -217,7 +222,6 @@ async function managed(page, width) {
     assert.equal(saved.status(), 200, await saved.text());
     return route.abort('connectionreset');
   });
-  const send = dispatch.getByRole('button', { name: 'Record supplier dispatch', exact: true });
   await send.click();
   await expect(dispatch.getByRole('status')).toContainText('Network interruption');
   await page.reload();

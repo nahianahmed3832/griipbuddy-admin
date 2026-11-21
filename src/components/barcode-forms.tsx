@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Barcode, Printer, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
 import { barcodeConditions, barcodePattern, barcodeStatuses, receiptLimit, type BarcodeLabel, type BarcodeRow, type BarcodeVariant } from '@/lib/barcode-data';
 import type { Choice } from '@/lib/operations';
 import type { Region } from '@/lib/sections';
@@ -193,19 +194,20 @@ export function GenerateBarcodes({ region, production = false }: { region: Regio
 }
 
 export function ReceiveBarcodes({ locations, region, purchases, production = false }: { locations: Choice[]; region: Region; purchases?: string; production?: boolean }) {
+  const ready = useBrowserReady();
   const [units, setUnits] = useState<BarcodeLabel[]>([]);
   const [location, setLocation] = useState('');
   const [pending, setPending] = useState<'scan' | 'receive' | null>(null);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<{ count: number; id: string; number?: number }>();
   const scanInput = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (production) scanInput.current?.focus(); }, [production]);
+  useEffect(() => { if (production && ready) scanInput.current?.focus(); }, [production, ready]);
   const busy = useRef(false);
 
   async function scan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const field = scanInput.current;
-    if (busy.current || !field || units.length >= receiptLimit) return;
+    if (!ready || busy.current || !field || units.length >= receiptLimit) return;
     const barcode = field.value.trim();
     setError('');
     if (!barcodePattern.test(barcode) || units.some(unit => unit.barcode === barcode)) {
@@ -231,7 +233,7 @@ export function ReceiveBarcodes({ locations, region, purchases, production = fal
 
   async function receive(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current || !units.length || !location) return;
+    if (!ready || busy.current || !units.length || !location) return;
     busy.current = true;
     setPending('receive');
     setError('');
@@ -254,37 +256,37 @@ export function ReceiveBarcodes({ locations, region, purchases, production = fal
   }
 
   return <div className="barcode-form">
-    <form id="receive-barcode-stock" className="panel padded stack-form" onSubmit={receive}>
+    <form id="receive-barcode-stock" className="panel padded stack-form" method="post" onSubmit={receive}>
       <h2>Receiving details</h2>
       {production && <p className="dim">Where are these units being received?</p>}
       <div className="barcode-form-columns">
-        <label>Business location<select name="location" value={location} onChange={event => setLocation(event.target.value)} required disabled={!!pending}>
+        <label>Business location<select name="location" value={location} onChange={event => setLocation(event.target.value)} required disabled={!ready || !!pending}>
           <option value="">Select location</option>{locations.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select></label>
-        <label>Purchase date (optional)<input type="date" name="purchaseDate" disabled={!!pending}/></label>
+        <label>Purchase date (optional)<input type="date" name="purchaseDate" disabled={!ready || !!pending}/></label>
       </div>
-      <label>Note (optional)<textarea name="note" rows={3} maxLength={400} disabled={!!pending}/></label>
+      <label>Note (optional)<textarea name="note" rows={3} maxLength={400} disabled={!ready || !!pending}/></label>
       {!locations.length && <p className="notice warn">There are no active receiving locations in this market.</p>}
     </form>
     <section className="panel padded barcode-form">
       <h2>Scan units</h2>
       <p className="dim">{production ? 'Each scan is validated (must be unused and have a default rate).' :
         'Scan an unused label or type its code and press Enter. Each variant needs a default purchase rate, and all units in a receipt must share a supplier.'}</p>
-      <form onSubmit={scan} className="stack-form">
+      <form onSubmit={scan} method="post" className="stack-form">
         {!production && <label htmlFor="inventory-scan">Scan or type a barcode</label>}
         <div className="barcode-scan-line">
           <span className={production ? 'search-input' : undefined}>{production && <Barcode size={16} aria-hidden="true"/>}
-            <input id="inventory-scan" ref={scanInput} maxLength={60} autoComplete="off" spellCheck={false} required readOnly={!!pending}
+            <input id="inventory-scan" ref={scanInput} maxLength={60} autoComplete="off" spellCheck={false} required disabled={!ready} readOnly={!!pending}
               placeholder={production ? 'Scan or type a barcode, then Enter' : undefined} aria-label={production ? 'Scan or type a barcode' : undefined}/>
           </span>
-          <button className="button secondary" disabled={!!pending || units.length >= receiptLimit}>{pending === 'scan' ? 'Checking…' : production ? 'Add' : 'Add scan'}</button>
+          <button className="button secondary" disabled={!ready || !!pending || units.length >= receiptLimit}>{pending === 'scan' ? 'Checking…' : production ? 'Add' : 'Add scan'}</button>
         </div>
       </form>
       <p role="status" className="dim">{units.length} scanned{units.length === receiptLimit && ' · Receipt limit reached'}</p>
       {production && !units.length && <p className={productionStyles.receiveEmpty}>No units yet — start scanning.</p>}
       {!!units.length && <ul className="barcode-scan-list" aria-label="Scanned units">{units.map(unit => <li key={unit.barcode}>
         <span><code>{unit.barcode}</code><small>{unit.sku}</small></span>
-        <button type="button" className="button subtle" aria-label={'Remove ' + unit.barcode} disabled={!!pending}
+        <button type="button" className="button subtle" aria-label={'Remove ' + unit.barcode} disabled={!ready || !!pending}
           onClick={() => setUnits(previous => previous.filter(row => row.barcode !== unit.barcode))}><X size={16}/> Remove</button>
       </li>)}</ul>}
       {error && <p className="notice warn" role="alert">{error}</p>}
@@ -292,7 +294,7 @@ export function ReceiveBarcodes({ locations, region, purchases, production = fal
         <p role="status">Received {receipt.count} {receipt.count === 1 ? 'unit' : 'units'}{receipt.number === undefined ? '.' : ` on purchase ${receipt.number}.`}</p>
         {purchases && /^[a-f\d]{24}$/i.test(receipt.id) && <Link className="button secondary" href={`${purchases}/${receipt.id}?region=${region}`}>View purchase</Link>}
       </div>}
-      <div><button form="receive-barcode-stock" className="button primary" disabled={!location || !units.length || !!pending}>
+      <div><button form="receive-barcode-stock" className="button primary" disabled={!ready || !location || !units.length || !!pending}>
         {pending === 'receive' ? 'Receiving…' : production ? `Receive ${units.length} unit(s)` : `Receive ${units.length} ${units.length === 1 ? 'unit' : 'units'}`}
       </button></div>
     </section>

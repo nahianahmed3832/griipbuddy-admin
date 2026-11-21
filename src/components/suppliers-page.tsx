@@ -77,7 +77,9 @@ export async function SuppliersPage({ auth, region, q, id, production = false }:
         </select></label>
         <div className="page-actions"><button className="button primary">Apply filters</button><Link className="button secondary" href={liveList}>Reset</Link></div>
       </form>
-      <div className={styles.tableBorder + ' ' + design.scroll} role="region" tabIndex={0} aria-label="Supplier directory"><table className={styles.table}>
+      {/* Keep the wide table inside its scroll region while the filter navigation loads CSS. */}
+      <div className={styles.tableBorder} style={{ minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}
+        role="region" tabIndex={0} aria-label="Supplier directory"><table className={styles.table}>
         <thead><tr>{headings.map(heading => <th scope="col" key={heading}>{heading}</th>)}</tr></thead>
         <tbody>{current.map((row, index) => <tr key={row.id}>
           <td>{start + index + 1}</td><td><Link href={url(suppliersPath + '/' + row.id, { region, from: 'directory' })}>{row.name}</Link></td>
