@@ -16,7 +16,7 @@ import editor from './production-product-editor.module.css';
 
 export type RegistryKind = 'brands' | 'faqs' | 'reviews';
 export type RegistryProduct = { name: string; slug: string; sku: string; image: string };
-export type RegistryRow = { id: string; name: string; tags: string[]; product: RegistryProduct; status: string;
+export type RegistryRow = { id: string; name: string; nameBn?: string; tags: string[]; product: RegistryProduct; status: string;
   question: string; answer: string; creator: string; created: string; updated: string; rating: number; title: string; content: string;
   media: { url: string; type: string }[]; attachments: string[]; upvotes: number; downvotes: number; reply: string; repliedAt: string; };
 const routes = {
@@ -57,7 +57,8 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
   const [issue, setIssue] = useState('');
   const [target, setTarget] = useState<RegistryRow>();
   const [reviewSearch, setReviewSearch] = useState(search ?? '');
-  const recordLabel = kind === 'faqs' ? 'Faq' : 'Review';
+  const archiveBrand = kind === 'brands';
+  const recordLabel = archiveBrand ? 'brand' : kind === 'faqs' ? 'Faq' : 'Review';
   async function change(row: RegistryRow, action: 'delete' | 'status', status?: string) {
     if (pending.current) return;
     pending.current = true;
@@ -87,6 +88,15 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       {kind === 'reviews' && <input className={design.reviewSearch} aria-label="Search Reviews" placeholder="Search Reviews..."
         value={reviewSearch} onChange={event => setReviewSearch(event.currentTarget.value)}/>}
     </header>
+    {archiveBrand && <form className="panel filters" action={adminPath(route.list)}>
+      {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
+      <label>Search brands<input type="search" name="q" defaultValue={search} maxLength={120}/></label>
+      <label>Brand status<select name="filter" defaultValue={filter ?? ''}>
+        <option value="">All statuses</option><option value="true">Active</option><option value="false">Archived</option>
+      </select></label>
+      <button className={styles.primary} type="submit">Apply</button>
+      <Link className={styles.outline} href={scope(route.list, region)}>Reset</Link>
+    </form>}
     {issue && !target && <p className={styles.error} role="alert">{issue}</p>}
     <div className={styles.tableBorder + ' ' + design.scroll}>
       <table className={styles.table}>
@@ -94,7 +104,9 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
         <tbody>{rows.map((row, index) => {
           const detail = scope(route.detail + row.id, region);
           return <tr key={row.id}>
-            {kind === 'brands' ? <><td>{row.name}</td><td><div className={design.tags}>{row.tags.map(tag => <span key={tag}>{tag}</span>)}</div></td></>
+            {kind === 'brands' ? <><td>{row.name}
+                {row.nameBn && <div className={design.muted} lang="bn">{row.nameBn}</div>}</td>
+              <td><div className={design.tags}>{row.tags.map(tag => <span key={tag}>{tag}</span>)}</div></td></>
               : <>
                 <td>{offset + index + 1}</td><td><ProductImage source={row.product.image}/></td>
                 <td><p>{row.product.name}</p><small className={design.muted}>{kind === 'faqs' && 'Slug: '}{row.product.slug}</small></td>
@@ -108,24 +120,21 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
                   <option value="" disabled>Select status</option>
                   {statuses[kind].map(status => <option key={status} value={status}>{labels[status]}</option>)}
                 </select>
-              : <span className={styles.activeBadge} data-active={row.status === 'active' || row.status === 'approved'}>{labels[row.status] || row.status}</span>}</td>
+              : <span className={styles.activeBadge} data-active={row.status === 'active' || row.status === 'approved'}>
+                {archiveBrand && row.status === 'inactive' ? 'Archived' : labels[row.status] || row.status}</span>}</td>
             {kind === 'faqs' && <td>{row.creator || 'Anonymous'}</td>}
             {kind !== 'brands' && <td>{date(row.created)}</td>}
             {kind === 'faqs' && <td>{date(row.updated)}</td>}
             <td><div className={design.tableActions}>
               {kind !== 'brands' && <Link href={detail} className={styles.outline} aria-label={'View ' + (row.title || row.question)}><Eye size={16}/></Link>}
-              {(canDelete || canEdit && kind !== 'reviews') && <ProductionCatalogActions label="Open menu" title="Actions">
+              {(canDelete && (!archiveBrand || row.status === 'active') || canEdit && kind !== 'reviews') && <ProductionCatalogActions label="Open menu" title="Actions">
                 {close => <>
                   {kind === 'brands' && canEdit && <Link href={detail} onClick={close}>Edit</Link>}
                   {kind === 'faqs' && canEdit && <Link href={detail} onClick={close}>Reply Faq</Link>}
-                  {canDelete && <button type="button" onClick={() => {
+                  {canDelete && (!archiveBrand || row.status === 'active') && <button type="button" onClick={() => {
                     close();
-                    if (kind === 'brands') {
-                      if (window.confirm('Delete this brand?')) void change(row, 'delete');
-                      return;
-                    }
                     setIssue(''); setTarget(row);
-                  }}>{kind === 'brands' ? 'Delete' : 'Delete ' + recordLabel}</button>}
+                  }}>{archiveBrand ? 'Archive brand' : 'Delete ' + recordLabel}</button>}
                 </>}
               </ProductionCatalogActions>}
             </div></td>
@@ -141,12 +150,14 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
     </nav>}
     {target && <dialog ref={node => { if (node && !node.open) node.showModal(); }} className={editor.editorDialog + ' ' + design.registryDelete}
       aria-labelledby="registry-delete-title" onCancel={event => { if (pending.current) event.preventDefault(); }} onClose={() => setTarget(undefined)}>
-      <div className={editor.dialogHeading}><h3 id="registry-delete-title">Delete {recordLabel}</h3></div>
-      <p>This action cannot be undone. Are you sure you want to delete <strong>{target.title || target.question || target.name}</strong>?</p>
+      <div className={editor.dialogHeading}><h3 id="registry-delete-title">{archiveBrand ? 'Archive' : 'Delete'} {recordLabel}</h3></div>
+      {archiveBrand ? <p>Archive <strong>{target.name}</strong>? Reassign current products first. Staff can reactivate the brand later.</p>
+        : <p>This action cannot be undone. Are you sure you want to delete <strong>{target.title || target.question || target.name}</strong>?</p>}
       {issue && <p className={styles.error} role="alert">{issue}</p>}
       <div className={editor.saveActions}>
         <button type="button" className={styles.outline} disabled={busy} onClick={() => { setTarget(undefined); setIssue(''); }}>Cancel</button>
-        <button type="button" className={editor.danger} disabled={busy} onClick={() => void change(target, 'delete')}>{busy ? 'Deleting…' : 'Delete'}</button>
+        <button type="button" className={editor.danger} disabled={busy} onClick={() => void change(target, 'delete')}>
+          {archiveBrand ? busy ? 'Archiving…' : 'Archive' : busy ? 'Deleting…' : 'Delete'}</button>
       </div>
     </dialog>}
   </section>;
@@ -161,10 +172,14 @@ export function ProductionBrandEditor({ brand, region }: { brand?: RegistryRow; 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('name') ?? '').trim();
+    const name_bn = String(form.get('name_bn') ?? '').trim();
+    const reactivating = form.get('reactivate') === 'on';
     setBusy(true); setError('');
     try {
-      await saveCatalog({ kind: 'brands', id: brand?.id, region, action: 'save', values: { name, tags: tags.join('\n') } });
+      await saveCatalog({ kind: 'brands', id: brand?.id, region, action: 'save',
+        values: { name, name_bn, tags: tags.join('\n'), ...(reactivating && { is_active: 'true' }) } });
       router.push(scope(routes.brands.list, region)); router.refresh();
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save the brand.'); }
     finally { setBusy(false); }
@@ -173,6 +188,8 @@ export function ProductionBrandEditor({ brand, region }: { brand?: RegistryRow; 
     <h1>{brand ? 'Update Brand' : 'Create New Brand'}</h1>
     <form className={design.forms + ' ' + design.editorPanel} onSubmit={save}>
       <label className={styles.field}>Brand Name<input name="name" defaultValue={brand?.name} placeholder="Enter brand name" required maxLength={2000}/></label>
+      <label className={styles.field}>Bangla name<input name="name_bn" lang="bn" defaultValue={brand?.nameBn} maxLength={2000}/></label>
+      {brand?.status === 'inactive' && <label className={design.liveSwitch}><input type="checkbox" name="reactivate"/> Reactivate archived brand</label>}
       <label className={styles.field}>Tags (for searching)<input value={tag} placeholder="Enter tags (press Enter to add)" onChange={event => setTag(event.target.value)}
         maxLength={2000} onKeyDown={event => {
           if (event.key !== 'Enter') return;

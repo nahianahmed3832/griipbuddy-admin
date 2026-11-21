@@ -23,7 +23,7 @@ type Prices = Record<string, string>;
 export type VariantDraft = {
   key: string; _id?: string; sku: string; attribute_values: Record<string, string>; base: Prices;
   prices: Record<string, Prices>; image: string; images: string; videos: string; color_code: string;
-  barcode?: string; color_image?: string; image_based_on?: string;
+  barcode?: string; color_image?: string; image_based_on?: string; clearPrices?: string[];
 };
 function blankVariant(key: string): VariantDraft {
   return { key, sku: '', attribute_values: {}, base: { regular_price: '', sale_price: '0' }, prices: {}, image: '', images: '', videos: '', color_code: '' };
@@ -86,9 +86,10 @@ function ImageUpload({ initial, gallery }: { initial: string; gallery: string })
 function list(value: string) { return value.split(/[\r\n]+/).map(value => value.trim()).filter(Boolean); }
 function inputPrices(values: Prices) { return Object.fromEntries(Object.entries(values).filter(([,value]) => value !== '').map(([field, value]) => [field, Number(value)])); }
 function variantPayload(variants: VariantDraft[], withSerial = false) {
-  return variants.map(({ _id, sku, attribute_values, image, color_code, color_image, image_based_on, base, prices, images, videos }, index) => ({
+  return variants.map(({ _id, sku, attribute_values, image, color_code, color_image, image_based_on, base, prices, clearPrices, images, videos }, index) => ({
     ...(withSerial && { serial: index + 1 }), _id, sku, attribute_values, image, color_code, color_image, image_based_on,
     ...inputPrices(base), prices: Object.fromEntries(Object.entries(prices).map(([currency, price]) => [currency, inputPrices(price)])),
+    ...(clearPrices?.length && { clear_prices: clearPrices }),
     images: list(images), videos: list(videos),
   }));
 }
@@ -122,7 +123,8 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
   const priceInput = (label: string, value: string, update: (value: string) => void, required = false) =>
     <label className="operation-field" key={label}>{label}<input type="number" min="0" step=".01" value={value} onChange={event => update(event.target.value)} required={required}/></label>;
   return <fieldset className="catalog-editor-group"><legend>Variant matrix</legend>
-    <label className="operation-field">Attributes<textarea value={attributesText} rows={2} placeholder="One attribute per line, such as Color" onChange={event => setAttributes(event.target.value)}/></label>
+    <label className="operation-field">Attributes<textarea value={attributesText} rows={2} readOnly={variants.some(row => row._id)}
+      placeholder="One attribute per line, such as Color" onChange={event => setAttributes(event.target.value)}/></label>
     {!!attributes.length && <details><summary>Generate combinations</summary><div className="catalog-editor-grid">
       {attributes.map(name => <label className="operation-field" key={name}>{name} choices<input value={matrix[name] ?? ''} placeholder="Separate choices with commas"
         onChange={event => setMatrix({ ...matrix, [name]: event.target.value })}/></label>)}
@@ -137,8 +139,9 @@ function VariantMatrix({ attributesText, setAttributes, variants, setVariants, a
         const next = new Set(current); if (open) next.add(row.key); else next.delete(row.key); return next; });
     }}><summary>{row.sku || 'New variant ' + (index + 1)}</summary>
       <div className="catalog-editor-grid">
-        <label className="operation-field">Variant SKU<input required value={row.sku} onChange={event => change(row.key, { sku: event.target.value })}/></label>
-        {attributes.map(name => <label key={name} className="operation-field">{name}<input required value={row.attribute_values[name] ?? ''}
+        <label className="operation-field">Variant SKU<input required value={row.sku} readOnly={Boolean(row._id)} maxLength={100}
+          onChange={event => change(row.key, { sku: event.target.value })}/></label>
+        {attributes.map(name => <label key={name} className="operation-field">{name}<input required readOnly={Boolean(row._id)} value={row.attribute_values[name] ?? ''}
           onChange={event => change(row.key, { attribute_values: { ...row.attribute_values, [name]: event.target.value } })}/></label>)}
         {pricing.filter(([key]) => key !== 'buying_price' || allowCost).map(([key, label]) => priceInput('Base ' + label.toLowerCase() + ' price', row.base[key] ?? '',
           value => change(row.key, { base: { ...row.base, [key]: value } }), key !== 'buying_price'))}
@@ -225,10 +228,10 @@ export function ProductEditForm({ id, region, tree, brands, policies, countries,
     try {
       if (!variantOnly && id && stagedVariants?.current?.dirty) {
         const { attributes, variants } = stagedVariants.current;
-        await saveCatalog({ kind: 'products', id, region, action: 'variants', values: { attributes, variants } });
-        stagedVariants.current.dirty = false;
+        Object.assign(values, { variant_matrix: { attributes, variants } });
       }
       const record = await saveCatalog({ kind: 'products', id, region: id ? region : target, action: variantOnly ? 'variants' : 'save', values });
+      if (!variantOnly && stagedVariants?.current) stagedVariants.current.dirty = false;
       if (intent === 'stock') router.push((production ? '/dashboard/check-outlet-stocks' : '/desk/inventory/stock') + '?region=' + target + '&product=' + encodeURIComponent(record));
       else if (production && intent === 'new') {
         setFormRevision(current => current + 1);

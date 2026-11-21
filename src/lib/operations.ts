@@ -276,7 +276,7 @@ export async function executeOperation(id: OperationId, recordId: string, values
     case 'barcode-generate': {
       const variant = await findVariantBySku(input.sku, region, auth);
       await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id: refId(variant.product) });
-      const generated = obj(await mutate('/barcode', auth, 'POST', {
+      const generated = obj(await mutate(url('/barcode', { region }), auth, 'POST', {
         sku: input.sku, product_count: Number(input.quantity), admin_note: input.note,
       }));
       return { barcodes: arr(generated.barcodes).map(row => str(obj(row).barcode)).filter(Boolean) };

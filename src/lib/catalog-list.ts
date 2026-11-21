@@ -30,7 +30,7 @@ export function catalogFilters(query: Query, canViewStock: boolean, canViewLocat
   }
   return {
     q: (param(query, 'q') ?? (production ? param(query, 'sku') : undefined) ?? '').trim().slice(0, 80),
-    searchBy: production || param(query, 'searchBy') === 'sku' ? 'sku' : 'text',
+    searchBy: param(query, 'searchBy') === 'text' ? 'text' : production || param(query, 'searchBy') === 'sku' ? 'sku' : 'text',
     filter: publication === 'true' || publication === 'false' ? publication : '',
     category,
     stock: canViewStock && (stock === 'in' || stock === 'out') ? stock : '',
@@ -43,7 +43,7 @@ export function catalogFilters(query: Query, canViewStock: boolean, canViewLocat
 
 export function catalogParams(f: CatalogFilters, region: Region): Record<string, string | undefined> {
   return {
-    region, q: f.q, searchBy: f.searchBy === 'sku' ? 'sku' : undefined, filter: f.filter,
+    region, q: f.q, searchBy: f.searchBy, filter: f.filter,
     ...Object.fromEntries(categoryKeys.map((key, index) => [key, f.category[index]])),
     stock: f.stock, location: f.location, sort: f.sort === 'newest' ? undefined : f.sort,
     page: f.page === 1 ? undefined : String(f.page), size: f.size === catalogPageSizes[0] ? undefined : String(f.size),

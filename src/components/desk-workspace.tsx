@@ -67,6 +67,7 @@ import { ConnectedHomepage } from './connected-homepage';
 import { ConnectedStockWorkspace } from './connected-catalog-product/workspace';
 import { scopedCatalogPilotRequested } from '@/lib/scoped-catalog-pilot';
 import { ApprovedDevicesWorkspace, CatalogSearchMaintenanceWorkspace } from './connected-catalog-discovery';
+import { RecoveredCatalogNotice } from './recovered-catalog-notice';
 
 export type DeskWorkspaceProps = {
   params: Promise<{ section: string; view?: string[] }>;
@@ -367,6 +368,9 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   }
   const staff = { id: auth.staff.id, name: auth.staff.name, role: auth.staff.role, permissions: auth.staff.permissions };
   const environment = connection().name;
+  const recoveredCatalog = sectionId === 'catalog' && !connectedCatalogConfigured() &&
+    (active === 'products' || active === 'categories' || active === 'brands') && has(auth.staff, 'product.view') && !publicSandbox();
+  const catalogNotice = recoveredCatalog && <RecoveredCatalogNotice owner={superAdmin(auth.staff)}/>;
   const showMarket = !(sectionId === 'pos' && counterPosEnabled() &&
     (active === 'counter-sales' || active === 'counter-receipt' || (active === 'editor' && view.length === 1)));
   if (production) {
@@ -384,7 +388,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     return <ProductionAdminShell staff={staff} region={region} path={production.path} query={production.query}
       readOnly={publicSandbox()} fraud={fraud} catalogPilot={catalogPilot} navigation={navigation}
       sectionLabel={section.label} environment={environment} showMarket={showMarket}
-      profilePath={staffProfileAvailable() ? '/dashboard/profile' : undefined}>{content}</ProductionAdminShell>;
+      profilePath={staffProfileAvailable() ? '/dashboard/profile' : undefined}>{catalogNotice}{content}</ProductionAdminShell>;
   }
   return <Shell section={section} nav={nav} staff={staff} region={region} showMarket={showMarket}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
@@ -399,6 +403,6 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
         aria-current={key === active ? 'page' : undefined}>{label}</Link>)}
       {has(auth.staff, 'purchase.view') && <Link href={url(inventoryPath + '/purchases', { region })}>All Purchases</Link>}
     </nav>}
-    {content}
+    {catalogNotice}{content}
   </Shell>;
 }

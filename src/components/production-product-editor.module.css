@@ -87,6 +87,9 @@
 .mediaTile { position: relative; display: flex; min-width: 0; align-items: flex-start; border: 1px solid var(--editor-line); border-radius: 8px; padding: 4px; gap: 4px; }
 .mediaTile :is(img,video) { max-width: 185px; max-height: 145px; object-fit: contain; border-radius: 5px; }
 .mediaTile button { background: white; border: 1px solid var(--editor-line); border-radius: 5px; padding: 4px; color: #b91c1c; }
+.mediaTile:has(.mediaTileActions) { flex-wrap: wrap; }
+.mediaTile .mediaTileActions { display: flex; flex-wrap: wrap; gap: 4px; }
+.mediaTile .mediaTileActions button { color: var(--editor-ink, #253046); font: inherit; }
 @media (min-width: 768px) { .imageFields { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
 .countryField { display: grid; align-content: start; gap: 8px; min-width: 0; }
@@ -96,6 +99,7 @@
 .variantSection { display: grid; gap: 16px; min-width: 0; }
 .variantEditor, .dangerZone { display: grid; gap: 16px; min-width: 0; padding: 16px; border: 1px solid var(--editor-line); border-radius: 10px; background: white; box-shadow: 0 1px 2px #0002; }
 .variantEditor { padding: 8px 24px 16px; }
+.editorHint { margin: 0; color: var(--editor-muted); font-size: .875rem; overflow-wrap: anywhere; }
 .variantHeading, .dialogHeading, .dangerHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .variantHeading h2, .matrix h2, .dialogHeading h3 { font-size: 20px; line-height: 28px; font-weight: 600; margin: 0; }
 .variantHeading button, .attributeValues button { gap: 6px; }

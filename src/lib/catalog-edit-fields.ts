@@ -15,7 +15,8 @@ export const statusOptions = (values: readonly string[]) => values.map(value => 
 const active: Field = { name: 'is_active', label: 'Active', kind: 'boolean', defaultValue: 'true' };
 export const registries = {
   brands: { title: 'Brand', fields: [
-    { name: 'name', label: 'Brand name', required: true }, { name: 'tags', label: 'Tags', kind: 'lines' }, active,
+    { name: 'name', label: 'Brand name', required: true }, { name: 'name_bn', label: 'Bangla brand name' },
+    { name: 'tags', label: 'Tags', kind: 'lines' }, active,
   ] },
   faqs: { title: 'FAQ', fields: [
     { name: 'product', label: 'Product', required: true }, { name: 'question', label: 'Question', required: true },

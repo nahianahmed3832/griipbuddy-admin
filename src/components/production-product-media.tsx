@@ -19,18 +19,27 @@ const imageFiles = 'image/webp,image/png,image/jpeg,image/svg+xml,image/x-icon,i
 const videoFiles = 'video/mp4,video/webm,video/ogg,video/quicktime';
 const lines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
-function MediaPicker({ label, addresses, kind, multiple, onAdd, onRemove, disabled, busy }: {
+function MediaPicker({ label, addresses, kind, multiple, onAdd, onRemove, onMove, onPrimary, disabled, busy }: {
   label: string; addresses: string[]; kind: 'image' | 'video'; multiple?: boolean;
   onAdd: (files: File[]) => void; onRemove: (address: string) => void; disabled: boolean; busy: boolean;
+  onMove?: (index: number, offset: number) => void; onPrimary?: (address: string) => void;
 }) {
   const video = kind === 'video';
   return <div className={styles.mediaPicker} data-video={video}>
     {label && <p>{label}</p>}
-    {addresses.length > 0 && <div className={styles.mediaGrid}>{addresses.map(address => <div className={styles.mediaTile} key={address}>
+    {addresses.length > 0 && <div className={styles.mediaGrid}>{addresses.map((address, index) => <div className={styles.mediaTile} key={address}>
       {video ? <video src={productionCmsPreview(address)} controls preload="metadata"/> :
         // eslint-disable-next-line @next/next/no-img-element
         <img src={productionCmsPreview(address)} alt={label + ' preview'} referrerPolicy="no-referrer"/>}
-      <button type="button" aria-label={'Remove ' + (label || 'video')} disabled={disabled} onClick={() => onRemove(address)}>
+      {onMove && <div className={styles.mediaTileActions}>
+        <button type="button" disabled={disabled || index === 0} onClick={() => onMove(index, -1)}
+          aria-label={'Move gallery image ' + (index + 1) + ' earlier'}>Earlier</button>
+        <button type="button" disabled={disabled || index === addresses.length - 1} onClick={() => onMove(index, 1)}
+          aria-label={'Move gallery image ' + (index + 1) + ' later'}>Later</button>
+        {onPrimary && <button type="button" disabled={disabled} onClick={() => onPrimary(address)}
+          aria-label={'Make gallery image ' + (index + 1) + ' the thumbnail'}>Thumbnail</button>}
+      </div>}
+      <button type="button" aria-label={'Remove ' + (label || 'video') + (addresses.length > 1 ? ' ' + (index + 1) : '')} disabled={disabled} onClick={() => onRemove(address)}>
         <Trash2 size={15} aria-hidden="true"/>
       </button>
     </div>)}</div>}
@@ -58,6 +67,18 @@ export function ProductionProductImages({ initial, gallery, uploading, setUpload
   useEffect(() => { onSliderImages?.(images); }, [images, onSliderImages]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  function move(index: number, offset: number) {
+    setImages(current => {
+      const ordered = [...current];
+      const [address] = ordered.splice(index, 1);
+      ordered.splice(index + offset, 0, address);
+      return ordered;
+    });
+  }
+  function useAsThumbnail(address: string) {
+    setThumbnail(address);
+    setImages(current => [...new Set([thumbnail, ...current].filter(image => image && image !== address))]);
+  }
   async function add(files: File[], target: 'Thumbnail' | 'Slider Images') {
     if (uploading) return;
     setBusy(target); setError(''); setUploading(true);
@@ -76,7 +97,8 @@ export function ProductionProductImages({ initial, gallery, uploading, setUpload
       <MediaPicker label="Thumbnail" addresses={thumbnail ? [thumbnail] : []} kind="image" onAdd={files => void add(files, 'Thumbnail')}
         onRemove={() => setThumbnail('')} disabled={uploading} busy={busy === 'Thumbnail'}/>
       <MediaPicker label="Slider Images" addresses={images} kind="image" multiple onAdd={files => void add(files, 'Slider Images')}
-        onRemove={address => setImages(current => current.filter(value => value !== address))} disabled={uploading} busy={busy === 'Slider Images'}/>
+        onRemove={address => setImages(current => current.filter(value => value !== address))}
+        onMove={move} onPrimary={useAsThumbnail} disabled={uploading} busy={busy === 'Slider Images'}/>
     </div>
     <input type="hidden" name="thumbnail" value={thumbnail}/>
     <input type="hidden" name="slider_images" value={images.join('\n')}/>

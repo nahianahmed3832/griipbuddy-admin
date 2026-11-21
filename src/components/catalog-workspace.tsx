@@ -200,18 +200,17 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
   if (!creating && (editing || variantsOnly) && !mayEdit) throw new ApiError(403);
   const title = creating ? 'Create product' : (editing ? 'Edit product' : variantsOnly ? 'Edit variants' : str(record.name) || 'Product details');
   if (editing || variantsOnly) {
-    const [tree, brands, policies, countries, variantRecords] = await Promise.all([
-      variantsOnly ? [] : loadCategoryTree(auth), variantsOnly ? [] : registryOptions('/brand/admin/all', 'brands', auth),
+    const [tree, brands, policies, countries] = await Promise.all([
+      variantsOnly ? [] : loadCategoryTree(auth), variantsOnly ? [] : productBrandOptions(auth, record.brand),
       variantsOnly ? [] : registryOptions('/return-policy', 'data', auth),
       variantsOnly || !production && region !== 'INTERNATIONAL' ? [] : registryOptions('/country/admin/all', 'countries', auth),
-      variantsOnly || production && !creating ? api('/product/variant/' + readId, auth.token) : [],
     ]);
     const initial = creating ? {} : Object.fromEntries([
       ...productFields.map(({name}) => [name, inputValue(record, name)]), ...['brand', 'return_policy'].map(field => [field, reference(record[field])]),
       ['available_countries', arr(record.available_countries).map(reference).filter(mongoId).join('\n')],
       ['short_video_details', JSON.stringify(arr(record.short_videos))],
     ]);
-    const drafts = variantDrafts(variantRecords, maySeeCost, production);
+    const drafts = variantDrafts(record.variants, maySeeCost, production);
     const attributes = [...new Set([...arr(record.attributes).map(str), ...drafts.flatMap(row => Object.keys(row.attribute_values))].filter(Boolean))];
     if (production) {
       const target = creating ? undefined : readId;
@@ -241,12 +240,9 @@ export async function ProductWorkspace({ auth, q, region, id, production }: Prop
   if (production) return <ProductionProductDetail record={record} canSeeStock={canViewStock} market={market}
     listHref={url('/dashboard/products', listParams)}
     editHref={mayEdit ? url('/dashboard/update-product/' + readId, listParams) : undefined}/>;
-  const [storedVariants, storefront] = await Promise.all([
-    api('/product/variant/' + readId, auth.token),
-    process.env.GRIIP_ADMIN_INTEGRATED === '1' && mayEdit
-      ? api('/storefront/admin/product/' + readId, auth.token) as Promise<StorefrontSettings> : undefined,
-  ]);
-  const variants = arr(storedVariants).map(obj).filter(variant => mongoId(reference(variant)));
+  const storefront = process.env.GRIIP_ADMIN_INTEGRATED === '1' && mayEdit
+    ? await api('/storefront/admin/product/' + readId, auth.token) as StorefrontSettings : undefined;
+  const variants = arr(record.variants).map(obj).filter(variant => mongoId(reference(variant)));
   const variantColumns = columns({ SKU: 'sku', 'Regular price': 'regular_price', 'Sale price': 'sale_price', Barcode: 'barcode' });
   const branches = fields.map(key => str(obj(record[key]).name_en) || str(obj(record[key]).name)).filter(Boolean);
   const edit = (mode: string) => url(catalogPath + '/' + readId, { ...listParams, mode });
@@ -281,7 +277,8 @@ async function productIdForSlug(slug: string, auth: Session, region: Region) {
 }
 
 const registryResources = {
-  brands: () => ({ ...resources.catalog.brands, search: 'searchTerm' }),
+  brands: () => ({ ...resources.catalog.brands, search: 'searchTerm',
+    filter: { label: 'Status', key: 'is_active', options: ['true', 'false'] } }),
   faqs: () => ({ ...resources.catalog.faqs, search: 'search', filter: { label: 'Status', key: 'status', options: availability },
     columns: [{ label: 'Question', fields: 'question' }, { label: 'Product', fields: 'product.name' }, { label: 'Status', fields: 'status', kind: 'badge' as const }] }),
   reviews: () => ({ ...resources.catalog.reviews, filter: { label: 'Status', key: 'status', options: reviewStatuses } }),
@@ -324,9 +321,24 @@ function registryProduct(row: RecordData): RegistryProduct {
   return { name: str(row.name), slug: str(row.slug), sku: str(row.sku), image: str(row.thumbnail) };
 }
 
+async function productBrandOptions(auth: Session, current: unknown) {
+  const data = obj(await api('/brand/admin/all?limit=250&is_active=true', auth.token));
+  const choices = arr(data.brands).map(obj).filter(row => mongoId(reference(row))).map(row => {
+    const name = str(row.name);
+    const bangla = str(row.name_bn);
+    return { value: reference(row), label: bangla && bangla !== name ? name + ' · ' + bangla : name, code: '' };
+  });
+  const selected = reference(current);
+  if (mongoId(selected) && !choices.some(choice => choice.value === selected)) {
+    const label = str(obj(current).name) || 'Existing brand';
+    choices.push({ value: selected, label, code: '' });
+  }
+  return choices;
+}
+
 function registryRow(row: RecordData): RegistryRow {
   return {
-    id: reference(row), name: str(row.name), tags: [...new Set(arr(row.tags).map(str).filter(Boolean))], product: registryProduct(obj(row.product)),
+    id: reference(row), name: str(row.name), nameBn: str(row.name_bn), tags: [...new Set(arr(row.tags).map(str).filter(Boolean))], product: registryProduct(obj(row.product)),
     status: str(row.status) || (row.is_active === false ? 'inactive' : 'active'), question: str(row.question), answer: str(row.answer),
     creator: str(obj(row.createdBy).full_name) || str(obj(row.user).full_name) || str(obj(row.customer).full_name), created: str(row.createdAt),
     updated: str(row.updatedAt), rating: Number(row.rating) || 0, title: str(row.title), content: str(row.content),

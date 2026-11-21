@@ -31,7 +31,8 @@ async function saved(path: string, auth: Session, method: 'POST' | 'PATCH' | 'DE
     const status = result.ok ? 502 : result.status;
     const issue = obj(arr(payload.errorMessages)[0]);
     const detail = [str(issue.path), str(issue.message)].filter(Boolean).join(': ').slice(0, 250);
-    const message = status === 409 ? 'This change conflicts with an existing record or stock movement.' :
+    const conflict = path === '/brand' || path.startsWith('/brand/') ? detail : '';
+    const message = status === 409 ? conflict || 'This change conflicts with an existing record or stock movement.' :
       [400, 422].includes(status) ? detail || 'Review the required fields and retry.' :
       status === 403 ? 'Your account cannot save this change.' : 'The API could not confirm this change. Reload before retrying.';
     throw new ApiError(status, message);
@@ -161,8 +162,11 @@ function variantPrice(input: RecordData, allowCost: boolean) {
   const output: RecordData = {};
   for (const field of numbers) {
     if (field === 'buying_price' && !allowCost || input[field] === undefined || input[field] === '') continue;
-    if (typeof input[field] !== 'number' || !Number.isFinite(input[field]) || Number(input[field]) < 0) throw invalid('Prices must be non-negative numbers.');
-    output[field] = input[field];
+    const value = input[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 99999999.99 || Math.round(value * 100) / 100 !== value) {
+      throw invalid('Use non-negative prices with up to two decimal places.');
+    }
+    output[field] = value;
   }
   return output;
 }
@@ -186,9 +190,15 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
     seenSku.add(sku); seenSignature.add(signature);
     const base = variantPrice(row, allowCost);
     if (base.regular_price === undefined || base.sale_price === undefined) throw invalid('Enter the regular and sale price for every variant.');
+    if (Number(base.sale_price) > Number(base.regular_price)) throw invalid('BDT sale price exceeds the regular price for ' + sku + '.');
     const pricing = obj(row.prices);
+    const clearPrices = arr(row.clear_prices).map(str);
+    if (clearPrices.length > 3 || clearPrices.some(currency => !currencies.includes(currency as typeof currencies[number]) || currency === 'BDT')) {
+      throw invalid('Choose supported international currencies to clear.');
+    }
     const prices = Object.fromEntries(currencies.flatMap(currency => {
       const value = variantPrice(obj(pricing[currency]), allowCost);
+      if (Number(value.sale_price) > Number(value.regular_price)) throw invalid(currency + ' sale price exceeds the regular price for ' + sku + '.');
       return Object.keys(value).length ? [[currency, value]] : [];
     }));
     const images = arr(row.images).map(str), videos = arr(row.videos).map(str);
@@ -198,6 +208,7 @@ function cleanVariants(values: RecordData, auth: Session, requireRows: boolean) 
     return { ...(mongoId(str(row._id)) ? { _id: row._id } : {}), ...(row.serial !== undefined && { serial: index + 1 }), sku,
       attribute_values: Object.fromEntries(attributes.map((name, index) => [name, values[index]])),
       ...base, image, images, videos, color_image: colorImage, color_code: str(row.color_code).slice(0, 32), prices,
+      ...(clearPrices.length && { clear_prices: [...new Set(clearPrices)] }),
       ...(row.image_based_on !== undefined && { image_based_on: attributes.includes(imageSource) ? imageSource : '' }) };
   });
   return { attributes, variants };
@@ -274,6 +285,23 @@ function cleanProduct(values: RecordData, region: Region, previous: RecordData) 
 }
 
 export async function productWrite(action: string, id: string, values: RecordData, auth: Session, region: Region) {
+  if (action === 'archive-many') {
+    if (!canEditProduct('delete', auth)) throw new ApiError(403);
+    const ids = arr(values.ids).map(str);
+    if (!ids.length || ids.length > 40 || ids.some(value => !mongoId(value)) || new Set(ids).size !== ids.length) {
+      throw invalid('Select up to 40 distinct products from one market.');
+    }
+    await verifyScopedLegacyCatalogWrite(auth);
+    return saved('/product/admin/archive', auth, 'POST', { ids, region });
+  }
+  if (action === 'duplicate') {
+    if (!id || !canEditProduct('create', auth)) throw new ApiError(403);
+    const sku = str(values.sku).trim();
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}._/-]{0,79}$/u.test(sku)) throw invalid('Enter an explicit new SKU up to 80 characters.');
+    await readProduct(id, auth, region);
+    await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id });
+    return saved('/product/admin/products/' + id + '/duplicate', auth, 'POST', { sku });
+  }
   const grant = action === 'delete' ? 'delete' : id ? 'edit' : 'create';
   if (!canEditProduct(grant, auth) || (!id && action !== 'save')) throw new ApiError(403);
   const previous = id ? await readProduct(id, auth, region) : {};
@@ -290,10 +318,13 @@ export async function productWrite(action: string, id: string, values: RecordDat
   if (values.next_region !== undefined && (!id || !['BD', 'INTERNATIONAL'].includes(str(values.next_region)))) throw invalid('Choose a valid region.');
   const destination = values.next_region === undefined ? region : getRegion(str(values.next_region), auth.staff);
   const fields = cleanProduct(values, destination, previous);
-  if (id) return saved('/product/' + id, auth, 'PATCH', fields);
+  if (id) {
+    const variant_matrix = values.variant_matrix === undefined ? undefined : cleanVariants(obj(values.variant_matrix), auth, true);
+    return saved('/product/' + id, auth, 'PATCH', { ...fields, ...(variant_matrix && { variant_matrix }) });
+  }
   const { attributes, variants } = cleanVariants(values, auth, false);
   const createFields = Object.fromEntries(Object.entries(fields).filter(([,value]) => value !== null));
-  return saved('/product', auth, 'POST', { ...createFields, attributes, variantsCombination: variants });
+  return saved('/product', auth, 'POST', { ...createFields, staff_draft: true, attributes, variantsCombination: variants });
 }
 
 export async function catalogImage(request: Request, auth: Session) {
