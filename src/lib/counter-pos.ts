@@ -1,6 +1,8 @@
 import 'server-only';
-import { ApiError, mongoId, obj, requestApi, str, workspaceWritesEnabled, type RecordData, type Session } from '@/lib/api';
-import { counterDate, counterMoney, type CounterReceipt, type CounterScope } from '@/lib/counter-pos-contract';
+import { cache } from 'react';
+import { ApiError, arr, managedCounterConfigured, managedCounterRequested, mongoId, obj, requestApi, requestManagedCounterApi,
+  str, workspaceWritesEnabled, type RecordData, type Session } from '@/lib/api';
+import { counterDate, counterMoney, counterReceiptCustomer, type CounterReceipt, type CounterScope } from '@/lib/counter-pos-contract';
 import { has } from '@/lib/sections';
 
 const apiRoot = '/pos/counter';
@@ -11,17 +13,42 @@ export const counterPrivate = {
   'X-Content-Type-Options': 'nosniff',
 };
 
-export function counterPosEnabled() {
-  return process.env.GRIIP_ADMIN_TARGET === 'fixture' && process.env.GRIIP_ADMIN_POS_COUNTER === '1' && workspaceWritesEnabled();
+type CounterMode = 'fixture' | 'managed-dev';
+export type CounterAccess = { mode: CounterMode; hasOutlet: boolean };
+
+export function counterPosMode(): CounterMode | undefined {
+  if (process.env.GRIIP_ADMIN_TARGET === 'fixture' && process.env.GRIIP_ADMIN_POS_COUNTER === '1' && workspaceWritesEnabled()) return 'fixture';
+  if (managedCounterConfigured()) return 'managed-dev';
 }
 
-export function canOpenCounter(auth: Session, write = false) {
-  return counterPosEnabled() && has(auth.staff, 'pos.view') && (!write || has(auth.staff, 'pos.create'));
+export const counterAccess = cache(async (auth: Session): Promise<CounterAccess | undefined> => {
+  if (auth.staff.passwordRotationRequired || !has(auth.staff, 'pos.view')) return;
+  const mode = counterPosMode();
+  if (mode === 'fixture') return { mode, hasOutlet: true };
+  if (mode !== 'managed-dev') return;
+  try {
+    const data = obj(await forwardCounter(auth, '/context', undefined, undefined, 3000));
+    const hasOutlet = arr(data.contexts).some(value => {
+      const context = obj(value);
+      return context.operator === auth.staff.id && context.organization === 'platform' && mongoId(str(context.location)) &&
+        ((context.market === 'BD' && context.currency === 'BDT') ||
+         (context.market === 'US' && context.currency === 'USD' && has(auth.staff, 'international.access')));
+    });
+    return { mode, hasOutlet };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+  }
+});
+
+export function canOpenCounter(auth: Session, access: CounterAccess | undefined, write = false) {
+  return access?.hasOutlet === true && (!write || has(auth.staff, 'pos.create'));
 }
 
 function requireCounter(auth: Session) {
-  if (!counterPosEnabled()) throw new ApiError(404, 'Counter workspace is unavailable.');
-  if (!has(auth.staff, 'pos.view')) throw new ApiError(403, 'Point-of-sale access is required.');
+  const mode = counterPosMode();
+  if (!mode) throw new ApiError(404, 'Counter workspace is unavailable.');
+  if (auth.staff.passwordRotationRequired || !has(auth.staff, 'pos.view')) throw new ApiError(403, 'Point-of-sale access is required.');
+  return mode;
 }
 
 function scopeFrom(value: { location?: unknown; market?: unknown; currency?: unknown }, auth: Session): CounterScope {
@@ -34,14 +61,26 @@ function scopeFrom(value: { location?: unknown; market?: unknown; currency?: unk
   return { location, market, currency };
 }
 
-async function forward(auth: Session, path: string, method?: string, body?: RecordData) {
-  const response = await requestApi(apiRoot + path, auth.token, method ? { method, body: JSON.stringify(body) } : undefined);
+export async function forwardCounter(auth: Session, path: string, method?: 'POST' | 'PUT', body?: RecordData, timeout?: number) {
+  const init = method ? { method, body: JSON.stringify(body) } : undefined;
+  const managed = managedCounterRequested();
+  const response = managed
+    ? await requestManagedCounterApi(apiRoot + path, auth.token, init, timeout)
+    : await requestApi(apiRoot + path, auth.token, init);
   const envelope = obj(await response.json().catch(() => null));
   if (!response.ok) {
     throw new ApiError(response.status, response.status < 500 && typeof envelope.message === 'string'
       ? envelope.message.slice(0, 350) : 'The counter service could not confirm the request.');
   }
   if (envelope.success !== true || !Object.hasOwn(envelope, 'data')) throw new ApiError(502);
+  if (managed && path === '/context') {
+    const data = obj(envelope.data);
+    const profile = obj(data.profile);
+    if (profile.mode !== 'managed-dev' || profile.organization !== 'platform' || profile.customerMode !== 'walk-in' ||
+        typeof profile.coupons !== 'boolean' || !Array.isArray(data.contexts)) {
+      throw new ApiError(404, 'Counter workspace is unavailable.');
+    }
+  }
   return envelope.data;
 }
 
@@ -56,9 +95,9 @@ function operationId(value: string | null | undefined) {
 }
 
 export async function readCounterPos(auth: Session, action: string, input: URLSearchParams) {
-  requireCounter(auth);
+  const mode = requireCounter(auth);
   if (Array.from(new Set(input.keys())).some(key => input.getAll(key).length !== 1)) throw new ApiError(400, 'Invalid duplicate request field.');
-  if (action === 'counter-context') return forward(auth, '/context');
+  if (action === 'counter-context') return forwardCounter(auth, '/context');
   const scope = scopeFrom(Object.fromEntries(input), auth);
   const query = new URLSearchParams(scope);
   if (action === 'counter-catalog') {
@@ -67,51 +106,58 @@ export async function readCounterPos(auth: Session, action: string, input: URLSe
     if (term.length > 100 || (mode !== 'scan' && mode !== 'search')) throw new ApiError(400, 'Use a valid search value.');
     query.set('q', term);
     query.set('mode', mode);
-    return forward(auth, '/catalog?' + query);
+    return forwardCounter(auth, '/catalog?' + query);
   }
   if (action === 'counter-customers') {
-    if (!has(auth.staff, 'user.view')) throw new ApiError(403, 'Customer lookup permission is required.');
+    if (mode === 'managed-dev') throw new ApiError(403, 'This counter accepts walk-in sales.');
+    if (!has(auth.staff, 'pos.create') || !has(auth.staff, 'user.view')) throw new ApiError(403, 'Customer lookup permission is required.');
     const phone = input.get('phone')?.trim() ?? '';
     if (!/^[+\d ()-]{3,22}$/.test(phone)) throw new ApiError(400, 'Enter the customer’s complete phone number.');
     query.set('phone', phone);
-    return forward(auth, '/customers?' + query);
+    return forwardCounter(auth, '/customers?' + query);
   }
-  if (action === 'counter-recovery') return forward(auth, '/operations/' + operationId(input.get('operationId')) + '?' + query);
+  if (action === 'counter-recovery') return forwardCounter(auth, '/operations/' + operationId(input.get('operationId')) + '?' + query);
   if (action === 'counter-receipt' || action === 'counter-receipt-download') {
-    return forward(auth, '/sale/' + recordId(input.get('id')) + '/receipt?' + query);
+    return forwardCounter(auth, '/sale/' + recordId(input.get('id')) + '/receipt?' + query);
   }
   if (action === 'counter-history') {
     const cursor = input.get('cursor');
-    if (cursor) query.set('cursor', recordId(cursor));
-    return forward(auth, '/sales?' + query);
+    if (cursor) {
+      if (!/^\d{13}\.[a-f0-9]{24}$/.test(cursor)) throw new ApiError(400, 'Enter a valid sale history cursor.');
+      query.set('cursor', cursor);
+    }
+    return forwardCounter(auth, '/sales?' + query);
   }
-  if (action === 'counter-shifts') return forward(auth, '/shifts?' + query);
-  if (action === 'counter-returns') return forward(auth, '/sales/' + recordId(input.get('id')) + '/returns?' + query);
+  if (action === 'counter-shifts') return forwardCounter(auth, '/shifts?' + query);
+  if (action === 'counter-returns') return forwardCounter(auth, '/sales/' + recordId(input.get('id')) + '/returns?' + query);
   throw new ApiError(404, 'Unknown counter action.');
 }
 
 export async function writeCounterPos(auth: Session, action: string, values: RecordData) {
-  requireCounter(auth);
+  const mode = requireCounter(auth);
   scopeFrom(values, auth);
   if (action === 'counter-return') {
     if (!has(auth.staff, 'pos.update')) throw new ApiError(403, 'Point-of-sale return permission is required.');
     const { saleId, ...rest } = values;
-    return forward(auth, '/sales/' + recordId(str(saleId)) + '/returns', 'POST', rest);
+    return forwardCounter(auth, '/sales/' + recordId(str(saleId)) + '/returns', 'POST', rest);
   }
   if (action === 'counter-shift') {
     if (!has(auth.staff, 'pos.update')) throw new ApiError(403, 'Register update permission is required.');
-    return forward(auth, '/shifts', 'POST', values);
+    return forwardCounter(auth, '/shifts', 'POST', values);
   }
   if (!has(auth.staff, 'pos.create')) throw new ApiError(403, 'Point-of-sale creation permission is required.');
-  if (action === 'counter-quote') return forward(auth, '/quote', 'POST', values);
-  if (action === 'counter-sale') return forward(auth, '/sale', 'POST', values);
+  if (mode === 'managed-dev' && (action === 'counter-customer' || Object.hasOwn(values, 'customerId'))) {
+    throw new ApiError(403, 'This counter accepts walk-in sales.');
+  }
+  if (action === 'counter-quote') return forwardCounter(auth, '/quote', 'POST', values);
+  if (action === 'counter-sale') return forwardCounter(auth, '/sale', 'POST', values);
   if (action === 'counter-seal') {
     const { operationId: requestId, ...scope } = values;
-    return forward(auth, '/operations/' + operationId(str(requestId)) + '/seal', 'POST', scope);
+    return forwardCounter(auth, '/operations/' + operationId(str(requestId)) + '/seal', 'POST', scope);
   }
   if (action === 'counter-customer') {
     if (!has(auth.staff, 'user.view') || !has(auth.staff, 'user.create')) throw new ApiError(403, 'Customer creation permission is required.');
-    return forward(auth, '/customers', 'POST', values);
+    return forwardCounter(auth, '/customers', 'POST', values);
   }
   throw new ApiError(404, 'Unknown counter action.');
 }
@@ -134,7 +180,7 @@ export function downloadCounterReceipt(receipt: CounterReceipt) {
     ['Change', receipt.tender.changeMinor]] as const;
   const detail = [
     context.outletName, context.market + ' · ' + currency, 'Operator ' + context.operatorName, context.registerLabel,
-    counterDate(receipt.at, context.market), receipt.customer?.name,
+    counterDate(receipt.at, context.market), counterReceiptCustomer(receipt.customer),
   ].filter(Boolean).map(value => '<p>' + escape(value) + '</p>').join('');
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<title>' + escape(title) + '</title><style>body{font:14px system-ui,sans-serif;color:#171717;margin:24px auto;max-width:420px;padding:0 16px}' +

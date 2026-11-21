@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, operationsEnabled, operationsOnly, publicSandbox, session, staffProfileAvailable, url, workspaceWritesEnabled } from '@/lib/api';
+import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, managedCounterRequested, operationsEnabled, operationsOnly, publicSandbox, session, staffProfileAvailable, url, workspaceWritesEnabled } from '@/lib/api';
 import { adminPath } from '@/lib/paths';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
@@ -41,8 +41,9 @@ import { ProductionPosRegister } from '@/components/production-pos-register';
 import { CounterCashier, CounterHistory } from './counter-pos/cashier';
 import { CounterReceiptScreen } from './counter-pos/receipt';
 import { CounterConfiguration } from './counter-configuration';
-import { canOpenCounter, counterPosEnabled, readCounterPos } from '@/lib/counter-pos';
+import { canOpenCounter, counterAccess, counterPosMode, readCounterPos } from '@/lib/counter-pos';
 import { counterCreatePath, counterDeskReceipts, counterHistoryPath, counterReceiptPath, type CounterReceipt } from '@/lib/counter-pos-contract';
+import { mayConfigureCounter } from '@/lib/pos-counter-configuration';
 import { ProductionHeaderPage } from '@/components/production-header';
 import { StockChangesPage } from '@/components/stock-changes-page';
 import { ProductionStockHistory } from '@/components/production-stock-history';
@@ -114,6 +115,8 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const sectionResources = Object.entries(resources[sectionId] ?? {})
     .filter(([key,res]) => permitted(res,auth) && !(sectionId === 'catalog' && key === 'subcategories'));
   const integrated = integratedCheckoutEnabled();
+  const counter = production || sectionId === 'pos' ? await counterAccess(auth) : undefined;
+  const counterConfigurationAvailable = Boolean(counter) && mayConfigureCounter(auth, true);
   const connectedHomepage = connectedHomepageConfigured();
   const allowCheckout = (integrated || !managedProfile()) && process.env.GRIIP_ADMIN_TARGET !== 'preview' && ['payments','markets'].includes(sectionId) && superAdmin(auth.staff);
   const transactions = canReadTransactions(auth);
@@ -138,10 +141,10 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   }
   const fraud = region === 'BD' && has(auth.staff, 'order.view') && !publicSandbox() && !operationsOnly();
   if (sectionId === 'orders' && fraud) tabs.push(['fraud-check', 'Fraud checker']);
-  if (sectionId === 'pos' && canOpenCounter(auth)) {
-    if (canOpenCounter(auth, true)) tabs.push(['editor', 'New counter sale']);
-    tabs.push(['counter-sales', 'Counter sale history']);
-    if (superAdmin(auth.staff) && has(auth.staff, 'pos.update')) tabs.push(['counter-configuration', 'Counter configuration']);
+  if (sectionId === 'pos') {
+    if (canOpenCounter(auth, counter, true)) tabs.push(['editor', 'New counter sale']);
+    if (canOpenCounter(auth, counter)) tabs.push(['counter-sales', 'Counter sale history']);
+    if (counterConfigurationAvailable) tabs.push(['counter-configuration', 'Counter configuration']);
   }
   if (sectionId === 'orders' && canCreateWebsiteOrder(auth, region)) tabs.splice(1, 0, ['create', 'Create Order']);
   if (sectionId === 'orders' && connectedCatalogConfigured() && mayReadConnectedOrders(auth)) tabs.push(['marketplace', 'Marketplace orders']);
@@ -273,30 +276,32 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
     else if (production && sectionId === 'pos' && active === 'sales' && view.length === 1) content = await ProductionPosRegister({ auth, q, region });
     else if (sectionId === 'pos' && active === 'counter-configuration' && view.length === 1) {
+      if (managedCounterRequested() && !counter) throw new ApiError(403);
       content = await CounterConfiguration({ auth, region, query: q, production: Boolean(production) });
     }
     else if (sectionId === 'pos' && active === 'counter-sales' && view.length === 1) {
-      if (!canOpenCounter(auth)) throw new ApiError(403);
+      if (!canOpenCounter(auth, counter)) throw new ApiError(403);
       const initialScope = ['location', 'market', 'currency'].map(key => param(q, key) ?? '').join(':');
       content = <CounterHistory initialScope={initialScope} newSalePath={production ? counterCreatePath : '/desk/pos/editor'}
         receiptPath={production ? counterReceiptPath : counterDeskReceipts} market={region === 'BD' ? 'BD' : 'US'}/>;
     }
     else if (sectionId === 'pos' && active === 'counter-receipt' && view.length === 2) {
-      if (!canOpenCounter(auth)) throw new ApiError(403);
+      if (!counter) throw new ApiError(403);
       const values = new URLSearchParams({ id: view[1], location: param(q, 'location') ?? '', market: param(q, 'market') ?? '',
         currency: param(q, 'currency') ?? '' });
       const receipt = await readCounterPos(auth, 'counter-receipt', values) as CounterReceipt;
-      content = <CounterReceiptScreen receipt={receipt} historyPath={production ? counterHistoryPath : '/desk/pos/counter-sales'}
+      content = <CounterReceiptScreen receipt={receipt} operator={auth.staff.id} historyPath={production ? counterHistoryPath : '/desk/pos/counter-sales'}
         canReturn={has(auth.staff, 'pos.update')}/>;
     }
-    else if (sectionId === 'pos' && active === 'editor' && view.length === 1 && counterPosEnabled()) {
-      if (!canOpenCounter(auth, true)) throw new ApiError(403);
-      const configPath = superAdmin(auth.staff) && has(auth.staff, 'pos.update')
+    else if (sectionId === 'pos' && active === 'editor' && view.length === 1 && (counterPosMode() || managedCounterRequested())) {
+      if (!canOpenCounter(auth, counter, true)) throw new ApiError(403);
+      const configPath = counterConfigurationAvailable
         ? (production ? '/dashboard/pos/counter-configuration' : '/desk/pos/counter-configuration') : undefined;
       content = <CounterCashier operator={auth.staff.id} market={region === 'BD' ? 'BD' : 'US'}
         historyPath={production ? counterHistoryPath : '/desk/pos/counter-sales'}
         receiptPath={production ? counterReceiptPath : counterDeskReceipts} configPath={configPath}
-        canSearch={has(auth.staff, 'user.view')} canCreateCustomer={has(auth.staff, 'user.create')}
+        canSearch={counter?.mode === 'fixture' && has(auth.staff, 'user.view')}
+        canCreateCustomer={counter?.mode === 'fixture' && has(auth.staff, 'user.create')}
         canUpdateShift={has(auth.staff, 'pos.update')}/>;
     }
     else if (sectionId === 'pos' && active === 'editor') content = await SaleWorkspace({ auth, id: view[1], region, production: Boolean(production) });
@@ -372,12 +377,12 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const recoveredCatalog = sectionId === 'catalog' && !connectedCatalogConfigured() &&
     (active === 'products' || active === 'categories' || active === 'brands') && has(auth.staff, 'product.view') && !publicSandbox();
   const catalogNotice = recoveredCatalog && <RecoveredCatalogNotice owner={superAdmin(auth.staff)}/>;
-  const showMarket = !(sectionId === 'pos' && counterPosEnabled() &&
+  const showMarket = !(sectionId === 'pos' && counter &&
     (active === 'counter-sales' || active === 'counter-receipt' || (active === 'editor' && view.length === 1)));
   if (production) {
     const catalogPilot = scopedCatalogPilotRequested();
     const navigation = productionNavigation({
-      auth, visible: nav.map(item => item.id), region, fraud, connectedHomepage, catalogPilot,
+      auth, visible: nav.map(item => item.id), region, fraud, connectedHomepage, catalogPilot, counter,
       connectedCatalog: connectedCatalogConfigured(),
       createOrder: canCreateWebsiteOrder(auth, region),
       createCustomer: canCreateCustomer(auth),

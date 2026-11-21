@@ -40,6 +40,13 @@ const config = {
     }, {
       source: '/dashboard/update-product/:path*',
       headers: [{ key: 'Content-Security-Policy', value: csp.replace(/img-src[^;]+;/, "img-src 'self' data: https:; media-src 'self' https: blob:;") }],
+    }, {
+      source: '/api/pos',
+      has: [{ type: 'query', key: 'action', value: 'counter-receipt-download' }],
+      headers: [
+        { key: 'Referrer-Policy', value: 'no-referrer' },
+        { key: 'Content-Security-Policy', value: "default-src 'none'; style-src 'unsafe-inline'; sandbox" },
+      ],
     }];
   },
 };

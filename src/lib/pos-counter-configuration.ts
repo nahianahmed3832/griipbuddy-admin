@@ -1,6 +1,7 @@
 import 'server-only';
 
-import { ApiError, api, workspaceWritesEnabled, type Session } from './api';
+import { ApiError, managedCounterConfigured, workspaceWritesEnabled, type Session } from './api';
+import { forwardCounter } from './counter-pos';
 import { has, superAdmin } from './sections';
 
 export type CounterOutlet = {
@@ -16,12 +17,13 @@ export type CounterOutlet = {
 };
 
 export function mayConfigureCounter(auth: Session, write = false) {
-  return process.env.GRIIP_ADMIN_POS_COUNTER === '1' && process.env.GRIIP_ADMIN_TARGET === 'fixture' &&
-    superAdmin(auth.staff) && has(auth.staff, 'pos.view') &&
-    (!write || workspaceWritesEnabled() && has(auth.staff, 'pos.update'));
+  const fixture = process.env.GRIIP_ADMIN_POS_COUNTER === '1' && process.env.GRIIP_ADMIN_TARGET === 'fixture' &&
+    (!write || workspaceWritesEnabled());
+  return (fixture || managedCounterConfigured()) && !auth.staff.passwordRotationRequired &&
+    superAdmin(auth.staff) && has(auth.staff, 'pos.view') && (!write || has(auth.staff, 'pos.update'));
 }
 
 export async function counterConfiguration(auth: Session) {
   if (!mayConfigureCounter(auth)) throw new ApiError(403, 'Counter configuration is unavailable.');
-  return await api('/pos/counter/configuration', auth.token) as { outlets: CounterOutlet[] };
+  return await forwardCounter(auth, '/configuration') as { outlets: CounterOutlet[] };
 }

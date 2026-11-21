@@ -1,7 +1,8 @@
-import { sameOrigin, session, requestApi, obj, str } from '@/lib/api';
+import { ApiError, sameOrigin, session, type RecordData } from '@/lib/api';
+import { counterPrivate, forwardCounter } from '@/lib/counter-pos';
 import { mayConfigureCounter } from '@/lib/pos-counter-configuration';
 
-const headers = { 'Cache-Control': 'private, no-store' };
+const headers = counterPrivate;
 const reject = (message: string, status: number) => Response.json({ error: message }, { headers, status });
 
 export async function PUT(request: Request) {
@@ -30,13 +31,10 @@ export async function PUT(request: Request) {
     const body = Buffer.concat(chunks).toString('utf8');
     const input = JSON.parse(body) as unknown;
     if (input === null || typeof input !== 'object' || Array.isArray(input)) return reject('Choose a valid counter configuration.', 400);
-    const response = await requestApi('/pos/counter/configuration', auth.token, {
-      method: 'PUT', body,
-    });
-    const payload = obj(await response.json().catch(() => null));
-    if (!response.ok) return reject(response.status < 500 && str(payload.message) || 'The counter service did not confirm the change.', response.status);
-    return Response.json({ data: payload.data }, { headers });
-  } catch {
+    const data = await forwardCounter(auth, '/configuration', 'PUT', input as RecordData);
+    return Response.json({ data }, { headers });
+  } catch (error) {
+    if (error instanceof ApiError) return reject(error.message, error.status);
     return reject('The configuration could not be confirmed. Reload and check the saved version.', 503);
   } finally {
     reader.releaseLock();

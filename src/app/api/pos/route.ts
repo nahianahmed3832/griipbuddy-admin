@@ -6,18 +6,19 @@ import { counterPrivate, downloadCounterReceipt, readCounterPos, writeCounterPos
 import type { CounterReceipt } from '@/lib/counter-pos-contract';
 
 const noStore = { 'Cache-Control': 'private, no-store' };
-const failure = (error: unknown) => error instanceof ApiError
-  ? new Response(error.status >= 500 ? 'The sales service did not confirm the request.' : error.message, { status: error.status, headers: noStore })
-  : new Response('Invalid sale request.', { status: 400, headers: noStore });
+const failure = (error: unknown, headers = noStore) => error instanceof ApiError
+  ? new Response(error.status >= 500 ? 'The sales service did not confirm the request.' : error.message, { status: error.status, headers })
+  : new Response('Invalid sale request.', { status: 400, headers });
 
 export async function GET(request: Request) {
-  const auth = await session();
-  if (!auth) return new Response('Sign in required', { status: 401 });
   const q = new URL(request.url).searchParams;
   const action = q.get('action');
+  const counter = action?.startsWith('counter-');
+  const auth = await session();
+  if (!auth) return new Response('Sign in required', { status: 401, headers: counter ? counterPrivate : noStore });
   const search = q.get('q')?.trim() ?? '';
   try {
-    if (action?.startsWith('counter-')) {
+    if (action && counter) {
       const result = await readCounterPos(auth, action, q);
       return action === 'counter-receipt-download'
         ? downloadCounterReceipt(result as CounterReceipt) : Response.json(result, { headers: counterPrivate });
@@ -31,11 +32,11 @@ export async function GET(request: Request) {
     }
     if (action !== 'xlsx' && action !== 'pdf') return new Response('Unknown sale action.', { status: 404 });
     return await posRegisterExport(action, await posRegisterFilters(Object.fromEntries(q), auth), auth);
-  } catch (error) { return failure(error); }
+  } catch (error) { return failure(error, counter ? counterPrivate : noStore); }
 }
 
 export async function POST(request: Request) {
-  if (!sameOrigin(request)) return new Response('Origin denied', { status: 403 });
+  if (!sameOrigin(request)) return new Response('Origin denied', { status: 403, headers: noStore });
   const auth = await session();
   if (!auth) return new Response('Sign in required', { status: 401 });
   if (!request.headers.get('content-type')?.startsWith('application/json') || Number(request.headers.get('content-length')) > 16384) {
@@ -47,7 +48,9 @@ export async function POST(request: Request) {
     const input = obj(JSON.parse(body));
     const action = str(input.action);
     if (action.startsWith('counter-')) {
-      return Response.json(await writeCounterPos(auth, action, obj(input.values)), { headers: counterPrivate });
+      try {
+        return Response.json(await writeCounterPos(auth, action, obj(input.values)), { headers: counterPrivate });
+      } catch (error) { return failure(error, counterPrivate); }
     }
     await changePosSale(str(input.id), input.action, obj(input.values), auth);
     return Response.json({ saved: true });

@@ -1,9 +1,9 @@
 import 'server-only';
 import { readFile } from 'node:fs/promises';
 import { cache } from 'react';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { has, superAdmin, type Region, type Staff } from './sections';
-import { isEditableAdminOrigin } from './admin-origins';
+import { editableAdminOrigin, isEditableAdminOrigin } from './admin-origins';
 
 export type RecordData = Record<string, unknown>;
 export const obj = (value: unknown): RecordData => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : {};
@@ -104,7 +104,8 @@ export function legacyUrl(path?: string) {
 
 export type VerifiedMarketScope = { marketId: string; currency: string };
 
-export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string, scope?: VerifiedMarketScope) {
+async function sendApiRequest(path: string, token?: string, init?: RequestInit, idempotencyKey?: string, scope?: VerifiedMarketScope,
+  counterBridgeKey?: string, timeout = 20000) {
   if (publicSandbox() && (init?.method ?? 'GET') !== 'GET') throw new ApiError(403);
   if (!/^\/[a-z0-9/-]+(?:\?[^#]*)?$/i.test(path) || path.includes('//')) throw new Error('Invalid recovery API path');
   try {
@@ -115,12 +116,47 @@ export async function requestApi(path: string, token?: string, init?: RequestIni
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
         ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         ...(scope && { 'X-Griip-Market': scope.marketId, 'X-Griip-Currency': scope.currency }),
+        ...(counterBridgeKey && { 'X-Griip-Counter-Managed-Dev-Key': counterBridgeKey }),
       },
-      redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000),
+      redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(timeout),
     });
   } catch {
     throw new ApiError(503, 'The isolated recovery API is unavailable.');
   }
+}
+
+export async function requestApi(path: string, token?: string, init?: RequestInit, idempotencyKey?: string, scope?: VerifiedMarketScope) {
+  return sendApiRequest(path, token, init, idempotencyKey, scope);
+}
+
+export function managedCounterRequested() {
+  return process.env.GRIIP_ADMIN_POS_COUNTER === 'managed-dev';
+}
+
+function managedCounterBridgeKey() {
+  const key = process.env.GRIIP_COUNTER_MANAGED_DEV_BRIDGE_KEY;
+  if (managedCounterRequested() && process.env.GRIIP_ADMIN_TARGET === 'integration' &&
+      process.env.GRIIP_ADMIN_INTEGRATED === '1' && process.env.GRIIP_ADMIN_PUBLIC_ORIGIN === editableAdminOrigin &&
+      integrationStaffEnrollment() && key && /^[a-f0-9]{64}$/.test(key)) return key;
+}
+
+export function managedCounterConfigured() {
+  return Boolean(managedCounterBridgeKey());
+}
+
+export async function requestManagedCounterApi(path: string, token: string, init?: RequestInit, timeout?: number) {
+  const key = managedCounterBridgeKey();
+  if (!key || !path.startsWith('/pos/counter/')) throw new ApiError(404, 'Counter workspace is unavailable.');
+  const request = await headers();
+  const origin = request.get('origin');
+  const fetchSite = request.get('sec-fetch-site');
+  const originRequired = (init?.method ?? 'GET') !== 'GET' || origin !== null;
+  if ('https://' + request.get('host') !== editableAdminOrigin ||
+      (fetchSite !== null && fetchSite !== 'none' && fetchSite !== 'same-origin') ||
+      (originRequired && origin !== editableAdminOrigin)) {
+    throw new ApiError(403, 'Origin denied');
+  }
+  return sendApiRequest(path, token, init, undefined, undefined, key, timeout);
 }
 
 export async function api(path: string, token?: string, init?: RequestInit, scope?: VerifiedMarketScope): Promise<unknown> {

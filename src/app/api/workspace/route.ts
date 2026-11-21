@@ -1,4 +1,4 @@
-import { ApiError, arr, getRegion, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
+import { ApiError, arr, getRegion, managedCounterRequested, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { bulkHandover, requireWrite, saveSale } from '@/lib/advanced';
 import { connectedHomepageConfigured } from '@/lib/connected-catalog';
 import { legacyHomepageSections } from '@/lib/homepage-merchandising';
@@ -14,7 +14,11 @@ export async function POST(request: Request) {
   if (raw.length > 65_536) return new Response('Invalid payload', { status: 400 });
   try {
     const body = obj(JSON.parse(raw));
-    if (body.action === 'pos' || body.action === 'pos-quote') return Response.json(await saveSale(obj(body.values), auth, body.action === 'pos-quote'));
+    if (body.action === 'pos' || body.action === 'pos-quote') {
+      const values = obj(body.values);
+      if (managedCounterRequested() && !str(values.id)) throw new ApiError(404, 'Open the counter workspace to start a new sale.');
+      return Response.json(await saveSale(values, auth, body.action === 'pos-quote'));
+    }
     if (body.action === 'handover') {
       const region = str(body.region);
       if (!['BD','INTERNATIONAL'].includes(region)) return new Response('Invalid region', { status: 400 });

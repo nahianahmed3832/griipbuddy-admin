@@ -58,7 +58,8 @@ export type CounterReceipt = {
   lines: CounterPricedLine[];
   totals: CounterTotals;
   tender: CounterTender;
-  customer?: { name: string } | null;
+  customer?: { name: string } | 'walk-in' | 'registered' | null;
+  shift?: string;
 };
 export type CounterHistoryRow = Omit<CounterReceipt, 'lines' | 'customer'> & { lineCount: number };
 export type CounterSaleInput = CounterSelection & {
@@ -86,7 +87,7 @@ export type CounterShift = {
   differenceMinor?: number;
   reviewedAt?: string;
 };
-export type CounterShifts = { active: CounterShift | null; shifts: CounterShift[]; canManageCash: boolean };
+export type CounterShifts = { active: CounterShift | null; shifts: CounterShift[]; canManageCash: boolean; canOperate?: boolean };
 
 export type CounterReturned = {
   id: string;
@@ -121,6 +122,12 @@ export function counterReceiptUrl(path: string, receipt: Pick<CounterReceipt, 'i
   const query = new URLSearchParams(counterScopeFields(receipt.context));
   if (receipt.context.market === 'US') query.set('region', 'INTERNATIONAL');
   return path + '/' + encodeURIComponent(receipt.id) + '?' + query.toString();
+}
+
+export function counterReceiptCustomer(customer: CounterReceipt['customer']) {
+  if (customer === 'walk-in') return 'Walk-in customer';
+  if (customer === 'registered') return 'Registered customer';
+  return customer?.name ? 'Customer ' + customer.name : undefined;
 }
 
 export function counterMoney(minor: number, currency: CounterScope['currency']) {

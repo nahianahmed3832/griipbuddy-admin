@@ -6,7 +6,8 @@ import { resolveLegacy } from './legacy-destinations';
 import { canOperate } from './operations';
 import { has, resources, superAdmin, type Region, type Section } from './sections';
 import { smartInventoryTabs } from './smart-inventory';
-import { canOpenCounter } from './counter-pos';
+import { canOpenCounter, type CounterAccess } from './counter-pos';
+import { mayConfigureCounter } from './pos-counter-configuration';
 
 type Entry = { label: string; path: string; permission?: string; connected?: boolean; central?: boolean; pilot?: boolean; homepage?: 'connected' | 'legacy' };
 const item = (label: string, path: string, permission?: string, connected?: boolean, central?: boolean): Entry =>
@@ -95,9 +96,9 @@ const navigation = [
 export type ProductionNavigation = typeof navigation;
 
 export function productionNavigation({ auth, visible, region, fraud, connectedCatalog, connectedHomepage, catalogPilot,
-  createOrder, createCustomer, canUseConnectedMarket }: {
+  createOrder, createCustomer, counter, canUseConnectedMarket }: {
   auth: Session; visible: readonly Section['id'][]; region: Region; fraud: boolean; connectedCatalog: boolean;
-  connectedHomepage: boolean; catalogPilot: boolean; createOrder: boolean; createCustomer: boolean;
+  connectedHomepage: boolean; catalogPilot: boolean; createOrder: boolean; createCustomer: boolean; counter?: CounterAccess;
   canUseConnectedMarket: (homepage: boolean) => boolean;
 }): ProductionNavigation {
   const { staff } = auth;
@@ -111,9 +112,9 @@ export function productionNavigation({ auth, visible, region, fraud, connectedCa
     'fraud-checker': fraud,
     'create-order': createOrder,
     'create-customer': createCustomer,
-    'pos/create': canOpenCounter(auth, true),
-    'pos/counter-sales': canOpenCounter(auth),
-    'pos/counter-configuration': canOpenCounter(auth),
+    'pos/create': canOpenCounter(auth, counter, true),
+    'pos/counter-sales': canOpenCounter(auth, counter),
+    'pos/counter-configuration': Boolean(counter) && mayConfigureCounter(auth, true),
     'pre-orders/create': region === 'BD' && canCreate('pre_order.create'),
     'create-product': canCreate('product.create') && (!catalogPilot || region === 'BD') &&
       (!connectedCatalog || catalogPilot || canUseConnectedMarket(false)),

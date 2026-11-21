@@ -10,6 +10,7 @@ export type BasketControls = {
   lines: BasketLine[];
   customer?: CounterCustomer;
   coupon: string;
+  allowCoupon: boolean;
   onCoupon: (value: string) => void;
   onQuantity: (id: string, change: number) => void;
   onRemove: (id: string) => void;
@@ -21,10 +22,11 @@ export type BasketControls = {
   busy: boolean;
   locked: boolean;
   shiftMissing: boolean;
+  registerChecking: boolean;
 };
 
-export function Basket({ scope, lines, customer, coupon, onCoupon, onQuantity, onRemove, quote, cash, onCash,
-  onQuote, onComplete, busy, locked, shiftMissing }: BasketControls) {
+export function Basket({ scope, lines, customer, coupon, allowCoupon, onCoupon, onQuantity, onRemove, quote, cash, onCash,
+  onQuote, onComplete, busy, locked, shiftMissing, registerChecking }: BasketControls) {
   const money = (minor: number) => counterMoney(minor, scope.currency);
   const received = counterMinor(cash);
   const change = quote && received !== null && received >= quote.totalMinor ? received - quote.totalMinor : null;
@@ -53,8 +55,8 @@ export function Basket({ scope, lines, customer, coupon, onCoupon, onQuantity, o
       )}
     </div>
     <div className={styles.basketPay}>
-      <label>Coupon code<input value={coupon} disabled={controlsDisabled} maxLength={60}
-        onChange={event => onCoupon(event.currentTarget.value)} autoComplete="off" placeholder="Optional"/></label>
+      {allowCoupon && <label>Coupon code<input value={coupon} disabled={controlsDisabled} maxLength={60}
+        onChange={event => onCoupon(event.currentTarget.value)} autoComplete="off" placeholder="Optional"/></label>}
       {!quote ? <button type="button" className="button primary" onClick={onQuote} disabled={!lines.length || controlsDisabled}>
         {busy ? 'Checking…' : 'Review server total'}
       </button> : <>
@@ -65,14 +67,15 @@ export function Basket({ scope, lines, customer, coupon, onCoupon, onQuantity, o
           <div className={styles.grandTotal}><dt>Amount due</dt><dd>{money(quote.totalMinor)}</dd></div>
         </dl>
         <label>Payment method<select aria-label="Payment method" disabled={controlsDisabled}><option value="cash">Cash</option></select></label>
-        {shiftMissing && <p className={styles.validation}>Open the register shift before accepting cash.</p>}
+        {registerChecking ? <p className={styles.validation}>Confirm the register status before accepting cash.</p>
+          : shiftMissing && <p className={styles.validation}>Open the register shift before accepting cash.</p>}
         <label>Cash received in {scope.currency}<input inputMode="decimal" autoComplete="off" maxLength={10} value={cash}
           disabled={controlsDisabled} onChange={event => onCash(event.currentTarget.value)} /></label>
         {cash && received === null && <p className={styles.validation}>Enter a cash amount with up to two decimal places.</p>}
         {received !== null && received < quote.totalMinor && <p className={styles.validation}>Cash received is below the amount due.</p>}
         {change !== null && <dl className={styles.change} aria-live="polite"><div><dt>Change</dt><dd>{money(change)}</dd></div></dl>}
         <button type="button" className="button primary"
-          disabled={controlsDisabled || change === null || shiftMissing} onClick={onComplete}>{busy ? 'Working…' : 'Complete cash sale'}</button>
+          disabled={controlsDisabled || change === null || shiftMissing || registerChecking} onClick={onComplete}>{busy ? 'Working…' : 'Complete cash sale'}</button>
       </>}
     </div>
   </>;

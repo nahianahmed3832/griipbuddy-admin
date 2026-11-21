@@ -13,6 +13,7 @@ import styles from './cashier.module.css';
 
 type Draft = { version: 1; key: string; lines: BasketLine[]; coupon: string; pending?: CounterSaleInput };
 type Catalog = { items: CounterItem[]; lookup: 'sku' | 'variant-barcode' | 'search'; ambiguity?: boolean };
+type Contexts = { contexts: CounterContext[]; profile?: { mode: 'managed-dev'; customerMode: 'walk-in'; coupons: boolean } };
 const sameScope = (a: CounterScope, b: CounterScope) => counterContextKey(a) === counterContextKey(b);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -29,7 +30,10 @@ function readDraft(key: string): Draft | undefined {
 }
 
 function writeDraft(key: string, draft: Draft) {
-  try { localStorage.setItem(key, JSON.stringify(draft)); } catch { /* The current tab can still expose the operation reference. */ }
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+    return true;
+  } catch { return false; }
 }
 
 function ScopeName({ context }: { context: CounterContext }) {
@@ -127,6 +131,8 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
   const [scanBusy, setScanBusy] = useState(false);
   const [receipt, setReceipt] = useState<CounterReceipt>();
   const [shift, setShift] = useState('');
+  const [registerReady, setRegisterReady] = useState(false);
+  const [profile, setProfile] = useState<Contexts['profile']>();
   const [nextScope, setNextScope] = useState<CounterContext>();
   const [contextReload, setContextReload] = useState(0);
   const command = useRef(false);
@@ -134,25 +140,30 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
   const barcodeInput = useRef<HTMLInputElement>(null);
   const drawer = useRef<HTMLDialogElement>(null);
   const drawerOpen = useRef<HTMLButtonElement>(null);
+  const drawerClose = useRef<HTMLButtonElement>(null);
+  const recoveryCheck = useRef<HTMLButtonElement>(null);
+  const focusRecoveryOnClose = useRef(false);
   const resetConfirm = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    void counterRead<{ contexts: CounterContext[] }>('counter-context', undefined, undefined, controller.signal)
+    void counterRead<Contexts>('counter-context', undefined, undefined, controller.signal)
       .then(data => {
+        if (controller.signal.aborted) return;
         const records = data.contexts;
         const draft = readDraft(storageKey);
         const matching = draft && records.find(row => counterContextKey(row) === draft.key);
         setContexts(records);
+        setProfile(data.profile);
         if (draft?.pending && !matching) {
-          setMessage('A saved sale attempt belongs to an outlet you cannot access. Ask an authorized operator to reconcile the operation before recording another sale.');
+          setMessage('Sale operation ' + draft.pending.operationId + ' belongs to an outlet you cannot access. Ask an authorized operator to reconcile it before recording another sale.');
           return;
         }
         const selected = matching ?? records.find(row => row.market === market) ?? records[0];
         setScope(selected);
         if (matching && draft) {
           setLines(draft.lines);
-          setCoupon(draft.coupon);
+          setCoupon(!data.profile || data.profile.coupons ? draft.coupon : '');
           setPending(draft.pending && sameScope(draft.pending, matching) ? draft.pending : undefined);
         }
       })
@@ -171,7 +182,7 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void counterRead<Catalog>('counter-catalog', scope, { mode: 'search', q: term }, controller.signal)
-        .then(setFound)
+        .then(result => { if (!controller.signal.aborted) setFound(result); })
         .catch(error => { if (!controller.signal.aborted) setSearchError(counterError(error)); });
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
@@ -195,6 +206,7 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
     setScanStatus('');
     setMessage('');
     setShift('');
+    setRegisterReady(false);
     setNextScope(undefined);
     invalidate();
     resetConfirm.current?.close();
@@ -253,7 +265,8 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
   function selection(context: CounterContext): CounterSelection {
     return {
       ...counterScopeFields(context), lines: lines.map(({ productId, variantId, quantity }) => ({ productId, variantId, quantity })),
-      ...(customer && { customerId: customer.id }), ...(coupon.trim() && { coupon: coupon.trim() }),
+      ...(!profile && customer && { customerId: customer.id }),
+      ...((!profile || profile.coupons) && coupon.trim() && { coupon: coupon.trim() }),
     };
   }
 
@@ -304,15 +317,19 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
   async function complete(retry = false) {
     if (!scope || (!retry && (pending || !quote)) || (retry && (!pending || !checked))) return;
     const receivedMinor = counterMinor(cash);
-    if (!retry && (receivedMinor === null || !quote || receivedMinor < quote.totalMinor || (scope.shiftRequired && !shift))) return;
+    if (!retry && (receivedMinor === null || !quote || receivedMinor < quote.totalMinor || shiftMissing || registerChecking)) return;
     if (!begin()) return;
     const input: CounterSaleInput = retry && pending ? pending : {
       ...selection(scope), operationId: crypto.randomUUID(), quoteToken: quote!.token,
       tender: { kind: 'cash', receivedMinor: receivedMinor! }, ...(shift && { shift }),
     };
+    if (!writeDraft(storageKey, { version: 1, key: counterContextKey(scope), lines, coupon, pending: input })) {
+      setMessage('This browser could not save the sale reference. Enable storage before submitting cash sales.');
+      done();
+      return;
+    }
     setPending(input);
     setChecked(false);
-    writeDraft(storageKey, { version: 1, key: counterContextKey(scope), lines, coupon, pending: input });
     try { observe(await counterWrite<CounterOperation>('counter-sale', input)); }
     catch (error) { setMessage(counterError(error) + ' Check this operation before accepting another sale.'); }
     finally { done(); }
@@ -349,14 +366,17 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
   const units = lines.reduce((total, line) => total + line.quantity, 0);
   const locked = !!pending;
   const canEdit = !locked && !busy;
+  const shiftMissing = scope.shiftRequired && !shift;
+  const registerChecking = !!scope.registerLabel && !registerReady;
   const basket = <Basket scope={scope} lines={lines} customer={customer} coupon={coupon}
+    allowCoupon={!profile || profile.coupons}
     onCoupon={value => { setCoupon(value); invalidate(); }} onQuantity={(id, change) => {
       setLines(current => current.map(line => id === line.variantId
         ? { ...line, quantity: Math.min(Math.max(line.quantity + change, 1), line.available, 1000) } : line));
       invalidate();
     }} onRemove={id => { setLines(current => current.filter(line => line.variantId !== id)); invalidate(); }}
     quote={quote} cash={cash} onCash={setCash} onQuote={() => void review()} onComplete={() => void complete()}
-    busy={busy} locked={locked} shiftMissing={scope.shiftRequired && !shift}/>;
+    busy={busy} locked={locked} shiftMissing={shiftMissing} registerChecking={registerChecking}/>;
   const historyQuery = new URLSearchParams(counterScopeFields(scope));
   if (scope.market === 'US') historyQuery.set('region', 'INTERNATIONAL');
 
@@ -371,7 +391,7 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
       <Link className="button primary" href={counterReceiptUrl(receiptPath, receipt)}>View receipt</Link></section>}
     {pending && <section className={styles.recovery}><h2>Recover sale</h2>
       <p>Use the operation reference to check whether the cash sale was accepted.</p><code>{pending.operationId}</code>
-      <div className={styles.actions}><button className="button primary" disabled={busy} onClick={() => void recover()}>Check sale</button>
+      <div className={styles.actions}><button ref={recoveryCheck} className="button primary" disabled={busy} onClick={() => void recover()}>Check sale</button>
         {checked && <><button className="button secondary" disabled={busy} onClick={() => void complete(true)}>Retry same sale</button>
           <button className="button secondary" disabled={busy} onClick={() => void recover(true)}>Close unused attempt</button></>}</div>
     </section>}
@@ -383,10 +403,11 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
               <option key={counterContextKey(row)} value={counterContextKey(row)}>{row.outletName} · {row.market} {row.currency}</option>)}</select></label>
           {!locked && <CustomerPicker key={counterContextKey(scope)} scope={scope} customer={customer} onChange={value => {
             setCustomer(value); invalidate();
-          }} onError={setMessage} canSearch={canSearch} canCreate={canCreateCustomer}/>}
+          }} onError={setMessage} canSearch={!profile && canSearch} canCreate={!profile && canCreateCustomer}/>}
         </section>
         {scope.registerLabel && <ShiftWorkspace key={counterContextKey(scope)} scope={scope} disabled={locked || busy}
-          onShift={setShift} required={scope.shiftRequired} canUpdate={canUpdateShift} lastReceipt={receipt?.id}/>}
+          onShift={setShift} onReady={setRegisterReady} required={scope.shiftRequired} managed={!!profile}
+          canUpdate={canUpdateShift} lastReceipt={receipt?.id}/>}
         <section className={styles.catalogPanel} aria-labelledby="counter-items">
           <h2 id="counter-items">Find items</h2>
           <form method="post" onSubmit={scan} className={styles.inline}>
@@ -417,12 +438,19 @@ export function CounterCashier({ operator, market, historyPath, receiptPath, con
         <h2>Basket</h2><span>{units} {units === 1 ? 'item' : 'items'}</span></div>{basket}</aside>
     </div>
     <button ref={drawerOpen} type="button" className={'button primary ' + styles.openBasket}
-      onClick={() => drawer.current?.showModal()}><ShoppingBag size={18} aria-hidden="true"/> Open basket ({units})</button>
-    <dialog className={styles.drawer} ref={drawer} aria-labelledby="counter-mobile-basket" onClose={() => drawerOpen.current?.focus()}>
+      onClick={() => { drawer.current?.showModal(); drawerClose.current?.focus(); }}><ShoppingBag size={18} aria-hidden="true"/> Open basket ({units})</button>
+    <dialog className={styles.drawer} ref={drawer} aria-labelledby="counter-mobile-basket" onClose={() => {
+      if (focusRecoveryOnClose.current) recoveryCheck.current?.focus();
+      else drawerOpen.current?.focus();
+      focusRecoveryOnClose.current = false;
+    }}>
       <div className={styles.basketHeader}><h2 id="counter-mobile-basket">Basket</h2>
-        <button type="button" className="button subtle" onClick={() => drawer.current?.close()} aria-label="Close basket"><X size={20} aria-hidden="true"/></button></div>
+        <button ref={drawerClose} type="button" className="button subtle" onClick={() => drawer.current?.close()} aria-label="Close basket"><X size={20} aria-hidden="true"/></button></div>
       {message && <p className="notice warn" role="alert">{message}</p>}{basket}
-      {locked && <button type="button" className="button secondary" onClick={() => drawer.current?.close()}>Back to sale recovery</button>}
+      {locked && <button type="button" className="button secondary" onClick={() => {
+        focusRecoveryOnClose.current = true;
+        drawer.current?.close();
+      }}>Back to sale recovery</button>}
     </dialog>
     <dialog className={styles.confirmDialog} ref={resetConfirm} aria-labelledby="counter-reset-title">
       <h2 id="counter-reset-title">Switch outlet and clear basket?</h2>

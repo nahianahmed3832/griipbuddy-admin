@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { Download, Printer } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { counterDate, counterMoney, counterScopeFields, type CounterReceipt, type CounterReturns, type CounterShift, type CounterShifts } from '@/lib/counter-pos-contract';
-import { counterApiUrl, counterError, counterRead, CounterRequestError, counterWrite } from './client';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { counterContextKey, counterDate, counterMoney, counterReceiptCustomer, counterScopeFields,
+  type CounterReceipt, type CounterReturns, type CounterShift, type CounterShifts } from '@/lib/counter-pos-contract';
+import { counterApiUrl, counterError, counterRead } from './client';
+import { CounterActionRecovery, useCounterCommand } from './recovery';
 import styles from './cashier.module.css';
 
 const labels = { AUTHORIZED: 'Authorized', INSPECTED: 'Inspected', REFUNDED: 'Refunded', CANCELLED: 'Cancelled',
@@ -28,14 +30,13 @@ function amounts(data: FormData, name: string, id: string) {
   return /^\d{1,4}$/.test(value) ? Number(value) : NaN;
 }
 
-export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; canWrite: boolean }) {
+function SaleReturns({ receipt, operator, canWrite }: { receipt: CounterReceipt; operator: string; canWrite: boolean }) {
   const [data, setData] = useState<CounterReturns>();
   const [activeShift, setActiveShift] = useState<CounterShift>();
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [unknown, setUnknown] = useState(false);
-  const command = useRef(false);
-  const operation = useRef<{ fingerprint: string; id: string }>(undefined);
+  const { busy, ready, pending, send } = useCounterCommand<CounterReturns>('counter-return',
+    `${operator}:${counterContextKey(receipt.context)}:${receipt.id}`, canWrite, setData, setMessage);
+  const saving = busy || !!pending || !ready;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,8 +49,8 @@ export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; ca
     return () => controller.abort();
   }, [receipt, canWrite]);
 
-  async function submit(action: ReturnAction, fields: FormData, returnId?: string, shiftId?: string) {
-    if (!canWrite || !data || command.current) return;
+  function submit(action: ReturnAction, fields: FormData, returnId?: string, shiftId?: string) {
+    if (!canWrite || !data || saving) return;
     const reason = String(fields.get('reason') || '').trim();
     let lines: Record<string, unknown>[] | undefined;
     if (action === 'authorize') {
@@ -63,35 +64,20 @@ export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; ca
       setMessage('Enter the quantities you received for the selected item lines.');
       return;
     }
-    const values = { ...counterScopeFields(receipt.context), saleId: receipt.id, action, reason, ...(lines && { lines }),
-      ...(returnId && { returnId }), ...(shiftId && { shiftId }) };
-    const fingerprint = JSON.stringify(values);
-    if (unknown && operation.current?.fingerprint !== fingerprint) {
-      setMessage('Retry the same return action and details to check the interrupted request.');
-      return;
-    }
-    if (operation.current?.fingerprint !== fingerprint) operation.current = { fingerprint, id: crypto.randomUUID() };
-    command.current = true;
-    setBusy(true);
-    setMessage('');
-    try {
-      setData(await counterWrite<CounterReturns>('counter-return', { ...values, operationId: operation.current.id }));
-      operation.current = undefined;
-      setUnknown(false);
-    } catch (error) {
-      setUnknown(!(error instanceof CounterRequestError) || error.status >= 500);
-      setMessage(counterError(error));
-    } finally { command.current = false; setBusy(false); }
+    void send({ ...counterScopeFields(receipt.context), saleId: receipt.id, action, reason, ...(lines && { lines }),
+      ...(returnId && { returnId }), ...(shiftId && { shiftId }) });
   }
 
   const money = (minor: number) => counterMoney(minor, receipt.totals.currency);
   return <section className={styles.afterSales} aria-label="Returns for this sale">
     <h2>Returns and cash refunds</h2>
-    {message && <p className="notice warn" role="alert">{message}</p>}
+    {message && <p className="notice warn" role="status">{message}</p>}
+    {pending && <CounterActionRecovery label="return" operationId={pending.operationId}
+      disabled={busy || !canWrite} retry={() => void send()}/>}
     {!data ? !message && <p role="status">Loading sale return records…</p> : <>
       {data.returns.length === 0 && <p className={styles.muted}>No return records for this sale.</p>}
       {canWrite && data.lines.some(line => line.available > 0) && <details className={styles.returnItem}><summary>Authorize a return</summary>
-        <ReturnForm action="authorize" label="Authorize return" saving={busy} submit={submit}>
+        <ReturnForm action="authorize" label="Authorize return" saving={saving} submit={submit}>
           {data.lines.filter(line => line.available > 0).map(line => <label key={line.variantId}>{line.name} · {line.sku}
             {' (' + line.available + ' eligible)'}<input type="number" min="0" max={line.available} step="1" defaultValue="0"
               name={'quantity:' + line.variantId}/></label>)}
@@ -103,7 +89,7 @@ export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; ca
           {' · ' + line.quantity + ' units'}{line.sellable !== undefined && ' · ' + line.sellable + ' sellable, ' + (line.damaged ?? 0) + ' damaged'}</li>)}</ul>
         {canWrite && row.status === 'AUTHORIZED' && <div className={styles.returnActions}>
           <details><summary>Receive and inspect</summary>
-            <ReturnForm action="receive" label="Record inspection" saving={busy} returnId={row.id} submit={submit}>
+            <ReturnForm action="receive" label="Record inspection" saving={saving} returnId={row.id} submit={submit}>
               {row.lines.map(line => <fieldset key={line.variantId}><legend>{data.lines.find(item => item.variantId === line.variantId)?.sku ?? 'Item'}
                 {' · ' + line.quantity + ' units'}</legend>
                 <label>Sellable units<input type="number" min="0" max={line.quantity} defaultValue={0} name={'sellable:' + line.variantId}/></label>
@@ -112,13 +98,13 @@ export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; ca
             </ReturnForm>
           </details>
           <details><summary>Cancel authorization</summary>
-            <ReturnForm action="cancel" label="Cancel authorization" saving={busy} returnId={row.id} submit={submit}/>
+            <ReturnForm action="cancel" label="Cancel authorization" saving={saving} returnId={row.id} submit={submit}/>
           </details>
         </div>}
         {data.canRefund && canWrite && row.status === 'INSPECTED' && <details>
           <summary>Record cash reimbursement</summary>
-          {receipt.context.shiftRequired && !activeShift ? <p>Open this register before reimbursing cash.</p>
-            : <ReturnForm action="refund" label="Record cash reimbursement" saving={busy} returnId={row.id}
+          {(receipt.context.shiftRequired || receipt.shift) && !activeShift ? <p>Open this register before reimbursing cash.</p>
+            : <ReturnForm action="refund" label="Record cash reimbursement" saving={saving} returnId={row.id}
               shiftId={activeShift?.id} submit={submit}/>}
         </details>}
       </article>)}
@@ -126,11 +112,12 @@ export function SaleReturns({ receipt, canWrite }: { receipt: CounterReceipt; ca
   </section>;
 }
 
-export function CounterReceiptScreen({ receipt, historyPath, canReturn }: {
-  receipt: CounterReceipt; historyPath: string; canReturn: boolean;
+export function CounterReceiptScreen({ receipt, operator, historyPath, canReturn }: {
+  receipt: CounterReceipt; operator: string; historyPath: string; canReturn: boolean;
 }) {
   const context = receipt.context;
   const { totals, tender } = receipt;
+  const customer = counterReceiptCustomer(receipt.customer);
   const money = (minor: number) => counterMoney(minor, totals.currency);
   const rows = [['Subtotal', totals.subtotalMinor], ['Discount', totals.discountMinor], ['Tax', totals.taxMinor], ['Total', totals.totalMinor],
     ['Cash received', tender.receivedMinor], ['Cash applied', tender.appliedMinor], ['Change', tender.changeMinor]] as const;
@@ -149,13 +136,13 @@ export function CounterReceiptScreen({ receipt, historyPath, canReturn }: {
       <header><h2>{context.businessName}</h2><p>{context.outletName} · {context.market} {context.currency}</p>
         <p>{receipt.invoice} · {counterDate(receipt.at, context.market)}</p>
         <p>Operator {context.operatorName}{context.registerLabel ? ' · ' + context.registerLabel : ''}</p>
-        {receipt.customer && <p>Customer {receipt.customer.name}</p>}</header>
+        {customer && <p>{customer}</p>}</header>
       <table><thead><tr><th scope="col">Item</th><th scope="col">Qty</th><th scope="col">Amount</th></tr></thead>
         <tbody>{receipt.lines.map(line => <tr key={line.variantId}><td>{line.name}<small>{line.sku}</small></td>
           <td>{line.quantity}</td><td>{money(line.totalMinor)}</td></tr>)}</tbody></table>
       <dl className={styles.totals}>{rows.map(([label, amount]) => <div key={label}>
         <dt>{label}</dt><dd>{money(amount)}</dd></div>)}</dl>
     </article>
-    <SaleReturns receipt={receipt} canWrite={canReturn}/>
+    <SaleReturns key={`${operator}:${receipt.id}`} receipt={receipt} operator={operator} canWrite={canReturn}/>
   </div>;
 }
