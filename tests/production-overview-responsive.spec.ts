@@ -57,6 +57,7 @@ for (const width of viewportWidths) {
   test(`overview definitions stay in bounds and dismiss at ${width}px`, async ({ page, browser }) => {
     await page.setViewportSize({ width, height: 844 });
     await signIn(page);
+    await page.goto(dashboard, { waitUntil: 'networkidle' });
     const left = placedDefinition(page);
     const right = page.getByRole('button', { name: width < 640 ? 'Cancelled before dispatch definition' : 'Returns processed definition', exact: true });
     await expect(left).toBeVisible();
@@ -89,6 +90,7 @@ for (const width of viewportWidths) {
     try {
       const touchPage = await touch.newPage();
       await signIn(touchPage);
+      await touchPage.goto(dashboard, { waitUntil: 'networkidle' });
       const touchButton = placedDefinition(touchPage);
       await touchButton.tap();
       const tapped = await visibleDefinition(touchPage, touchButton, width);

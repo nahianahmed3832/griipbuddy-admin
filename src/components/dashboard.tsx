@@ -33,19 +33,20 @@ function rateTone(value: unknown, warn: number, alert: number): MetricTone | und
   return typeof value !== 'number' ? undefined : value >= alert ? 'danger' : value >= warn ? 'warning' : 'success';
 }
 
-function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, estimated, href, production, tone }: {
+function Metric({ title, value, detail, current, prior, lowerIsBetter = false, definition, estimated, href, production, tone, metricSection }: {
   title: string; value: string; detail?: string; current?: unknown; prior?: unknown; lowerIsBetter?: boolean;
-  definition?: string; estimated?: string; href?: string; production?: boolean; tone?: MetricTone;
+  definition?: string; estimated?: string; href?: string; production?: boolean; tone?: MetricTone; metricSection?: string;
 }) {
   const baseline = number(prior);
   const actual = number(current);
   const change = baseline && actual !== undefined ? (actual - baseline) / Math.abs(baseline) : undefined;
   const neutralChange = change !== undefined && Math.abs(change) < 0.0005;
+  const metricId = 'overview:' + (metricSection ?? 'overview') + ':' + title;
   const name = production ? <span>{title}</span> : <h3>{title}</h3>;
   const body = <>
     <div className="overview-metric-title">{name}
-      {definition && <OverviewMetricHelp title={title} definition={definition}/>}
-      {estimated && <OverviewMetricHelp title={title} definition={estimated} estimated/>}
+      {definition && <OverviewMetricHelp metricId={metricId} title={title} definition={definition}/>}
+      {estimated && <OverviewMetricHelp metricId={metricId} title={title} definition={estimated} estimated/>}
     </div><div className="overview-value"><strong>{value}</strong>
       {change !== undefined && <span className={'overview-delta ' + (neutralChange ? 'neutral' : ((change < 0) === lowerIsBetter ? 'good' : 'bad'))}
         aria-label={percent(Math.abs(change)) + (neutralChange ? ' change' : change < 0 ? ' lower than previous period' : ' higher than previous period')}>
@@ -426,7 +427,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const value = obj(inventory?.value);
   const aging = obj(inventory?.aging);
   const dead = obj(inventory?.deadStock);
-  const productionMetric = (definition: string, href?: string, tone?: MetricTone) => production ? { definition, href, tone, production } : {};
+  const productionMetric = (definition: string, href?: string, tone?: MetricTone) => production ? { definition, href, tone, production, metricSection: section } : {};
   const expenses = obj(finance?.expenses);
   const spendMetric = {
     title: 'Ad spend', value: money(expenses.adSpend), current: expenses.adSpend, prior: obj(expenses.previous).adSpend, lowerIsBetter: production,

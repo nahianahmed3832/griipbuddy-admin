@@ -67,8 +67,8 @@ const reportDisplayValue = (value: unknown, type: unknown, currency: string, pro
   production ? productionReportValue(value, type, currency) : reportValue(value, type, currency);
 const reportCount = new Intl.NumberFormat('en-IN');
 
-function ReportMetrics({ kpis, currency, production, showChange }: {
-  kpis: RecordData[]; currency: string; production?: boolean; showChange: boolean;
+function ReportMetrics({ reportId, kpis, currency, production, showChange }: {
+  reportId: string; kpis: RecordData[]; currency: string; production?: boolean; showChange: boolean;
 }) {
   if (!kpis.length) return null;
   return <div className="report-metrics" data-count={kpis.length} style={{'--report-columns': kpis.length > 6 ? 4 : kpis.length} as React.CSSProperties}>
@@ -81,11 +81,12 @@ function ReportMetrics({ kpis, currency, production, showChange }: {
       const DeltaIcon = stable ? Minus : (delta ?? 0) > 0 ? TrendingUp : TrendingDown;
       const showPrevious = previous !== null && (!production || showChange);
       const hasDelta = delta !== null && (production ? showPrevious && kpi.type !== 'percent' : delta !== 0);
+      const key = str(kpi.key);
       const label = str(kpi.label);
       const definition = str(kpi.definition);
-      return <article className={'panel overview-card report-metric ' + tone(kpi.tone)} key={str(kpi.key)}>
+      return <article className={'panel overview-card report-metric ' + tone(kpi.tone)} key={key}>
         <div className="report-metric-heading"><h2>{label}</h2>
-          {definition && (production ? <OverviewMetricHelp title={label} definition={definition}/> :
+          {definition && (production ? <OverviewMetricHelp metricId={'report:' + reportId + ':' + key} title={label} definition={definition}/> :
             <details className="report-definition"><summary aria-label={'About ' + label}><Info size={15}/></summary><p>{definition}</p></details>)}
         </div>
         <div className="overview-value"><strong>{reportDisplayValue(kpi.value, kpi.type, currency, production)}</strong>
@@ -383,7 +384,7 @@ async function ReportContent({ auth, id, q, region, production = false }: Report
           <Link className="button subtle" href={url(path,{region})}>Reset</Link></div>
       </form>}
     {!production && restricted.length > 0 && <p className="notice">Some cost or margin figures are hidden by your permissions.</p>}
-    <ReportMetrics kpis={arr(data.kpis).map(obj)} currency={currency} production={production} showChange={Boolean(meta.compare)}/>
+    <ReportMetrics reportId={id} kpis={arr(data.kpis).map(obj)} currency={currency} production={production} showChange={Boolean(meta.compare)}/>
     <ReportChart series={obj(data.series)} currency={currency} production={production}/>
     {tableEntries.map(table => <ReportTable key={str(table.id)} table={table} auth={auth} region={region}
       currency={currency} path={path} query={{...query,limit,period:dates ? period : undefined}} production={production}/>)}

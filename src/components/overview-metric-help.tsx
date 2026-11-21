@@ -2,16 +2,17 @@
 
 import * as Popover from '@radix-ui/react-popover';
 import { Info } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 let dismissActiveDefinition: (() => void) | undefined;
 
-export function OverviewMetricHelp({ title, definition, estimated = false }: {
+export function OverviewMetricHelp({ metricId, title, definition, estimated = false }: {
+  metricId: string;
   title: string;
   definition: string;
   estimated?: boolean;
 }) {
-  const id = useId();
+  const id = 'metric-definition-' + encodeURIComponent(metricId) + (estimated ? '-estimate' : '-description');
   const trigger = useRef<HTMLButtonElement>(null);
   const pinned = useRef(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
