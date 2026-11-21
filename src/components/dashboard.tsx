@@ -8,7 +8,7 @@ import { param, printable, valueAt, type Query } from '@/lib/data';
 import { overviewQuery } from '@/lib/overview';
 import { canReadHybridReports, hybridReportLocations, loadHybridReportOrders } from '@/lib/hybrid-orders';
 import { appendQuality, comparisonStart, mergeHybridOverview, trailingStart } from '@/lib/hybrid-reporting';
-import { has, visibleSections, type Region } from '@/lib/sections';
+import { has, superAdmin, visibleSections, type Region } from '@/lib/sections';
 import { SectionIcon } from './icons';
 import { TrendChart } from './trend-chart';
 import { ProductionReportChart } from './production-report-chart';
@@ -336,6 +336,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const cost = (value: unknown) => formatMoney(value, 'BDT');
   const overviewPath = production ? '/dashboard/overview' : '/desk/overview';
   const reportPath = production ? '/dashboard/reports/' : '/desk/reports/';
+  const scopedReport = (id: string) => url(reportPath + id, production ? dashboardReportScope(query, true) : { ...scope, period });
   const link = (id: string, permission: string, title: string, filters = {}, dated = false) => grant('report.' + permission + '.view')
     ? { href:url(reportPath + id, production ? { ...dashboardReportScope(query, dated), ...filters } : { ...scope,...filters }),label:title } : undefined;
   const meta = obj(sales?.meta);
@@ -374,10 +375,13 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
   const needed = arr(waiting.topSkus).map(obj);
   const depleted = arr(stock.topOutOfStock).map(obj);
   const openOrders = link('pending-fulfilment','pending_fulfilment','Every order needing action');
-  const orderQueue = (type: string, filter?: string) => grant('order.view')
-    ? production ? url('/dashboard/orders', { status: filter, region: region === 'BD' ? undefined : region })
-      : link('pending-fulfilment','pending_fulfilment','Open queue',{type})?.href
-      ?? (filter ? url('/desk/orders/orders',{region,filter}) : undefined) : undefined;
+  const orderQueue = (type: string, filter?: string) => {
+    if (!grant('order.view')) return undefined;
+    const report = link('pending-fulfilment','pending_fulfilment','Open queue',{type});
+    if (!production) return report?.href ?? (filter ? url('/desk/orders/orders',{region,filter}) : undefined);
+    if (scope.locations?.includes(',')) return report?.href;
+    return url('/dashboard/orders', { status: filter, region: region === 'BD' ? undefined : region, location: scope.locations });
+  };
   const legacyQueue = [
     { title:'Orders to confirm', value:confirm.orders, level:'urgent', href:orderQueue('to_confirm','PLACED,ACCEPTED,PROCESSING'), notes:[money(confirm.value), 'Oldest waiting ' + hours(confirm.oldestHours), count(confirm.over48h) + ' waiting over 48 h'] },
     { title:'Awaiting stock', value:waiting.orders, level:'check', href:orderQueue('awaiting_stock','AWAITING_STOCK'), images:needed,
@@ -463,7 +467,7 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
     <Metric title="Orders placed" value={count(bookings.orders)} current={bookings.orders} prior={obj(bookings.previous).orders}
       detail={money(bookings.orderValue) + ' including delivery'}
       {...productionMetric('Count of orders placed in the selected market, currency and date range.',
-        grant('order.view') ? url('/dashboard/orders', { region, from: scope.from, to: scope.to }) : undefined)}/>
+        link('order-status', 'order_status', 'Order status report', {}, true)?.href)}/>
     <Metric title="Booked value" value={money(bookings.productValue)} current={bookings.productValue} prior={obj(bookings.previous).productValue}
       detail={'Average ' + money(bookings.avgProductValue) + ' per order'}
       {...productionMetric('Product value of orders placed during the selected period.')}/>
@@ -514,13 +518,15 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
           </div>
         </div>
         <div className="overview-split"><ProductTable products={arr(sales.topProducts).map(obj)} currency={currency} region={region} canOpen={grant('product.view')} production={production}/>
-          <div className="overview-stack"><Metric title="Returns processed" value={count(returns.orders)} detail={money(returns.value) + ' returned'}
+          <div className="overview-stack"><Metric title="Returns processed" value={count(returns.orders)} detail={money(returns.value) + ' in returned merchandise'}
             estimated={production && Number(returns.estimatedValues) > 0 ? "Some returns don't record a refund amount; their value is estimated from the order lines." : undefined}
-            {...productionMetric('Orders returned by the customer after delivery. Returns from the courier before delivery are counted in Fulfilment as return-to-sender.', orderQueue('returns','RETURNED,PARTIAL'))}/>
+            {...productionMetric('Orders returned by the customer after delivery. Returns from the courier before delivery are counted in Fulfilment as return-to-sender.',
+              link('returns-rts', 'returns', 'Returns and return-to-sender', {}, true)?.href)}/>
             {sales.pos ? <Metric title={production ? 'POS sales' : 'Point-of-sale value'} value={money(obj(sales.pos).amount)} current={obj(sales.pos).amount}
               prior={valueAt(sales.pos,'previous.amount')} detail={count(obj(sales.pos).sales) + (Number(obj(sales.pos).sales) === 1 ? ' sale' : ' sales')}
               {...productionMetric('In-store (POS) sales by sale date. POS returns already reduce the stored sale.')}/> : null}</div>
         </div>
+        {production && grant('user.view') && grant('order.view') && <Link className="table-link" href={scopedReport('customer-activity')}>Customer activity</Link>}
         <Quality data={sales.quality}/>
       </Panel>}
       {fulfilment && <Panel title="Fulfilment" production={production}
@@ -575,7 +581,9 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
       </Panel>}
       {finance && <Panel title="Money" production={production}
         detail={production ? 'Operating expenses, cash still with the courier, and stock bought. Profit figures will come with the P&L report.' : 'Operating expenses, cash still with the courier and stock received.'}
-        tone="money" icon={<Wallet size={production ? 20 : 23}/>}>
+        tone="money" icon={<Wallet size={production ? 20 : 23}/>}
+        link={production && superAdmin(auth.staff) && grant('order.view') ?
+          { href: scopedReport('payment-outcomes'), label: 'Payment outcomes' } : undefined}>
         <div className="overview-split">
           <div className="overview-metrics overview-metrics-two">
             {finance.expenses ? <>
@@ -587,11 +595,12 @@ function renderDashboard({ auth, region, query, production, payload = {}, locati
                 ? percent(Number(expenses.adSpend) / Number(delivered.productValue)) + ' of delivered sales' : undefined}/>}
             </> : null}
             <Metric title="COD with courier" value={money(cod.amount)} detail={count(cod.orders) + (production && cod.orders === 1 ? ' parcel' : ' parcels')}
-              {...productionMetric('Cash-on-delivery value of parcels still with the courier.', orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'))}/>
+              {...productionMetric('Cash-on-delivery value due on open parcels. Recorded collections and remittance are available in Payment outcomes when permitted.',
+                orderQueue('courier_overdue','IN_REVIEW,HANDED_OVER_TO_COURIER,IN_TRANSIT'))}/>
             <Metric title="Stock received" value={number(received.cost) !== undefined && grant('purchase.price.view') ? cost(received.cost) : counted(received.units, 'unit')}
               current={grant('purchase.price.view') ? received.cost : received.units} prior={grant('purchase.price.view') ? obj(received.previous).cost : obj(received.previous).units}
               detail={count(received.purchases) + ' purchases · ' + count(received.units) + ' units'}
-              {...productionMetric('New stock received in the selected period.', grant('purchase.view') ? '/dashboard/purchase/all' : undefined)}/>
+              {...productionMetric('New stock received in the selected period.', grant('purchase.view') ? scopedReport('procurement-activity') : undefined)}/>
           </div>
           {finance.expenses ? <div className="overview-stack">
             <Bars title="Expenses by category" bars={bars(expenses.byCategory,'name','amount',undefined,money)}/>

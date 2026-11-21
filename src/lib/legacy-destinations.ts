@@ -77,6 +77,7 @@ add('barcodes/logs', '/desk/inventory/barcode-logs');
 add('barcodes/default-rate', '/desk/inventory/rates/new');
 add('barcodes/default-rate/all', '/desk/inventory/rates');
 add('purchase/all', '/desk/inventory/purchases');
+add('purchase/view/[id]', '/desk/inventory/purchases/[id]');
 add('purchase/edit/[id]', '/desk/inventory/purchases/[id]', { edit: '1' });
 add('suppliers/all', '/desk/inventory/suppliers');
 add('suppliers/create', '/desk/inventory/suppliers/new');

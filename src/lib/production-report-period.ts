@@ -44,8 +44,8 @@ export function productionReportPeriodRange(query: Query) {
   const month = Number(today.slice(5, 7));
   const quarterStart = 1 + 3 * Math.floor((month - 1) / 3);
 
-  if (period === 'custom' && customFrom && customTo && customFrom <= customTo) {
-    return { period, from: customFrom, to: customTo };
+  if (period === 'custom') {
+    return { period, from: customFrom ?? customTo ?? today, to: customTo ?? customFrom ?? today };
   }
   if (period === 'yesterday') {
     const day = daysBefore(today, 1);

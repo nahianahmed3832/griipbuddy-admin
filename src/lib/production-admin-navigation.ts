@@ -4,7 +4,7 @@ import { canWrite, type Session } from './api';
 import { permitted } from './data';
 import { resolveLegacy } from './legacy-destinations';
 import { canOperate } from './operations';
-import { has, resources, superAdmin, type Region, type Section } from './sections';
+import { has, hasReportAccess, resources, superAdmin, type Region, type Section } from './sections';
 import { smartInventoryTabs } from './smart-inventory';
 import { canOpenCounter, type CounterAccess } from './counter-pos';
 import { mayConfigureCounter } from './pos-counter-configuration';
@@ -108,7 +108,7 @@ export function productionNavigation({ auth, visible, region, fraud, connectedCa
     'catalog-exchange': !catalogPilot,
     'seller-listing-reviews': has(staff, 'product.update'),
     'inventory/physical-stock': has(staff, 'business_locations.view'),
-    reports: staff.permissions.some(permission => permission.startsWith('report.')),
+    reports: hasReportAccess(staff),
     'fraud-checker': fraud,
     'create-order': createOrder,
     'create-customer': createCustomer,

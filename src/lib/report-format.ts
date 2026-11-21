@@ -38,6 +38,8 @@ export function reportRange(from: unknown, to: unknown) {
 const productionCurrencySymbols: Record<string, string> = { BDT: '৳', USD: '$', EUR: '€', AUD: 'A$' };
 const productionCount = new Intl.NumberFormat('en-IN');
 const productionNumber = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const productionMoney = new Map(['en-IN', 'en-US'].map(locale =>
+  [locale, new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })]));
 
 export function productionReportValue(value: unknown, type: unknown, currency: string): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -47,8 +49,8 @@ export function productionReportValue(value: unknown, type: unknown, currency: s
   if (!Number.isFinite(number)) return '—';
   if (type === 'money' || type === 'cost' || type === 'currency') {
     const code = type === 'cost' ? 'BDT' : currency;
-    const formatted = Math.abs(Math.round(number)).toLocaleString(code === 'BDT' ? 'en-IN' : 'en-US');
-    return (Math.round(number) < 0 ? '-' : '') + (productionCurrencySymbols[code] ?? code + ' ') + formatted;
+    const formatted = productionMoney.get(code === 'BDT' ? 'en-IN' : 'en-US')!.format(Math.abs(number));
+    return (number < 0 ? '-' : '') + (productionCurrencySymbols[code] ?? code + ' ') + formatted;
   }
   if (type === 'percent') return (number * 100).toFixed(1) + '%';
   if (type === 'hours') return number < 48 ? Math.round(number) + ' h' : (number / 24).toFixed(1) + ' d';

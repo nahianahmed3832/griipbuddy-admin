@@ -28,7 +28,8 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
   };
   const writable = advancedEnabled() && canWrite(auth.staff);
   return <section className={styles.root}>
-    <h1>Sales Reports{from && <> for <strong>{posRegisterTitle(filters)}</strong></>}</h1>
+    <h1>Legacy POS register{serial ? <> · Sale #{serial}</> : from && <> for <strong>{posRegisterTitle(filters)}</strong></>}</h1>
+    <p className="muted">Bangladesh locations · BDT · Asia/Dhaka{serial && ' · Sale number search covers all dates'}</p>
     <details className={styles.filter} open>
       <summary><Filter size={19}/> Filter</summary>
       <PosRegisterFilterForm>
@@ -52,7 +53,8 @@ export async function ProductionPosRegister({ auth, q, region }: { auth: Session
     {tooMany && <p role="alert">Narrow the filters to show at most {allPosLimit.toLocaleString('en-US')} sales at once.</p>}
     <div className={styles.metrics}>
       {metrics.filter(([key]) => Object.hasOwn(totals, key)).map(([key, label, Icon]) => <article key={key} data-metric={key}>
-        <span><Icon size={15}/></span><div>{label}</div><strong>{key !== 'count' && '৳ '}{posMoney(totals[key] ?? 0)}</strong></article>)}
+        <span><Icon size={15}/></span><div>{label}</div><strong>{totals[key] === undefined ? 'Unavailable' :
+          (key !== 'count' ? '৳ ' : '') + posMoney(totals[key])}</strong></article>)}
     </div>
     <PosRegisterTable rows={rows} total={total} active={active} page={page} size={size} canSeeCost={filters.canSeeCost}
       canSeeProfit={filters.canSeeProfit} canEdit={writable && has(auth.staff, 'pos.update')}

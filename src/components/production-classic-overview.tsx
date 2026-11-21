@@ -2,16 +2,18 @@ import { Boxes, CircleAlert, DollarSign, Filter, Package, RotateCcw, ShoppingCar
 import { api, ApiError, arr, obj, str, url, type Session } from '@/lib/api';
 import { loadLocations } from '@/lib/advanced';
 import { param, type Query } from '@/lib/data';
-import { posDay, posRanges, posRangeDates } from '@/lib/pos';
+import { posDay, posRanges, posRangeDates, validPosDay } from '@/lib/pos';
 import { has, superAdmin, type Region } from '@/lib/sections';
 import { loadHybridReportOrders } from '@/lib/hybrid-orders';
 import { mergeHybridClassic } from '@/lib/hybrid-reporting';
+import { reportNumber, reportValue } from '@/lib/report-format';
 import { ClassicOverviewFilters, ClassicOverviewTrend } from './production-classic-overview-controls';
 import styles from './production-classic-overview.module.css';
 
-const whole = (value: unknown) => Math.round(typeof value === 'number' ? value : 0).toLocaleString('en-IN');
-const money = (value: unknown) => whole(value) + '\u00a0TK';
-const units = (value: unknown) => whole(value) + ' Pcs';
+const whole = (value: unknown) => reportNumber(value)?.toLocaleString('en-IN') ?? '—';
+const money = (value: unknown, currency = 'BDT') => reportNumber(value) === null ? '—' :
+  reportValue(value, 'money', currency) + '\u00a0' + currency;
+const units = (value: unknown) => reportNumber(value) === null ? '—' : whole(value) + ' units';
 
 export async function ProductionClassicOverview({ auth, region, q }: { auth: Session; region: Region; q: Query }) {
   if (!has(auth.staff, 'overview.view')) throw new ApiError(403);
@@ -20,6 +22,7 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
   const range = posRanges.find(value => value === param(q, 'selectedOption')) || (fromQuery || toQuery ? 'Custom Range' : 'Today');
   const today = posDay();
   const [from, to] = posRangeDates(range, today, fromQuery, toQuery);
+  const valid = from <= to && (!fromQuery || validPosDay(fromQuery)) && (!toQuery || validPosDay(toQuery));
   const locations = has(auth.staff, 'business_locations.view') ? await loadLocations(auth, region) : [];
   const requested = param(q, 'businessLocation') || '';
   const assigned = superAdmin(auth.staff) ? undefined : auth.staff.assignedLocation;
@@ -30,22 +33,29 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
 
   const period = { from: from || '1970-01-01', to: to || today };
   const includeProfit = has(auth.staff, 'potential.profit.view');
-  const [legacy, hybrid] = await Promise.all([
+  const [legacy, hybrid] = valid ? await Promise.all([
     api(url('/report/business-report', { region, businessLocationId: location, startDate: period.from, endDate: period.to }), auth.token),
     loadHybridReportOrders(auth, region, { locations: location, ...period, milestones: true, returnCosts: true, profit: includeProfit }),
-  ]);
-  const { report, note, returnNote } = mergeHybridClassic(obj(legacy), hybrid, period, includeProfit);
-  const orderMoney = (value: unknown) => region === 'BD' ? money(value) : whole(value) + '\u00a0USD';
+  ]) : [null, null] as const;
+  const native = obj(legacy);
+  const { report, note, returnNote } = mergeHybridClassic(native, hybrid, period, includeProfit);
+  const currency = str(obj(native.meta).currency) || (region === 'BD' ? 'BDT' : 'USD');
+  const orderMoney = (value: unknown) => money(value, currency);
   const totals = obj(report.totals);
   const sales = obj(totals.orders);
   const purchases = obj(totals.purchases);
   const returns = obj(totals.returns);
-  const daily = arr(report.daily).map(obj).filter(row => str(row.date) && Number.isFinite(Date.parse(str(row.date))))
-    .map(row => ({ date: str(row.date), orders: typeof row.orders === 'number' ? row.orders : 0 }));
+  const daily = arr(report.daily).map(obj).flatMap(row => {
+    const orders = reportNumber(row.orders);
+    const date = str(row.date);
+    return date && Number.isFinite(Date.parse(date)) && orders !== null ? [{ date, orders }] : [];
+  });
+  const canReadCost = has(auth.staff, 'purchase.price.view');
   const sections = [
-    { title: 'Summary', kind: 'summary', Icon: DollarSign, cards: [
-      ['Net Sales Amount', money(obj(totals.derived).netSalesAmount), TrendingUp],
-    ] },
+    ...(region === 'BD' ? [{ title: 'Legacy POS', kind: 'summary', Icon: DollarSign, cards: [
+      ['Legacy POS sales, net of recorded returns', money(obj(totals.derived).netSalesAmount), TrendingUp],
+      ['Legacy POS refunds posted', money(obj(obj(native.totals).returns).totalRefund), RotateCcw],
+    ] as const }] : []),
     { title: 'Online Orders', kind: 'orders', Icon: ShoppingCart, cards: [
       ['Total Orders Amount', orderMoney(sales.totalOrdersAmount), DollarSign],
       ['Total Orders Discount', orderMoney(sales.totalOrdersDiscount), CircleAlert],
@@ -55,20 +65,20 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
       ['Order Count', whole(sales.count), Users],
     ] },
     { title: 'Purchases', kind: 'purchases', Icon: Package, cards: [
-      ...(has(auth.staff, 'purchase.price.view') ? [['Total Purchase Cost', money(purchases.totalPurchasesCost), DollarSign] as const] : []),
-      ['Total Supplier Paid', money(purchases.totalSupplierPaid), DollarSign],
-      ['Total Supplier Due', money(purchases.totalSupplierDue), CircleAlert],
+      ...(canReadCost ? [
+        ['Total Purchase Cost', money(purchases.totalPurchasesCost), DollarSign],
+        ['Total Supplier Paid', money(purchases.totalSupplierPaid), DollarSign],
+        ['Total Supplier Due', money(purchases.totalSupplierDue), CircleAlert],
+      ] as const : []),
       ['Quantity Purchased', units(purchases.total_quantity), Boxes],
       ['Purchase Count', whole(purchases.count), Users],
     ] },
-    { title: 'Returns', kind: 'returns', Icon: RotateCcw, cards: [
-      ['Total Refund', money(returns.totalRefund), DollarSign],
-      ...(has(auth.staff, 'purchase.price.view') ? [['Total Returned Cost',
-        (typeof returns.totalReturnedCost === 'number' ? returns.totalReturnedCost : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + '\u00a0TK',
-        Boxes] as const] : []),
+    ...(region === 'BD' ? [{ title: 'Recorded returns', kind: 'returns', Icon: RotateCcw, cards: [
+      ['Refunds posted', money(returns.totalRefund), DollarSign],
+      ...(canReadCost ? [['Total Returned Cost', money(returns.totalReturnedCost), Boxes] as const] : []),
       ['Quantity Returned', units(returns.total_quantity), Boxes],
       ['Return Count', whole(returns.count), Users],
-    ] },
+    ] as const }] : []),
   ] as const;
 
   return <div className={styles.page}>
@@ -77,13 +87,14 @@ export async function ProductionClassicOverview({ auth, region, q }: { auth: Ses
       <ClassicOverviewFilters key={JSON.stringify([location, range, from, to])} locations={scopedLocations}
         location={location} region={region} range={range} from={from} to={to} today={today} assigned={Boolean(assigned)}/>
     </section>
-    {sections.map(({ title, kind, Icon, cards }) => (
+    {!valid && <p className="notice warn" role="alert">Choose a valid start and end date.</p>}
+    {valid && sections.map(({ title, kind, Icon, cards }) => (
       <section className={styles.panel} key={kind} data-classic-tone={kind}>
         <header><span><Icon size={28}/></span><h2>{title}</h2></header>
         <div className={styles.cards}>{cards.map(([label, value, Icon]) => (
           <article key={label}><div><span><Icon size={23}/></span><div><p>{label}</p><strong>{value}</strong></div></div></article>
         ))}</div>
-        {kind === 'orders' && daily.length > 0 && <ClassicOverviewTrend data={daily}/>}
+        {kind === 'orders' && daily.length > 0 && <ClassicOverviewTrend data={daily} currency={currency}/>}
         {kind === 'orders' && note && <p className="muted">{note}</p>}
         {kind === 'returns' && returnNote && <p className="muted">{returnNote}</p>}
       </section>

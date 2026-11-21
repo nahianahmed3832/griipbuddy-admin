@@ -56,7 +56,7 @@ function SearchFilter({ label, value, change }: { label: string; value: string; 
   </label>;
 }
 
-export function ProductionReportFilters({ path, region, period, from, to, usesPeriod, usesLocations, locations, selectedLocations, compares,
+export function ProductionReportFilters({ path, region, period, from, to, usesPeriod, usesLocations, locations, selectedLocations, locationSummary, compares,
   compare, currency, filters, values }: {
   path: string;
   region: 'BD' | 'INTERNATIONAL';
@@ -67,6 +67,7 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
   usesLocations: boolean;
   locations: Option[];
   selectedLocations: string[];
+  locationSummary: string;
   compares: boolean;
   compare: boolean;
   currency: string;
@@ -102,15 +103,16 @@ export function ProductionReportFilters({ path, region, period, from, to, usesPe
     <span className="production-report-visually-hidden" role="status">{pending ? 'Updating report…' : ''}</span>
     {usesPeriod && <ProductionReportSelect label="Period" value={period}
       options={period === 'last90' ? [...productionReportPeriods, { value: 'last90', label: 'Last 90 days' }] : productionReportPeriods}
-      change={value => update({ period: value, ...(value === 'custom' && { from, to }) })}/>}
+      change={value => update({ period: value, from: value === 'custom' ? from : '', to: value === 'custom' ? to : '' })}/>}
     {usesPeriod && period === 'custom' && <div className="production-report-custom-dates">
       <label className="production-report-field"><span>From</span><input type="date" value={from} max={to}
         onChange={event => { if (event.currentTarget.value) update({ from: event.currentTarget.value }); }}/></label>
       <label className="production-report-field"><span>To</span><input type="date" value={to} min={from}
         onChange={event => { if (event.currentTarget.value) update({ to: event.currentTarget.value }); }}/></label>
     </div>}
-    {usesLocations && <ProductionLocationFilter key={region} options={locations} value={selectedLocations}
-      change={ids => update({ locations: ids.join(',') })}/>}
+    {usesLocations && (locations.length ? <ProductionLocationFilter key={region} options={locations} value={selectedLocations}
+      change={ids => update({ locations: ids.join(',') })}/>
+      : <div className="production-report-field"><span>Locations</span><strong>{locationSummary}</strong></div>)}
     {region === 'INTERNATIONAL' && <ProductionReportSelect label="Currency" value={currency}
       options={['BDT', 'USD', 'EUR', 'AUD'].map(code => ({ value: code, label: code }))}
       change={value => update({ currency: value })}/>}

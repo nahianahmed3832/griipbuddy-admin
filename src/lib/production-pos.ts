@@ -3,7 +3,8 @@ import { api, ApiError, arr, mongoId, obj, str, url, type RecordData, type Sessi
 import { loadLocations, reference, requireWrite } from './advanced';
 import { param, type Query } from './data';
 import { locationInRegion } from './operations';
-import { dateLabel, posDay, posMoney, posPageSizes, posRangeDates, posRanges, posTimeZone, type PosItem, type PosRange, type PosRegisterRow } from './pos';
+import { dateLabel, posDay, posMoney, posPageSizes, posRangeDates, posRanges, posTimeZone, validPosDay, type PosItem, type PosRange, type PosRegisterRow } from './pos';
+import { reportNumber } from './report-format';
 import { has, superAdmin } from './sections';
 
 const paymentNumbers = ['paid', 'discount', 'total', 'due'] as const;
@@ -23,23 +24,29 @@ export async function posRegisterFilters(q: Query, auth: Session) {
   if (!has(auth.staff, 'pos.view')) throw new ApiError(403);
   const locations = has(auth.staff, 'business_locations.view') ? await loadLocations(auth, 'BD') : [];
   const assigned = superAdmin(auth.staff) ? undefined : auth.staff.assignedLocation;
-  const location = assigned || param(q, 'businessLocation') || param(q, 'location') || '';
+  const requested = param(q, 'businessLocation') || param(q, 'location') || '';
+  if (assigned && requested && assigned !== requested) throw new ApiError(403);
+  const location = assigned || requested;
   if (location && (!mongoId(location) || (location !== assigned && !locations.some(row => row.value === location)))) throw new ApiError(403);
   const today = posDay();
   const requestedRange = param(q, 'selectedOption') ?? param(q, 'range');
   const range = posRanges.find(option => option === requestedRange) ??
     (param(q, 'from') || param(q, 'to') ? 'Custom Range' : 'Today');
-  const [from, to] = posRangeDates(range as PosRange, today, param(q, 'from'), param(q, 'to'));
+  const fromInput = param(q, 'from');
+  const toInput = param(q, 'to');
+  const [from, to] = posRangeDates(range as PosRange, today, fromInput, toInput);
   const creator = param(q, 'createdBy') || param(q, 'creator') || '';
   const canViewStaff = has(auth.staff, 'user.view');
   if (creator && (!canViewStaff || !mongoId(creator))) throw new ApiError(403);
   const serial = (param(q, 'saleSerialId') ?? param(q, 'serial') ?? '').trim().slice(0, 15);
   const size = posPageSizes.find(size => String(size) === param(q, 'size')) ?? 20;
   const page = size === 'all' ? 1 : Math.max(1, Math.min(100000, Number.parseInt(param(q, 'page') ?? '', 10) || 1));
-  const input = { business_location_id: location, startDate: from, endDate: to, created_by: creator };
+  const input = {
+    region: 'BD', business_location_id: location, startDate: from, endDate: to, created_by: creator, sale_serial_id: serial,
+  };
   return {
     input, page, size, range, from, to, serial, locations, assigned, location, creator, today,
-    valid: from <= to && (!serial || /^\d{1,15}$/.test(serial)),
+    valid: from <= to && (!fromInput || validPosDay(fromInput)) && (!toInput || validPosDay(toInput)) && (!serial || /^\d{1,15}$/.test(serial)),
     canViewStaff, canSeeCost: has(auth.staff, 'purchase.price.view'), canSeeProfit: has(auth.staff, 'potential.profit.view'),
   };
 }
@@ -77,9 +84,7 @@ function registerRow(row: RecordData, filters: PosRegisterFilters): PosRegisterR
 
 export async function loadPosRegisterPage(auth: Session, filters: PosRegisterFilters, page: number, size: number) {
   if (!filters.valid) return { total: 0, rows: [] };
-  const payload = obj(await api(url('/pos/sale', {
-    ...filters.input, sale_serial_id: filters.serial, page: String(page), limit: String(size),
-  }), auth.token));
+  const payload = obj(await api(url('/pos/sale', { ...filters.input, page: String(page), limit: String(size) }), auth.token));
   const sales = arr(payload.posSales).map(obj);
   return { total: number(obj(payload.meta).total), rows: sales.map(row => registerRow(row, filters)).filter(row => mongoId(row.id)) };
 }
@@ -103,9 +108,11 @@ export async function readPosRegisterReport(auth: Session, filters: PosRegisterF
 export async function loadPosRegisterTotals(auth: Session, filters: PosRegisterFilters): Promise<Partial<Record<'sales' | 'profit' | 'cost' | 'discount' | 'due' | 'count', number>>> {
   if (!filters.valid) return {};
   const data = await readPosRegisterReport(auth, filters);
+  const reportValue = (value: unknown) => reportNumber(value) ?? undefined;
   return {
-    sales: number(data.totalSales), discount: number(data.totalDiscount), due: number(data.totalDue), count: number(data.numberOfSales),
-    ...(filters.canSeeCost && { cost: number(data.totalCost) }), ...(filters.canSeeProfit && { profit: number(data.totalProfit) }),
+    sales: reportValue(data.totalSales), discount: reportValue(data.totalDiscount), due: reportValue(data.totalDue),
+    count: reportValue(data.numberOfSales), ...(filters.canSeeCost && { cost: reportValue(data.totalCost) }),
+    ...(filters.canSeeProfit && { profit: reportValue(data.totalProfit) }),
   };
 }
 

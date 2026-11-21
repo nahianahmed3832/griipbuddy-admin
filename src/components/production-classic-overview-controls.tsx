@@ -7,6 +7,7 @@ import { ProductionReportSelect } from './production-report-filters';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { adminPath } from '@/lib/paths';
 import type { PosRange } from '@/lib/pos';
+import { productionReportValue } from '@/lib/report-format';
 import { ProductionDateRange } from './production-date-range';
 import styles from './production-classic-overview.module.css';
 
@@ -37,11 +38,11 @@ export function ClassicOverviewFilters({ locations, location, region, range, fro
   </form>;
 }
 
-export function ClassicOverviewTrend({ data }: { data: { date: string; orders: number }[] }) {
+export function ClassicOverviewTrend({ data, currency }: { data: { date: string; orders: number }[]; currency: string }) {
   const compact = (value: number) => new Intl.NumberFormat('en-US', { notation: 'compact' }).format(value);
-  const date = (value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const date = (value: string) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   return <div className={styles.trend}>
-    <h4>Daily Orders Trend</h4>
+    <h4>Booked online order value ({currency})</h4>
     <div className={styles.chart}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -51,8 +52,8 @@ export function ClassicOverviewTrend({ data }: { data: { date: string; orders: n
           <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3}/>
           <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} tickFormatter={date}/>
           <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} tickFormatter={compact}/>
-          <Tooltip labelFormatter={value => new Date(String(value)).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            formatter={value => [Number(value).toLocaleString('en-US'), 'Orders']} contentStyle={{ borderRadius: 8, border: 'none' }}/>
+          <Tooltip labelFormatter={value => new Date(String(value)).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
+            formatter={value => [productionReportValue(value, 'money', currency), 'Booked value']} contentStyle={{ borderRadius: 8, border: 'none' }}/>
           <Area type="monotone" dataKey="orders" stroke="#3b82f6" fill="url(#classic-orders-gradient)" strokeWidth={2} isAnimationActive={false}/>
         </AreaChart>
       </ResponsiveContainer>

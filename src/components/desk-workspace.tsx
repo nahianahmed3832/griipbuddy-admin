@@ -273,7 +273,9 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     else if (sectionId === 'markets' && active === 'countries') content = await CatalogRegistry({ auth, q, region, id: view[1], kind: 'countries', production: Boolean(production) });
     else if (sectionId === 'marketing' && active === 'coupons' && production) content = await ProductionCouponWorkspace({ auth, region, id: view[1], q });
     else if (sectionId === 'marketing' && active === 'coupons' && view[1]) content = await CouponEditor({ auth, region, id: view[1] === 'new' ? undefined : view[1] });
-    else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) content = await ProductionPosReport({ auth, q, region });
+    else if (production && sectionId === 'pos' && active === 'report' && view.length === 1) {
+      content = await ProductionPosReport({ auth, q, region, counterAvailable: canOpenCounter(auth, counter) });
+    }
     else if (production && sectionId === 'pos' && active === 'sales' && view.length === 1) content = await ProductionPosRegister({ auth, q, region });
     else if (sectionId === 'pos' && active === 'counter-configuration' && view.length === 1) {
       if (managedCounterRequested() && !counter) throw new ApiError(403);

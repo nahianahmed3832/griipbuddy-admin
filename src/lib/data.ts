@@ -127,25 +127,44 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
 }
 
 export const reportIds = ['sales-summary','sales-by-product','order-status','pending-fulfilment','returns-rts','stock-valuation',
-  'low-stock','stock-movements','inventory-aging','data-health'];
+  'low-stock','stock-movements','inventory-aging','data-health','payment-outcomes','customer-activity','procurement-activity'];
 export const reportFilterKeys = ['groupBy', 'category', 'search', 'stock', 'type', 'status', 'show'];
+
+export function reportDate(value?: string) {
+  const safe = dateParam(value);
+  if (!safe) return undefined;
+  const date = new Date(safe + 'T00:00:00Z');
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === safe ? safe : undefined;
+}
 
 export function reportQuery(q: Query, region: Region) {
   const currency = param(q, 'currency');
   if (q.currency !== undefined && (region === 'BD' ? currency !== 'BDT' : !['USD', 'EUR', 'AUD', 'BDT'].includes(currency ?? ''))) {
     throw new ApiError(400, 'Choose a currency supported by this reporting region.');
   }
-  const selected = q.location ?? param(q, 'locations')?.split(',');
-  const locations = [...new Set((Array.isArray(selected) ? selected : [selected ?? '']).filter(mongoId))].slice(0, 20);
+  if ((q.location !== undefined && q.locations !== undefined) || Array.isArray(q.locations)) {
+    throw new ApiError(400, 'Choose one report location filter.');
+  }
+  const selected = q.location ?? param(q, 'locations')?.split(',') ?? [];
+  const locations = [...new Set((Array.isArray(selected) ? selected : [selected])
+    .map(value => value.trim().toLowerCase()).filter(Boolean))];
+  if (locations.length > 20 || locations.some(value => !mongoId(value))) {
+    throw new ApiError(400, 'Choose up to 20 valid report locations.');
+  }
+  const from = reportDate(param(q, 'from'));
+  const to = reportDate(param(q, 'to'));
+  if ((q.from !== undefined && !from) || (q.to !== undefined && !to) || (from && to && from > to)) {
+    throw new ApiError(400, 'Choose a valid date range.');
+  }
   const compare = param(q,'compare');
   const sort = param(q,'sort');
   return {
     region, currency: region === 'INTERNATIONAL' ? currency : undefined,
-    from: dateParam(param(q,'from')), to: dateParam(param(q,'to')),
+    from, to,
     compare: compare === 'none' || (param(q,'filterApplied') === '1' && compare !== 'previous') ? 'none' : undefined,
     locations: locations.join(',') || undefined,
     sort: sort && /^[A-Za-z0-9_]{1,40}$/.test(sort) ? sort : undefined,
-    order: param(q,'order') === 'asc' ? 'asc' : undefined,
+    order: ['asc', 'desc'].includes(param(q, 'order') ?? '') ? param(q, 'order') : undefined,
     ...Object.fromEntries(reportFilterKeys.map(key => [key, param(q, key)?.trim().slice(0, 100) || undefined])),
   };
 }

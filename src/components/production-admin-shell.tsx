@@ -69,6 +69,9 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
     else params.delete('region');
     params.delete('page');
     if (path.startsWith('/dashboard/homepage')) params.delete('scope');
+    if (path === overviewPath || path.startsWith('/dashboard/reports')) {
+      for (const filter of ['currency', 'location', 'locations']) params.delete(filter);
+    }
     const search = params.toString();
     return path + (search ? '?' + search : '');
   }

@@ -8,23 +8,24 @@ import { hybridReportDownload } from '@/lib/hybrid-report-export';
 export async function GET(req: NextRequest) {
   const auth = await session();
   if (!auth) return new Response('Sign in to export reports', { status: 401 });
+  if (auth.staff.passwordRotationRequired) return new Response('Change your password to continue', { status: 403 });
   const params = req.nextUrl.searchParams;
-  if (params.getAll('region').length > 1 || params.getAll('currency').length > 1) {
-    return new Response('Choose one operating region and currency.', { status: 400 });
+  if (Array.from(new Set(params.keys())).some(key => key !== 'location' && params.getAll(key).length > 1)) {
+    return new Response('Choose one value for each report filter.', { status: 400 });
   }
   const query = Object.fromEntries(params);
   if (!reportIds.includes(query.id) || !['csv','xlsx'].includes(query.format)) return new Response('Unknown report', { status: 404 });
   try {
     const region = getRegion(query.region, auth.staff);
-    const scope = reportQuery(query, region);
+    const scope = reportQuery({ ...query, ...(params.has('location') && { location: params.getAll('location') }) }, region);
     if (canMergeHybridReport(query.id, auth, region)) {
       scope.locations = hybridReportLocations(auth, scope.locations);
       const native = obj(await api(url('/analytics/reports/' + query.id, { ...scope, hybridMerge: '1',
-        ...(query.id === 'data-health' && { hybridExport: '1' }), ...(query.order === 'desc' && { order: 'desc' }) }), auth.token));
+        ...(query.id === 'data-health' && { hybridExport: '1' }) }), auth.token));
       const combined = await reportWithHybrid(query.id, native, auth, region, scope.locations, true);
       if (combined !== native) return hybridReportDownload(query.id, combined, query.format as 'csv' | 'xlsx');
     }
-    const response = await requestApi(url('/analytics/reports/' + query.id + '/export', { ...scope, ...(query.order === 'desc' && {order:'desc'}), format: query.format }), auth.token);
+    const response = await requestApi(url('/analytics/reports/' + query.id + '/export', { ...scope, format: query.format }), auth.token);
     if (!response.ok) return new Response('Export is unavailable for this account or report', { status: response.status });
     const mime = query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const originalName = /^attachment;\s*filename="([a-zA-Z0-9_-]{1,150}\.(?:csv|xlsx))"$/.exec(response.headers.get('content-disposition') ?? '')?.[1];

@@ -185,13 +185,17 @@ export type Region = 'BD' | 'INTERNATIONAL';
 export type Staff = { id: string; name: string; role: string; permissions: string[]; assignedLocation?: string; passwordRotationRequired?: boolean };
 export function has(staff: Pick<Staff, 'permissions'>, permission: string) { return staff.permissions.includes(permission); }
 export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
+export function hasReportAccess(staff: Staff) {
+  return staff.permissions.some(key => key.startsWith('report.')) || has(staff, 'purchase.view') ||
+    (has(staff, 'order.view') && (has(staff, 'user.view') || superAdmin(staff)));
+}
 export function hasOperations(staff: Staff) { return superAdmin(staff) || ['operations.pack', 'operations.support', 'operations.purchase',
   'operations.receive', 'operations.supplier-finance'].some(grant => has(staff, grant)); }
 export function visibleSections(staff: Staff) {
   return sections.filter(({ id }) => {
     if (id === 'operations') return hasOperations(staff);
     if (['overview', 'settings', 'workflows'].includes(id)) return true;
-    if (id === 'reports') return staff.permissions.some(key => key.startsWith('report.'));
+    if (id === 'reports') return hasReportAccess(staff);
     if (['payments', 'staff'].includes(id) && superAdmin(staff)) return true;
     return Object.values(resources[id] ?? {}).some(item => has(staff, item.permission));
   });
