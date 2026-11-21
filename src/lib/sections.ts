@@ -182,7 +182,7 @@ export const sections = [
 
 export type Section = (typeof sections)[number];
 export type Region = 'BD' | 'INTERNATIONAL';
-export type Staff = { id: string; name: string; role: string; permissions: string[]; assignedLocation?: string };
+export type Staff = { id: string; name: string; role: string; permissions: string[]; assignedLocation?: string; passwordRotationRequired?: boolean };
 export function has(staff: Pick<Staff, 'permissions'>, permission: string) { return staff.permissions.includes(permission); }
 export function superAdmin(staff: Pick<Staff, 'role' | 'permissions'>) { return staff.role === 'SUPER_ADMIN' && has(staff, 'manage-permissions'); }
 export function hasOperations(staff: Staff) { return superAdmin(staff) || ['operations.pack', 'operations.support', 'operations.purchase',

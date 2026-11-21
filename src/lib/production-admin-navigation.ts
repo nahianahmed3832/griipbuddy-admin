@@ -86,6 +86,7 @@ const navigation = [
   { title: 'Administration', groups: [
     { label: 'Manage Staffs and Roles', icon: 'staff', entries: [
       item('Manage Staffs', 'staffs', 'user.view'), item('Manage Roles', 'role', 'role.view'),
+      item('Access activity', 'staff-activity', 'manage-permissions', undefined, true),
       item('Seller Hub', 'seller-hub', 'user.view', true, true), item('Seller verification', 'seller-verification', 'user.view', true, true),
     ] },
   ] },
@@ -123,8 +124,6 @@ export function productionNavigation({ auth, visible, region, fraud, connectedCa
     'create-coupon': canCreate('coupon.create'),
     'create-expense': canCreate('expense.create'),
     'barcodes/default-rate': canOperate(staff, 'purchase-rate'),
-    staffs: superAdmin(staff) && has(staff, 'user.view') && has(staff, 'role.view'),
-    role: superAdmin(staff) && has(staff, 'role.view'),
   };
   const inventoryViews = new Set(smartInventoryTabs(auth).map(([key]) => key));
   function allowed(entry: Entry) {

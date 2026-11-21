@@ -109,6 +109,8 @@ add('banner-update', '/desk/content/banners');
 add('featured-products', '/desk/content/featured-products');
 
 add('staffs', '/desk/staff/staff');
+add('profile', '/desk/staff/profile');
+add('staff-activity', '/desk/staff/activity');
 add('add-new-staff', '/desk/staff/staff/new');
 add('update-staff/[slug]', '/desk/staff/staff/[slug]');
 add('role', '/desk/staff/roles');

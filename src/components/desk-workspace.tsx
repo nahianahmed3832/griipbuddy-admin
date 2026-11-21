@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, operationsEnabled, operationsOnly, publicSandbox, session, url, workspaceWritesEnabled } from '@/lib/api';
+import { api, ApiError, canWrite, connection, getRegion, integratedCheckoutEnabled, operationsEnabled, operationsOnly, publicSandbox, session, staffProfileAvailable, url, workspaceWritesEnabled } from '@/lib/api';
+import { adminPath } from '@/lib/paths';
 import { param, permitted, type Query } from '@/lib/data';
 import { has, resources, sections, superAdmin, visibleSections } from '@/lib/sections';
 import { Dashboard, PageHeading } from '@/components/dashboard';
@@ -82,6 +83,24 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     redirect('/sign-in');
   }
   const {section:sectionId,view=[]} = await params;
+  const ownProfile = sectionId === 'staff' && view.length === 1 && view[0] === 'profile';
+  if (auth.staff.passwordRotationRequired) {
+    if (!ownProfile) redirect('/dashboard/profile');
+    let content;
+    try {
+      content = await StaffWorkspace({ auth, view: 'profile', q: {} });
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+      content = <PageHeading eyebrow="ADMINISTRATION" title="Profile temporarily unavailable"
+        description="Refresh the page to try loading your profile again."/>;
+    }
+    return <main className="main-content">
+      {content}
+      <form method="post" action={adminPath('/api/session')}>
+        <button className="button subtle" name="action" value="signout">Sign out</button>
+      </form>
+    </main>;
+  }
   if (operationsOnly() && sectionId !== 'operations' && !(sectionId === 'staff' && superAdmin(auth.staff))) redirect('/desk/operations');
   const q = await searchParams;
   const section = sections.find(item => item.id === sectionId);
@@ -101,7 +120,9 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   const tabs = [...sectionResources.filter(([key]) => !(sectionId === 'payments' && key === 'transactions' && transactions))
     .map(([key,res]) => [key, key === 'barcodes' && sectionId === 'inventory' ? 'Smart Inventory' : res.title]), ...managed];
   if (sectionId === 'staff' && superAdmin(auth.staff)) tabs.splice(0, tabs.length,
-    ['staff', 'Staff directory'], ['roles', 'Roles and permissions'], ['activity', 'Access activity'],
+    ...(has(auth.staff, 'user.view') ? [['staff', 'Staff directory']] : []),
+    ...(has(auth.staff, 'role.view') ? [['roles', 'Roles and permissions']] : []),
+    ['activity', 'Access activity'],
     ...(mayUseConnectedSellerOperations(auth) ? [['seller-hub', 'Seller Hub'], ['seller-verification', 'Seller verification']] : []));
   const inventoryTabs = smartInventoryTabs(auth);
   if (sectionId === 'customers' && canCreateCustomer(auth)) tabs.splice(1, 0, ['create', 'Create customer']);
@@ -164,7 +185,7 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
   let content;
   try {
     getRegion(q.region, auth.staff);
-    if (!nav.some(item => item.id === sectionId)) throw new ApiError(403);
+    if (!ownProfile && !nav.some(item => item.id === sectionId)) throw new ApiError(403);
     if (sectionId === 'operations') content = await OperationsDesk({ auth, region, view, query: {
       from: param(q, 'from'), to: param(q, 'to'), q: param(q, 'q'), state: param(q, 'state'), proposal: param(q, 'proposal'),
     } });
@@ -362,13 +383,15 @@ export async function DeskWorkspace({ params, searchParams, production }: DeskWo
     });
     return <ProductionAdminShell staff={staff} region={region} path={production.path} query={production.query}
       readOnly={publicSandbox()} fraud={fraud} catalogPilot={catalogPilot} navigation={navigation}
-      sectionLabel={section.label} environment={environment} showMarket={showMarket}>{content}</ProductionAdminShell>;
+      sectionLabel={section.label} environment={environment} showMarket={showMarket}
+      profilePath={staffProfileAvailable() ? '/dashboard/profile' : undefined}>{content}</ProductionAdminShell>;
   }
   return <Shell section={section} nav={nav} staff={staff} region={region} showMarket={showMarket}
     reportLinks={reportLinks} activeReport={sectionId === 'reports' ? view[0] : undefined}
     purchaseLinks={purchaseLinks} activePurchase={activePurchase}
     regionPath={activePurchase === 'new' ? rateFormPath : '/desk/' + sectionId + (view[0] && view[0] !== 'editor' ? '/' + view[0] : '')}
-    readOnly={publicSandbox()} environment={environment} fraud={fraud} international={has(auth.staff,'international.access')} destinations={destinations}>
+    readOnly={publicSandbox()} environment={environment} fraud={fraud} international={has(auth.staff,'international.access')} destinations={destinations}
+    profilePath={staffProfileAvailable() ? '/desk/staff/profile' : undefined}>
     {!!tabs.length && !activePurchase && <nav className="tabs" aria-label={section.label+' views'}>{tabs.map(([key,label]) => <Link key={key}
       href={url('/desk/'+sectionId+'/'+key,{region})} aria-current={key === active || (key === 'barcodes' && inSmartInventory) ? 'page' : undefined}>{label}</Link>)}</nav>}
     {inSmartInventory && <nav className="tabs" aria-label="Smart Inventory views">

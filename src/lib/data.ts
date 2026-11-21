@@ -52,9 +52,8 @@ export const perPage = 20;
 export const dateParam = (value?: string) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? value : undefined;
 
 export function permitted(resource: Resource, auth: Session) {
-  return has(auth.staff, resource.permission)
-    && (resource.flags !== 'pos-finance' || has(auth.staff, 'purchase.price.view') && has(auth.staff, 'potential.profit.view'))
-    && (resource.legacy !== 'staffs' || has(auth.staff, 'role.view'));
+  return has(auth.staff, resource.permission) &&
+    (resource.flags !== 'pos-finance' || has(auth.staff, 'purchase.price.view') && has(auth.staff, 'potential.profit.view'));
 }
 
 const regexCharacters = /[.*+?^${}()|[\]\\]/g;

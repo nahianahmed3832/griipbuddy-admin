@@ -36,9 +36,9 @@ function legacyLink(path: string, region: Region, pilot?: boolean) {
   return params.size ? path + '?' + params.toString() : path;
 }
 
-export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, catalogPilot, navigation, sectionLabel, environment, showMarket = true }: {
+export function ProductionAdminShell({ children, staff, region, path, query, readOnly, fraud, catalogPilot, navigation, sectionLabel, environment, showMarket = true, profilePath }: {
   children: ReactNode; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; path: string; query: string;
-  readOnly: boolean; fraud: boolean; catalogPilot: boolean; navigation: ProductionNavigation; sectionLabel: string; environment: string; showMarket?: boolean;
+  readOnly: boolean; fraud: boolean; catalogPilot: boolean; navigation: ProductionNavigation; sectionLabel: string; environment: string; showMarket?: boolean; profilePath?: string;
 }) {
   const router = useRouter();
   const { mobile, collapsed, narrow, sidebar, closeButton, toggleButton, toggle, close } = useWorkspaceNavigation();
@@ -131,7 +131,7 @@ export function ProductionAdminShell({ children, staff, region, path, query, rea
         <div className="header-actions">
           {fraud && <ProductionFraudChecker header className={styles.fraud} resultClassName={styles.fraudResult}/>}
           {showMarket && <WorkspaceMarket region={region} canSwitch={canSwitchRegion} hrefForRegion={regionHref} beforeSwitch={beforeRegionChange}/>}
-          <WorkspaceAccount staff={staff} readOnly={readOnly}/>
+          <WorkspaceAccount staff={staff} readOnly={readOnly} profilePath={profilePath}/>
         </div>
       </header>
       <main id="main" className="main-content" tabIndex={-1}>

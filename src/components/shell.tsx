@@ -22,9 +22,9 @@ export function Brand() {
 }
 
 export function Shell({ section, nav, staff, region, regionPath, environment, readOnly, fraud, international, destinations,
-  reportLinks, activeReport, purchaseLinks, activePurchase, children, showMarket = true }: {
+  reportLinks, activeReport, purchaseLinks, activePurchase, children, showMarket = true, profilePath }: {
   section: Nav; nav: Nav[]; staff: Pick<Staff, 'name' | 'role' | 'permissions'>; region: Region; regionPath: string;
-  environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[]; showMarket?: boolean;
+  environment: string; readOnly?: boolean; fraud?: boolean; international: boolean; destinations: Destination[]; showMarket?: boolean; profilePath?: string;
   reportLinks: (Destination & { id: string })[]; activeReport?: string;
   purchaseLinks: (Destination & { id: string })[]; activePurchase?: string; children: ReactNode;
 }) {
@@ -89,7 +89,7 @@ export function Shell({ section, nav, staff, region, regionPath, environment, re
           {fraud && <Link className="icon-button notification" aria-label="Fraud checker" title="Fraud checker"
             href={'/desk/orders/fraud-check' + regionQuery}><Search size={17} aria-hidden="true"/></Link>}
           <Link className="icon-button notification" aria-label="Operational alerts" href={alerts}><Bell size={18} aria-hidden="true"/></Link>
-          <WorkspaceAccount staff={staff} readOnly={readOnly}/>
+          <WorkspaceAccount staff={staff} readOnly={readOnly} profilePath={profilePath}/>
         </div>
       </header>
       <main id="main" className="main-content" tabIndex={-1}>{readOnly && <p className="notice">Read-only workspace · Sample data</p>}{children}</main>

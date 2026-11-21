@@ -1,16 +1,19 @@
-import { api, ApiError, canWrite, mongoId, obj, requestApi, sameOrigin, session, staffEnrollmentAvailable, str, workspaceWritesEnabled } from '@/lib/api';
+import { NextResponse } from 'next/server';
+import { api, ApiError, canWrite, hosted, mongoId, obj, requestApi, sameOrigin, session, sessionCookie, staffEnrollmentAvailable, staffProfileAvailable, str, workspaceWritesEnabled } from '@/lib/api';
+import { prefix } from '@/lib/paths';
 import { endpoint } from '@/lib/staff-access';
 import { has, superAdmin } from '@/lib/sections';
 
-const send = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+const send = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
 const actions = {
   accept: ['POST', '/accept', false, null],
-  invite: ['POST', '/directory', false, 'user.create'],
+  'staff-create': ['POST', '/directory', false, 'user.create'],
   'staff-edit': ['PUT', '/directory/:id', true, 'user.update'],
   suspend: ['POST', '/directory/:id/suspend', true, 'user.update'],
   reactivate: ['POST', '/directory/:id/reactivate', true, 'user.update'],
   cancel: ['POST', '/directory/:id/cancel', true, 'user.update'],
-  reissue: ['POST', '/directory/:id/reissue', true, 'user.update'],
+  revoke: ['POST', '/directory/:id/revoke', true, 'user.update'],
+  'staff-password': ['POST', '/directory/:id/password', true, 'user.update'],
   'role-create': ['POST', '/roles', false, 'role.create'],
   'role-edit': ['PUT', '/roles/:id', true, 'role.update'],
   'role-delete': ['DELETE', '/roles/:id', true, 'role.delete'],
@@ -37,41 +40,41 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return send({ message: 'Origin denied.' }, 403);
-  if (!req.headers.get('content-type')?.startsWith('application/json')) return send({ message: 'Invalid request.' }, 400);
+  if (req.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json') return send({ message: 'Invalid request.' }, 400);
   if (Number(req.headers.get('content-length')) > 15000) return send({ message: 'Request is too large.' }, 413);
   const raw = await req.text();
   if (raw.length > 15000) return send({ message: 'Request is too large.' }, 413);
   try {
     const body = obj(JSON.parse(raw));
     const action = str(body.action);
-    if (['invite', 'accept', 'reissue'].includes(action) && !staffEnrollmentAvailable()) {
+    if (Object.keys(body).some(key => !['action', 'id', 'values'].includes(key))) return send({ message: 'Invalid request.' }, 400);
+    if (['staff-create', 'accept'].includes(action) && !staffEnrollmentAvailable()) {
       return send({ message: 'Staff enrollment is unavailable in this workspace.' }, 403);
     }
     const id = str(body.id);
     if (id && !mongoId(id)) return send({ message: 'Invalid account or role ID.' }, 400);
-    if (action === 'staff-create' || action === 'staff-update') {
-      const edit = action === 'staff-update';
-      if (edit !== Boolean(id)) return send({ message: 'Invalid account target.' }, 400);
+    if (action === 'profile-edit' || action === 'profile-password') {
+      if (id) return send({ message: 'Invalid account target.' }, 400);
       const auth = await session();
       if (!auth) return send({ message: 'Sign in to continue.' }, 401);
-      if (!workspaceWritesEnabled() || !has(auth.staff, 'user.view') ||
-          !has(auth.staff, edit ? 'user.update' : 'user.create') || (!edit && !staffEnrollmentAvailable())) {
-        return send({ message: 'Staff management is read-only in this workspace.' }, 403);
+      if (!staffProfileAvailable() || !workspaceWritesEnabled()) {
+        return send({ message: 'Staff profile changes are unavailable in this workspace.' }, 403);
       }
-      const values = obj(body.values);
-      const password = str(values.password);
-      if ((!edit || password) && ([...password].length < 15 || [...password].length > 128 || password !== values.confirmation)) {
-        return send({ message: 'Enter matching passwords containing 15 to 128 characters.' }, 400);
+      const changePassword = action === 'profile-password';
+      if (auth.staff.passwordRotationRequired && !changePassword) {
+        return send({ message: 'Change your password before editing your profile.' }, 403);
       }
-      const response = await requestApi(edit ? '/user/update/staff/' + id : '/user/recruit/staff', auth.token, {
-        method: edit ? 'PUT' : 'POST',
-        body: JSON.stringify({ full_name: str(values.full_name), email: str(values.email), phone_number: str(values.phone_number),
-          gender: str(values.gender), role_ref: str(values.role_ref), business_location: values.business_location || null,
-          ...(password && { password }) }),
+      const result = await requestApi(endpoint + (changePassword ? '/profile/password' : '/profile'), auth.token, {
+        method: changePassword ? 'POST' : 'PUT', body: JSON.stringify(obj(body.values)),
       });
-      const result = obj(await response.json());
-      if (!response.ok) return send({ message: response.status < 500 && str(result.message) || 'The staff API could not save the account.' }, response.status);
-      return result.success === true ? send({ success: true }, response.status) : send({ message: 'The staff API returned an unexpected response.' }, 502);
+      const payload = obj(await result.json());
+      if (!result.ok) return send({ message: result.status < 500 && str(payload.message) || 'The staff API could not save the profile.' }, result.status);
+      if (payload.success !== true) return send({ message: 'The staff API returned an unexpected response.' }, 502);
+      const response = send({ success: true }, result.status);
+      if (changePassword) response.cookies.set(sessionCookie, '', {
+        secure: hosted(), httpOnly: true, sameSite: 'strict', path: prefix || '/', maxAge: 0,
+      });
+      return response;
     }
     if (action === 'staff-permissions' || action === 'staff-delete') {
       const auth = await session();
@@ -101,13 +104,17 @@ export async function POST(req: Request) {
     if (permission && auth && (!workspaceWritesEnabled() || !has(auth.staff, permission))) {
       return send({ message: 'Staff action is restricted in this workspace.' }, 403);
     }
+    if (action === 'staff-password' && auth && !superAdmin(auth.staff)) {
+      return send({ message: 'Only a platform administrator can set another staff password.' }, 403);
+    }
     const result = await requestApi(endpoint + path.replace(':id', id), auth?.token, {
       method, ...(method !== 'DELETE' && { body: JSON.stringify(obj(body.values)) }),
     });
     const payload = obj(await result.json());
     if (!result.ok) return send({ message: result.status < 500 && str(payload.message) || 'The staff API could not complete this action.' }, result.status);
     if (payload.success !== true) return send({ message: 'The staff API returned an unexpected response.' }, 502);
-    return send(payload.data, result.status);
+    // Staff credentials and setup tokens are write-only on management routes.
+    return send({ success: true }, result.status);
   } catch (error) {
     if (error instanceof SyntaxError) return send({ message: 'Invalid request.' }, 400);
     if (error instanceof ApiError && error.status < 500) return send({ message: error.message }, error.status);

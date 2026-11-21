@@ -3,9 +3,9 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Copy, Eye, EyeOff, Search, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Search, ShieldAlert } from 'lucide-react';
 import { adminPath } from '@/lib/paths';
-import { dateLabel, permissionInfo, roleDirectory, templates, type Options, type RoleRecord, type SetupLink, type StaffRecord } from '@/lib/staff-access';
+import { permissionInfo, roleDirectory, staffMarketLabel, templates, type Options, type RoleRecord, type StaffProfile, type StaffRecord } from '@/lib/staff-access';
 import styles from './production-staff-editor.module.css';
 
 async function submit(action: string, values: object, id?: string) {
@@ -18,180 +18,209 @@ async function submit(action: string, values: object, id?: string) {
 }
 const message = (error: unknown) => error instanceof Error ? error.message : 'Could not save the change. Try again.';
 
-function SetupReceipt({ receipt, href }: { receipt: SetupLink; href: string }) {
-  const [copied, setCopied] = useState(false);
-  const link = window.location.origin + adminPath('/staff-setup') + '#' + receipt.token;
-  return <section className="panel staff-block" aria-labelledby="setup-link-title">
-    <h2 id="setup-link-title">Setup link ready</h2>
-    <p>Share this link privately with the staff member. They’ll choose their password before signing in with their phone number.</p>
-    <p className="muted">It can be used once and expires {dateLabel(receipt.expiresAt)}. The link is shown only here.</p>
-    <div className="staff-actions"><input aria-label="Staff setup link" value={link} readOnly onFocus={e => e.target.select()}/>
-      <button className="button primary" onClick={async () => {
-        try { await navigator.clipboard.writeText(link); setCopied(true); }
-        catch { setCopied(false); }
-      }}>{copied ? <Check size={16}/> : <Copy size={16}/>} {copied ? 'Copied' : 'Copy link'}</button>
-      <Link className="button secondary" href={href}>Done</Link></div>
-  </section>;
-}
-
-function StaffPasswordField({ label, name, required, placeholder, change }: {
-  label: string; name: string; required?: boolean; placeholder: string; change?: (value: string) => void;
-}) {
+function StaffPasswordField({ label, name, current = false }: { label: string; name: string; current?: boolean }) {
   const [visible, setVisible] = useState(false);
   return <label>{label}
     <span className={styles.password}>
-      <input name={name} type={visible ? 'text' : 'password'} autoComplete="new-password" minLength={15} maxLength={128}
-        required={required} placeholder={placeholder} onChange={event => change?.(event.target.value)}/>
+      <input name={name} type={visible ? 'text' : 'password'} autoComplete={current ? 'current-password' : 'new-password'}
+        minLength={current ? undefined : 15} maxLength={current ? 256 : 128} required/>
       <button type="button" className="icon-button" aria-label={(visible ? 'Hide ' : 'Show ') + label.toLowerCase()}
         onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
     </span>
   </label>;
 }
 
-export function StaffForm({ row, options, back, production = false }: { row?: StaffRecord; options: Options; back: string; production?: boolean }) {
+export function StaffForm({ row, options, back }: { row?: StaffRecord; options: Options; back: string }) {
   const router = useRouter();
-  const [passwordSet, setPasswordSet] = useState(false);
   const [roleId, setRoleId] = useState(row?.roleId ?? '');
+  const [location, setLocation] = useState(row?.locationId ?? '');
+  const [review, setReview] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const [receipt, setReceipt] = useState<SetupLink & { id: string }>();
   const role = options.roles.find(item => item.id === roleId);
+  const scopeChanged = Boolean(row && (row.roleId !== roleId || row.locationId !== location));
+  const locations = options.locations.filter(option => option.region !== 'INTERNATIONAL' ||
+    (role?.permissions.includes('international.access') ?? (option.id === row?.locationId)));
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
     setError('');
+    if (scopeChanged && !review) { setReview(true); return; }
     const data = new FormData(event.currentTarget);
+    const password = String(data.get('password') ?? '');
+    if (!row && password !== data.get('confirmation')) { setError('The passwords do not match.'); return; }
+    setPending(true);
     try {
-      if (production) {
-        await submit(row ? 'staff-update' : 'staff-create', {
-          full_name: data.get('name'), email: data.get('email'), role_ref: roleId, phone_number: data.get('phone'),
-          business_location: data.get('location') || null, gender: data.get('gender'),
-          password: data.get('password'), confirmation: data.get('confirmation'),
-        }, row?.id);
-        router.refresh(); router.push(back);
-        return;
-      }
-      const result = await submit(row ? 'staff-edit' : 'invite', {
-        full_name: data.get('name'), email: data.get('email'), role_ref: roleId,
-        business_location: data.get('location') || null,
-        ...(row ? { revision: row.revision } : { phone_number: data.get('phone') }),
+      await submit(row ? 'staff-edit' : 'staff-create', {
+        full_name: data.get('name'), email: data.get('email'), role_ref: roleId, business_location: location || null,
+        ...(row ? { revision: row.revision } : { phone_number: data.get('phone'), password }),
       }, row?.id);
-      if (row) { router.refresh(); router.push(back); }
-      else setReceipt(result);
+      router.replace(back);
+      router.refresh();
     } catch (err) { setError(message(err)); }
     finally { setPending(false); }
   }
-  if (receipt) return <SetupReceipt receipt={receipt} href={back}/>;
-  if (production) return <form className={styles.editor} onSubmit={save}>
-    <Link className={styles.back} href={back}><ArrowLeft size={16}/> Back to Staffs</Link>
-    <h1>{row ? 'Update Staff' : 'Add New Staff'}</h1>
-    <fieldset className={styles.fields} disabled={pending}>
-      <label>Full Name<input name="name" required maxLength={120} defaultValue={row?.name}/></label>
-      <label>Email<input name="email" type="email" maxLength={254} defaultValue={row?.email}/></label>
-      <label>Phone Number<input name="phone" type="tel" inputMode="tel" required pattern={'\\+?[0-9]{8,16}'} defaultValue={row?.phone}/></label>
-      <label>Role<select name="role" aria-label="Role" value={roleId} onChange={event => setRoleId(event.target.value)} required>
-        <option value="">Select a role</option>
-        {row && !options.roles.some(option => option.id === row.roleId) && <option value={row.roleId}>{row.role}</option>}
-        {options.roles.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
-      </select></label>
-      {!row && <>
-        <StaffPasswordField label="Password" name="password" required placeholder="Enter password"/>
-        <StaffPasswordField label="Confirm Password" name="confirmation" required placeholder="Enter confirm password"/>
-      </>}
-      <label>Gender<select name="gender" aria-label="Gender" defaultValue={row?.gender === 'FEMALE' ? 'FEMALE' : 'MALE'}><option>MALE</option><option>FEMALE</option></select></label>
-      <label>Access Outlet<select name="location" aria-label="Access Outlet" defaultValue={row?.locationId ?? ''}>
-        <option value="">Select outlet</option>
-        {row?.locationId && !options.locations.some(option => option.id === row.locationId) && <option value={row.locationId}>{row.location}</option>}
-        {options.locations.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
-      </select></label>
-      {row && <>
-        <StaffPasswordField label="Set Password" name="password" placeholder="Enter new password" change={value => setPasswordSet(Boolean(value))}/>
-        {passwordSet && <StaffPasswordField label="Confirm Password" name="confirmation" required placeholder="Enter confirm password"/>}
-      </>}
-    </fieldset>
-    {error && <p className="notice warn" role="alert">{error}</p>}
-    <div className={styles.actions}><button className="button primary" type="submit" disabled={pending || !roleId}>
-      {pending ? 'Saving…' : row ? 'Update Staff' : 'Add New Staff'}</button></div>
-  </form>;
-  return <form onSubmit={save} className="staff-form">
+  return <form method="post" onSubmit={save} onChange={() => setReview(false)} className="staff-form">
     <section className="panel staff-block">
       <h2>Staff details</h2>
       <fieldset disabled={pending} className="staff-grid">
         <label>Full name<input name="name" autoComplete="off" required minLength={2} maxLength={120} defaultValue={row?.name}/></label>
         <label>Work email <small>Optional</small><input name="email" type="email" maxLength={254} defaultValue={row?.email}/></label>
         <label>Sign-in phone number<input name="phone" autoComplete="off" type="tel" inputMode="tel"
-          pattern={'\\+?[0-9]{8,16}'} title="8 to 16 digits, optionally starting with +" required defaultValue={row?.phone} readOnly={Boolean(row)}/>
-          <small>{row ? 'This is the account’s sign-in identifier.' : 'Use the number the staff member will enter at sign-in.'}</small></label>
+          pattern={'\\+?[0-9]{8,16}'} title="8 to 16 digits, optionally starting with +" required defaultValue={row?.phone} readOnly={Boolean(row)}/></label>
+        {!row && <>
+          <StaffPasswordField label="Initial password" name="password"/>
+          <StaffPasswordField label="Confirm initial password" name="confirmation"/>
+          <p className="muted">Use 15 to 128 characters. Share the initial password privately. The staff member must change it before accessing the workspace.</p>
+        </>}
       </fieldset>
     </section>
     <section className="panel staff-block">
       <h2>Role and location</h2>
-      <p>Choose the role that matches the work this person needs to do.</p>
       <fieldset disabled={pending} className="staff-grid">
         <label>Role<select name="role" value={roleId} onChange={e => setRoleId(e.target.value)} required>
           <option value="">Choose a role</option>
           {row && !options.roles.some(option => option.id === row.roleId) && <option value={row.roleId}>{row.role} (current)</option>}
           {options.roles.map(option => <option value={option.id} key={option.id}>{option.name}</option>)}
         </select></label>
-        <label>Assigned business location <small>Optional</small><select name="location" defaultValue={row?.locationId ?? ''}>
+        <label>Assigned business location<select name="location" value={location} onChange={event => setLocation(event.target.value)}>
           <option value="">Unassigned</option>
-          {row?.locationId && !options.locations.some(option => option.id === row.locationId) &&
-            <option value={row.locationId}>{row.location ?? 'Current location'}</option>}
-          {options.locations.map(option => <option value={option.id} key={option.id}>{option.name} ({option.region === 'BD' ? 'Bangladesh' : 'International'})</option>)}
-        </select><small>Feature access comes from the role.</small></label>
+          {location && !locations.some(option => option.id === location) && <option value={location} disabled>{row?.location ?? 'Selected location'} (unavailable)</option>}
+          {locations.map(option => <option value={option.id} key={option.id}>{option.name} ({staffMarketLabel(option.region)})</option>)}
+        </select><small>The business location determines the market. International assignments require an international access grant.</small></label>
       </fieldset>
       {role && <details className="staff-grants"><summary>{role.permissions.length} role permissions</summary>
         {role.permissions.length ? <ul>{role.permissions.map(key => <li key={key}>{permissionInfo(key).label}</li>)}</ul>
           : <p>No permissions are granted by this role.</p>}</details>}
-      {row && roleId !== row.roleId && <p className="notice warn"><ShieldAlert size={16}/> Changing roles replaces individual grants and signs this person out.</p>}
+      {review && <p className="notice warn" role="status"><ShieldAlert size={16}/> Changing role or location signs this person out. A new role replaces their individual grants.</p>}
       {!row && !options.roles.length && <p className="notice warn">Create an assignable role in Roles and permissions first.</p>}
     </section>
     {error && <p className="notice warn" role="alert">{error}</p>}
-    <div className="staff-actions"><button className="button primary" type="submit" disabled={pending || !roleId}>
-      {pending ? 'Saving…' : row ? 'Save staff details' : 'Create setup link'}</button>
+    <div className="staff-actions"><button className="button primary" type="submit" disabled={pending || !roleId || Boolean(location && !locations.some(option => option.id === location))}>
+      {pending ? 'Saving…' : !row ? 'Create staff account' : !scopeChanged ? 'Save staff details' : review ? 'Confirm and save access' : 'Review access changes'}</button>
+      {review && <button className="button secondary" type="button" onClick={() => setReview(false)}>Back to editing</button>}
       <Link href={back} className="button secondary">Cancel</Link></div>
   </form>;
 }
 
-const staffActions: Record<string, [string, string]> = {
-  suspend: ['Suspend access', 'The staff member will be signed out immediately. Their account and history will be kept.'],
-  reactivate: ['Reactivate access', 'The staff member will be able to sign in again using their existing password.'],
-  reissue: ['Replace setup link', 'This invalidates the previous setup link and creates a new link that expires in 24 hours.'],
-  cancel: ['Revoke setup link', 'The staff member cannot activate this account until you create a new setup link.'],
-};
-export function StaffLifecycle({ row, back, enrollment }: { row: StaffRecord; back: string; enrollment: boolean }) {
+const staffActions = {
+  suspend: ['Suspend access', 'The staff member will be signed out. Their account and history will be kept.', 'Access suspended.'],
+  reactivate: ['Reactivate access', 'The staff member will be able to sign in again.', 'Access reactivated.'],
+  cancel: ['Revoke setup link', 'The staff member cannot activate the account using this link.', 'Setup link revoked.'],
+  revoke: ['Revoke sessions', 'The staff member must sign in again on all devices.', 'Sessions revoked.'],
+} as const;
+
+export function StaffLifecycle({ row, canSetPassword }: { row: StaffRecord; canSetPassword: boolean }) {
   const router = useRouter();
-  const actions = row.status === 'ACTIVE' ? ['suspend'] : row.status === 'INACTIVE' ? ['reactivate']
-    : row.status === 'PENDING' && row.setupExpiresAt ? [
-      ...(enrollment ? ['reissue'] : []), ...(!row.setupRevoked ? ['cancel'] : []),
-    ] : [];
-  const [armed, setArmed] = useState('');
+  const actions = row.status === 'ACTIVE' ? ['suspend', 'revoke'] as const : row.status === 'INACTIVE' ? ['reactivate'] as const
+    : row.status === 'PENDING' && row.setupExpiresAt && !row.setupRevoked ? ['cancel'] as const : [];
+  const [armed, setArmed] = useState<keyof typeof staffActions>();
   const [error, setError] = useState('');
-  const [receipt, setReceipt] = useState<SetupLink>();
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState('');
-  if (!actions.length) return null;
-  if (receipt) return <SetupReceipt receipt={receipt} href={back}/>;
+  const passwordAvailable = canSetPassword && ['ACTIVE', 'INACTIVE', 'PENDING'].includes(row.status);
+  if (!actions.length && !passwordAvailable) return null;
   return <section className="panel staff-block staff-lifecycle" aria-labelledby="lifecycle-title">
     <h2 id="lifecycle-title">Account access</h2>
-    <p>{armed ? staffActions[armed][1] : row.status === 'PENDING' ? 'Manage the link for this pending account.' : staffActions[actions[0]][1]}</p>
+    {armed && <p>{staffActions[armed][1]}</p>}
     {error && <p role="alert" className="notice warn">{error}</p>}
     {done && <p role="status">{done}</p>}
     <div className="staff-actions">
-      {actions.filter(action => !armed || action === armed).map(action => <button key={action} className={'button ' + (armed ? 'primary' : 'secondary')} type="button" disabled={pending} onClick={async () => {
+      {actions.filter(action => !armed || action === armed).map(action => <button key={action} className={`button ${armed ? 'primary' : 'secondary'}`} type="button" disabled={pending} onClick={async () => {
         if (!armed) { setArmed(action); return; }
         setPending(true); setError(''); setDone('');
         try {
-          const result = await submit(action, { revision: row.revision }, row.id);
-          setArmed('');
-          if (action === 'reissue') setReceipt(result);
-          else { setDone(action === 'suspend' ? 'Access suspended.' : action === 'cancel' ? 'Setup link revoked.' : 'Access reactivated.'); router.refresh(); }
+          await submit(action, { revision: row.revision }, row.id);
+          setArmed(undefined);
+          setDone(staffActions[action][2]);
+          router.refresh();
         } catch (err) { setError(message(err)); }
         finally { setPending(false); }
       }}>{pending ? 'Saving…' : (armed ? 'Confirm: ' : '') + staffActions[action][0]}</button>)}
-      {armed && <button type="button" className="button subtle" disabled={pending} onClick={() => setArmed('')}>Cancel</button>}
+      {armed && <button type="button" className="button subtle" disabled={pending} onClick={() => setArmed(undefined)}>Cancel</button>}
     </div>
+    {passwordAvailable && !armed && <details className="staff-grants"><summary>Set staff password</summary>
+      <PasswordChange row={row} />
+    </details>}
   </section>;
+}
+
+function PasswordChange({ row }: { row?: StaffRecord }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+  async function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const password = String(data.get('password') ?? '');
+    setDone(''); setError('');
+    if (password !== data.get('confirmation')) { setError('The passwords do not match.'); return; }
+    setPending(true);
+    try {
+      if (row) {
+        await submit('staff-password', { password, revision: row.revision }, row.id);
+        form.reset(); setDone('Password updated. Previous sessions were revoked.');
+        router.refresh();
+      } else {
+        await submit('profile-password', { currentPassword: data.get('current'), password });
+        form.reset();
+        router.replace('/sign-in');
+        router.refresh();
+      }
+    } catch (err) { setError(message(err)); }
+    finally { setPending(false); }
+  }
+  return <form method="post" className="staff-form" onSubmit={submitPassword}>
+    <fieldset className="staff-grid" disabled={pending}>
+      {!row && <StaffPasswordField label="Current password" name="current" current/>}
+      <StaffPasswordField label="New password" name="password"/>
+      <StaffPasswordField label="Confirm new password" name="confirmation"/>
+    </fieldset>
+    <p className="muted">{row ? 'This revokes existing sessions and requires the staff member to change the password at their next sign-in.'
+      : 'Use 15 to 128 characters. You’ll be signed out after changing your password.'}</p>
+    {error && <p role="alert" className="notice warn">{error}</p>}
+    {done && <p role="status">{done}</p>}
+    <div className="staff-actions"><button className="button primary" type="submit" disabled={pending}>{pending ? 'Saving…' : row ? 'Set password and revoke sessions' : 'Change password'}</button></div>
+  </form>;
+}
+
+export function OwnStaffProfile({ profile, writable }: { profile: StaffProfile; writable: boolean }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [error, setError] = useState('');
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setPending(true); setFeedback(''); setError('');
+    try {
+      await submit('profile-edit', { full_name: data.get('name'), revision: profile.revision });
+      setFeedback('Profile saved.');
+      router.refresh();
+    } catch (err) { setError(message(err)); }
+    finally { setPending(false); }
+  }
+  return <div className="staff-form">
+    {profile.passwordRotationRequired ? <p className="notice warn" role="status">Change your password to continue to the workspace.</p>
+      : <section className="panel staff-block">
+        <h2>Staff details</h2>
+        <form method="post" onSubmit={save} className="staff-form">
+          <fieldset className="staff-grid" disabled={pending}>
+            <label>Full name<input name="name" minLength={2} maxLength={120} defaultValue={profile.name} required readOnly={!writable}/></label>
+            <label>Sign-in phone number<input value={profile.phone} readOnly/></label>
+            <label>Work email<input value={profile.email ?? ''} readOnly/></label>
+            <label>Role<input value={profile.role.replaceAll('_', ' ')} readOnly/></label>
+            <label>Market<input value={staffMarketLabel(profile.market)} readOnly/></label>
+            <label>Assigned location<input value={profile.location ?? 'Unassigned'} readOnly/></label>
+          </fieldset>
+          {error && <p role="alert" className="notice warn">{error}</p>}
+          {feedback && <p role="status">{feedback}</p>}
+          {writable && <div className="staff-actions"><button type="submit" className="button primary" disabled={pending}>{pending ? 'Saving…' : 'Save profile'}</button></div>}
+        </form>
+      </section>}
+    {writable && <section className="panel staff-block"><h2>Change password</h2><PasswordChange/></section>}
+  </div>;
 }
 
 const productionGroups: Record<string, string> = {
@@ -199,6 +228,7 @@ const productionGroups: Record<string, string> = {
   pos: 'Pos', courier: 'Courier', supplier: 'Supplier', business_locations: 'Business Locations', user: 'User', role: 'Role',
   cms: 'Cms', faq: 'Faq', review: 'Review', coupon: 'Coupon', expense: 'Expense', report: 'Report',
   'manage-permissions': 'Manage Permissions', overview: 'Overview', amounts: 'Overview And Amount Access', international: 'Region',
+  operations: 'Daily Operations',
 };
 
 function productionGroup(permission: string) {
@@ -237,7 +267,7 @@ export function RoleEditor({ role, catalog, writable, canDelete, production = fa
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEdit) return;
-    if (!production && !review) { setReview(true); return; }
+    if (!review) { setReview(true); return; }
     setError(''); setPending(true);
     try {
       await submit(role ? 'role-edit' : 'role-create', {
@@ -247,16 +277,27 @@ export function RoleEditor({ role, catalog, writable, canDelete, production = fa
     } catch (err) { setError(message(err)); }
     finally { setPending(false); }
   }
+  const changes = <section className="panel staff-block" aria-live="polite">
+        <h2>Review changes</h2>
+        <p>{role?.assigned ? `Permission changes replace the grants of all ${role.assigned} assigned accounts, including individual overrides.`
+          : 'This role controls what assigned staff can access.'}</p>
+        {role && name !== role.name && <p>Rename {role.name} to {name.trim()}.</p>}
+        {!selected.length && <p>This role grants no feature access.</p>}
+        {added.length > 0 && <p><strong>Grant:</strong> {added.map(key => permissionInfo(key).label).join(', ')}</p>}
+        {removed.length > 0 && <p><strong>Revoke:</strong> {removed.map(key => permissionInfo(key).label).join(', ')}</p>}
+      </section>;
   if (production) {
     const visible = catalog.filter(permission => Object.hasOwn(productionGroups, productionGroup(permission)));
     function checkPermissions(permissions: string[], value: boolean) {
       change(value ? [...new Set([...selected, ...permissions])] : selected.filter(permission => !permissions.includes(permission)));
     }
-    return <form className={styles.editor} onSubmit={save}>
+    return <form method="post" className={styles.editor} onSubmit={save}>
       <Link className={styles.back} href="/dashboard/role"><ArrowLeft size={16}/> Back to Roles</Link>
       <div className={styles.roleHeading}><h1>{role ? 'Update Role' : 'Add New Role'}</h1>
-        {canEdit && <button className="button primary" type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save Role'}</button>}</div>
-      <label className={styles.roleName}>Role Name<input name="name" value={name} onChange={event => setName(event.target.value)}
+        {canEdit && <button className="button primary" type="submit" disabled={pending || selected.some(key => !catalog.includes(key))}>
+          {pending ? 'Saving…' : review ? 'Confirm and save role' : 'Review role changes'}</button>}</div>
+      {review && changes}
+      <label className={styles.roleName}>Role Name<input name="name" value={name} onChange={event => { setName(event.target.value); setReview(false); }}
         readOnly={!canEdit || role?.builtIn} required minLength={2} maxLength={80}/></label>
       <label className={styles.selectAll}><input type="checkbox" checked={visible.length > 0 && visible.every(permission => selected.includes(permission))}
         disabled={!canEdit || pending} onChange={event => checkPermissions(visible, event.target.checked)}/> SELECT ALL PERMISSIONS</label>
@@ -268,10 +309,9 @@ export function RoleEditor({ role, catalog, writable, canDelete, production = fa
           return <section className={styles.permissionGroup} key={group}>
             <h2>{label}</h2><small>{count} / {permissions.length} selected</small>
             {permissions.map(permission => {
-              const suffix = permission.split('.').at(-1) ?? permission;
               return <label key={permission} className={styles.permission}><input type="checkbox" checked={selected.includes(permission)}
                 aria-label={permissionInfo(permission).label} disabled={!canEdit || pending}
-                onChange={event => checkPermissions([permission], event.target.checked)}/>{suffix[0].toUpperCase() + suffix.slice(1)}</label>;
+                onChange={event => checkPermissions([permission], event.target.checked)}/>{permissionInfo(permission).label}</label>;
             })}
           </section>;
         })}
@@ -280,7 +320,7 @@ export function RoleEditor({ role, catalog, writable, canDelete, production = fa
     </form>;
   }
   return <>
-    <form onSubmit={save} className="staff-form">
+    <form method="post" onSubmit={save} className="staff-form">
       <section className="panel staff-block">
         <h2>Role details</h2>
         <div className="staff-grid">
@@ -317,21 +357,13 @@ export function RoleEditor({ role, catalog, writable, canDelete, production = fa
           {!groups.length && <p className="muted">No matching permissions.</p>}
         </div>
       </section>
-      {review && <section className="panel staff-block" aria-live="polite">
-        <h2>Review changes</h2>
-        <p>{role?.assigned ? `Permission changes replace the grants of all ${role.assigned} assigned accounts, including individual overrides.`
-          : 'This role controls what assigned staff can access.'}</p>
-        {role && name !== role.name && <p>Rename {role.name} to {name.trim()}.</p>}
-        {!selected.length && <p>This role grants no feature access.</p>}
-        {added.length > 0 && <p><strong>Grant:</strong> {added.map(key => permissionInfo(key).label).join(', ')}</p>}
-        {removed.length > 0 && <p><strong>Revoke:</strong> {removed.map(key => permissionInfo(key).label).join(', ')}</p>}
-      </section>}
+      {review && changes}
       {error && <p role="alert" className="notice warn">{error}</p>}
       <div className="staff-actions">
         {canEdit && <button className="button primary" type="submit" disabled={pending || selected.some(key => !catalog.includes(key))}>
           {pending ? 'Saving…' : review ? 'Confirm and save role' : 'Review changes'}</button>}
         {review && <button className="button secondary" type="button" onClick={() => setReview(false)}>Back to editing</button>}
-        <Link className="button secondary" href={roleDirectory}>Back to roles</Link>
+        <Link className="button secondary" href={production ? '/dashboard/role' : roleDirectory}>Back to roles</Link>
       </div>
     </form>
     {role && canDelete && !role.protected && !role.builtIn && <section className="panel staff-block staff-lifecycle">
@@ -370,7 +402,7 @@ export function AcceptStaffSetup() {
   }
   if (done) return <div className="staff-block"><h2>Account is ready</h2><p>Sign in with your phone number and new password.</p>
     <a className="button primary" href={adminPath('/sign-in')}>Go to staff sign-in</a></div>;
-  return <form className="staff-form staff-block" onSubmit={accept}>
+  return <form method="post" className="staff-form staff-block" onSubmit={accept}>
     <label>New password<input autoComplete="new-password" name="password" type="password" required minLength={15} maxLength={256}/>
       <small>Use 15 to 128 characters. A password manager or a long passphrase works well.</small></label>
     <label>Confirm password<input autoComplete="new-password" name="confirmation" type="password" required minLength={15} maxLength={256}/></label>

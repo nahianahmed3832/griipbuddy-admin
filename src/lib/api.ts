@@ -87,6 +87,10 @@ export function staffEnrollmentAvailable() {
     operationsOnly() || integrationStaffEnrollment();
 }
 
+export function staffProfileAvailable() {
+  return process.env.GRIIP_ADMIN_TARGET === 'fixture' || protectedIntegration();
+}
+
 export function fixtureStaffLoginOnly() {
   return process.env.GRIIP_ADMIN_TARGET === 'preview' ||
     (process.env.GRIIP_ADMIN_TARGET === 'integration' && !integrationStaffEnrollment());
@@ -141,6 +145,7 @@ export async function who(token: string): Promise<Staff | null> {
     const location = str(obj(user.business_location)._id) || str(user.business_location);
     return { id: str(user._id), name: str(user.full_name) || 'Staff member', role,
       permissions: [...new Set(arr(user.permissions).filter((key): key is string => typeof key === 'string'))],
+      ...(user.staffPasswordRotationRequired === true && { passwordRotationRequired: true }),
       ...(mongoId(location) && { assignedLocation: location }) };
   } catch (error) {
     if (error instanceof ApiError && error.status < 500) return null;

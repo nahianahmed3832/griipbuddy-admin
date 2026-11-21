@@ -4,18 +4,28 @@ export const activityPath = '/desk/staff/activity';
 export const endpoint = '/staff-access';
 
 export type Option = { id: string; name: string };
-export type Options = { roles: (Option & { permissions: string[] })[]; locations: (Option & { region: string })[] };
+export type StaffMarket = 'BD' | 'INTERNATIONAL';
+export type Options = { roles: (Option & { permissions: string[] })[]; locations: (Option & { region: StaffMarket })[]; markets?: Option[] };
 export type StaffRecord = Option & {
   email?: string; gender?: string; phone: string; role: string; roleId: string; status: string; locationId: string;
-  location?: string; revision: string | null; setupExpiresAt?: string; setupRevoked: boolean; protected: boolean; permissions: string[];
+  location?: string; market?: StaffMarket | null; revision: string | null; setupExpiresAt?: string; setupRevoked: boolean;
+  protected: boolean; manageable?: boolean; passwordRotationRequired?: boolean; permissions: string[];
+};
+export type StaffProfile = Pick<StaffRecord, 'id' | 'name' | 'phone' | 'email' | 'role' | 'revision' | 'market' | 'location'> & {
+  passwordRotationRequired: boolean;
 };
 export type RoleRecord = Option & {
-  count: number; assigned: number; protected: boolean; builtIn: boolean; revision: string | null; permissions: string[];
+  count: number; assigned: number; protected: boolean; builtIn: boolean; revision: string | null; permissions: string[]; editable?: boolean;
 };
 export type StaffEvent = { _id: string; actor: string; target: string; actorName?: string; targetName?: string;
-  at: string; action: string; changes?: { added?: string[]; removed?: string[]; role?: string | { from: string; to: string } } };
+  at: string; action: string; outcome?: string; scope?: { market?: StaffMarket; location?: string }; operationId?: string;
+  changes?: { added?: string[]; removed?: string[]; role?: string | { from: string; to: string }; location?: { from?: string; to?: string };
+    fields?: string[]; from?: string; to?: string; sessionsRevoked?: boolean } };
 export type Paged<T> = { rows: T[]; total: number; page: number; size: number };
-export type SetupLink = { token: string; expiresAt: string };
+
+export function staffMarketLabel(value?: StaffMarket | null) {
+  return value === 'BD' ? 'Bangladesh' : value === 'INTERNATIONAL' ? 'International' : 'Unassigned';
+}
 
 const names: Record<string, string> = {
   order: 'Orders', pre_order: 'Preorders', product: 'Products', user: 'Users', stock: 'Stock',

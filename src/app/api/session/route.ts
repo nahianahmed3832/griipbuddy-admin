@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     const token = str(result.access_token);
     const staff = token ? await who(token) : null;
     if (!staff || (operationsOnly() && !hasOperations(staff))) return redirect('/sign-in?error=credentials');
-    const response = redirect(operationsEnabled() && hasOperations(staff) && (operationsOnly() || !superAdmin(staff))
-      ? '/desk/operations' : '/dashboard/overview');
+    const response = redirect(staff.passwordRotationRequired ? '/dashboard/profile' :
+      operationsEnabled() && hasOperations(staff) && (operationsOnly() || !superAdmin(staff)) ? '/desk/operations' : '/dashboard/overview');
     response.cookies.set(sessionCookie, token, { httpOnly: true, sameSite: 'strict', path: prefix || '/', secure: hosted(), maxAge: 3600 });
     return response;
   } catch (error) {

@@ -161,7 +161,9 @@ export function WorkspaceMarket({ region, canSwitch, hrefForRegion, beforeSwitch
   </details>;
 }
 
-export function WorkspaceAccount({ staff, readOnly }: { staff: Pick<Staff, 'name' | 'role'>; readOnly?: boolean }) {
+export function WorkspaceAccount({ staff, readOnly, profilePath }: {
+  staff: Pick<Staff, 'name' | 'role'>; readOnly?: boolean; profilePath?: string;
+}) {
   const initials = staff.name.trim().split(/\s+/).slice(0, 2).map(word => word.charAt(0)).join('').toUpperCase() || 'GB';
   const role = staff.role.replaceAll('_', ' ');
   return <details className="header-menu account-menu">
@@ -169,6 +171,7 @@ export function WorkspaceAccount({ staff, readOnly }: { staff: Pick<Staff, 'name
       <span className="account-label">{staff.name}</span><ChevronDown size={13} aria-hidden="true"/></summary>
     <div className="header-pop">
       <strong>{staff.name}</strong><small>{role}</small>
+      {profilePath && <Link href={profilePath}>My profile</Link>}
       {!readOnly && <form method="post" action={adminPath('/api/session')}>
         <button className="button subtle" name="action" value="signout"><LogOut size={15} aria-hidden="true"/> Sign out</button>
       </form>}
