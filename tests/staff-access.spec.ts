@@ -57,8 +57,8 @@ test('staff access lifecycle, profile, first sign-in and role history persist in
   expect(await (await created).json()).toEqual({ success: true });
   await page.waitForURL('**/desk/staff/staff');
   await page.getByRole('searchbox', { name: 'Search' }).fill(name);
-  await page.getByLabel('Market', { exact: true }).selectOption('BD');
-  await page.getByLabel('Role', { exact: true }).selectOption({ label: role });
+  await page.getByRole('combobox', { name: 'Market', exact: true }).selectOption('BD');
+  await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption({ label: role });
   await page.getByRole('button', { name: 'Apply filters' }).click();
   await expect(page.getByRole('link', { name })).toBeVisible();
 
@@ -82,7 +82,7 @@ test('staff access lifecycle, profile, first sign-in and role history persist in
     await staffPage.waitForURL('**/sign-in');
     await signIn(staffPage, phone, changed);
     await staffPage.waitForURL(overviewPath);
-    await staffPage.getByRole('button', { name: 'Account menu' }).click();
+    await staffPage.getByLabel('Account menu', { exact: true }).click();
     await staffPage.getByRole('link', { name: 'My profile' }).click();
     const updatedName = name + ' renamed';
     await staffPage.getByLabel('Full name').fill(updatedName);
@@ -134,6 +134,6 @@ test('staff access lifecycle, profile, first sign-in and role history persist in
     await expect(page.getByRole('row', { name: new RegExp('Suspended access.*' + updatedName) })).toBeVisible();
     await expect(page.getByRole('row', { name: new RegExp('Revoked sessions.*' + updatedName) })).toBeVisible();
     await expect(page.getByRole('row', { name: new RegExp('Set staff password.*' + updatedName) })).toBeVisible();
-    await expect(page.getByRole('row', { name: /Created role.*Browser warehouse/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: new RegExp('Created role.*' + role) })).toBeVisible();
   } finally { await staffPage.close(); }
 });
