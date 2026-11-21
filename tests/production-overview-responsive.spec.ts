@@ -30,18 +30,20 @@ async function pageContained(page: Page) {
 }
 
 async function visibleDefinition(page: Page, trigger: Locator, width: number) {
-  const tooltip = page.getByRole('tooltip');
-  await expect(tooltip).toBeVisible();
-  await expect(trigger).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') ?? '');
-  await expect(tooltip).not.toHaveText('');
+  let bounds: { x: number; y: number; width: number; height: number } | null = null;
   await expect.poll(async () => {
-    const rect = await tooltip.boundingBox();
-    return Boolean(rect && rect.x >= 7 && rect.x + rect.width <= width - 7 &&
-      rect.y >= 7 && rect.y + rect.height <= (page.viewportSize()?.height ?? 0) - 7);
+    bounds = await trigger.evaluate(button => {
+      const id = button.getAttribute('aria-describedby');
+      const tooltip = id ? button.ownerDocument.getElementById(id) : null;
+      if (tooltip?.getAttribute('role') !== 'tooltip' || !tooltip.textContent?.trim() ||
+          !tooltip.getClientRects().length || getComputedStyle(tooltip).visibility !== 'visible') return null;
+      const { x, y, width, height } = tooltip.getBoundingClientRect();
+      return { x, y, width, height };
+    });
+    return Boolean(bounds && bounds.x >= 7 && bounds.x + bounds.width <= width - 7 &&
+      bounds.y >= 7 && bounds.y + bounds.height <= (page.viewportSize()?.height ?? 0) - 7);
   }).toBe(true);
   await pageContained(page);
-  const bounds = await tooltip.boundingBox();
-  expect(bounds).not.toBeNull();
   return bounds!;
 }
 
@@ -65,6 +67,7 @@ for (const width of viewportWidths) {
     expect(rightAnchor?.x).toBeGreaterThan(anchor!.x);
 
     const priorLink = page.getByRole('region', { name: 'Trading snapshot' }).getByRole('link', { name: 'Orders placed', exact: true });
+    await page.mouse.move(2, 2);
     await priorLink.focus();
     await page.keyboard.press('Tab');
     await expect(left).toBeFocused();
@@ -193,4 +196,30 @@ test('a limited account cannot open the report through a direct URL', async ({ p
   await page.goto(origin + '/dashboard/reports/sales-summary');
   await expect(page.getByRole('heading', { name: 'Access restricted', exact: true })).toBeVisible();
   await expect(page.locator('.production-report-page')).toHaveCount(0);
+});
+
+test('a populated stock report keeps warehouse and search scope through table pagination and sorting', async ({ page }) => {
+  const search = process.env.GRIIP_ADMIN_OVERVIEW_STOCK_SEARCH ?? '';
+  test.skip(!search, 'Seed at least 11 matching synthetic stock rows in the fixture warehouse and set GRIIP_ADMIN_OVERVIEW_STOCK_SEARCH.');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  const params = new URLSearchParams({ locations: fixtureLocation, search, limit: '10' });
+  await page.goto(origin + '/dashboard/reports/stock-valuation?' + params);
+  const stock = page.getByRole('region', { name: 'Stock table', exact: true });
+  await expect(stock.getByRole('link', { name: /^sort by product/i })).toBeVisible();
+  const rows = stock.locator('tbody tr');
+  await expect(rows).toHaveCount(10);
+  const firstPage = await rows.allTextContents();
+  await page.getByRole('link', { name: 'Next', exact: true }).click();
+  await expect(page.getByText(/^Page 2 of /)).toBeVisible();
+  await expect(page).toHaveURL(url => url.searchParams.get('page') === '2' &&
+    [...params].every(([key, value]) => url.searchParams.get(key) === value));
+  expect(await rows.allTextContents()).not.toEqual(firstPage);
+
+  await page.getByRole('link', { name: 'Sort by On hand ascending', exact: true }).click();
+  await expect(page.getByText(/^Page 1 of /)).toBeVisible();
+  await expect(page).toHaveURL(url => url.searchParams.get('sort') === 'onHand' && url.searchParams.get('order') === 'asc' &&
+    !url.searchParams.has('page') && [...params].every(([key, value]) => url.searchParams.get(key) === value));
+  await pageContained(page);
 });

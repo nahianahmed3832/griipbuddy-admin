@@ -212,7 +212,7 @@ type ReportProps = {
 
 export async function Reports(props: ReportProps) {
   if (!props.production) return ReportContent(props);
-  return <Suspense key={JSON.stringify([props.region, props.id])} fallback={
+  return <Suspense key={JSON.stringify([props.region, props.id, props.q])} fallback={
     <div className="panel padded production-report-loading" role="status" aria-busy="true">
       <RefreshCw size={18} aria-hidden="true"/>{props.id ? 'Loading report…' : 'Loading reports…'}
     </div>
