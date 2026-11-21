@@ -21,7 +21,8 @@ async function productionAssigned({ auth, region, q }: { auth: Session; region: 
   const location = param(q, 'location') ?? '';
   const status = param(q, 'filter') ?? param(q, 'status');
   const filter = statuses.find(value => value === status);
-  const filters = { q: param(q, 'q')?.trim().slice(0, 100), sku: param(q, 'sku')?.trim().slice(0, 100),
+  const sort = ['newest', 'oldest'].find(direction => direction === param(q, 'sort'));
+  const filters = { q: param(q, 'q')?.trim().slice(0, 100), sku: param(q, 'sku')?.trim().slice(0, 100), sort,
     location: mongoId(location) ? location : undefined, from: dateParam(param(q, 'from')), to: dateParam(param(q, 'to')), filter };
   const pageValue = param(q, 'page') ?? '';
   const page = /^\d{1,5}$/.test(pageValue) ? Math.max(1, Number(pageValue)) : 1;

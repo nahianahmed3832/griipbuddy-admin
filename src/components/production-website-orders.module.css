@@ -361,7 +361,8 @@
   .tableScroll td[data-label]::before { content:attr(data-label); display:block; margin-bottom:4px; color:var(--orders-muted); font-size:.72rem; font-weight:650; }
   .tableScroll td[data-field='actions'] { grid-column:2; grid-row:1; justify-self:end; }
   .tableScroll td[data-field='order'] { grid-column:1; grid-row:1; align-self:center; }
-  .tableScroll td[data-field='order'] .orderNumber { display:inline-flex; align-items:center; min-height:24px; font-weight:650; }
+  .tableScroll td[data-field='order'] .orderSource { display: block; margin-block: 2px; color: var(--muted); font-size: 11px; }
+.orderNumber { display:inline-flex; align-items:center; min-height:24px; font-weight:650; }
   .tableScroll tr > :is(td[data-field='actions'],td[data-field='order'],td:last-child) { border-bottom:0; }
   .tableScroll .empty { grid-column:1/-1; }
   .headerActions { flex-wrap:wrap; }

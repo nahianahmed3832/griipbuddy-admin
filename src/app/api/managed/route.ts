@@ -23,7 +23,8 @@ export async function GET(request: Request) {
   const id = search.get('receipt') ?? '';
   if (!mongoId(id)) return new Response('Receipt not found', { status: 404 });
   try {
-    const scope = market !== undefined ? await managedMarketScope(market, auth) : undefined;
+    if (market === undefined) throw new ApiError(400, 'Choose the receipt’s operating market.');
+    const scope = await managedMarketScope(market, auth);
     const upstream = await requestApi('/global/admin/payments/' + id + '/receipt', auth.token, undefined, undefined, scope);
     if (!upstream.ok || upstream.headers.get('content-type') !== 'image/jpeg') {
       return new Response('Receipt unavailable', { status: upstream.ok ? 502 : upstream.status });
@@ -115,14 +116,18 @@ export async function POST(request: Request) {
       else if (action === 'shipment-action') {
         if (!context.shipments.some(shipment => shipment._id === id)) throw new ApiError(404, 'Shipment not found for this order.');
         if (['return', 'receive'].includes(str(step)) && !has(auth.staff, 'order.return')) throw new ApiError(403);
-      } else if (action === 'payment-action') {
-        if (context.paymentId !== id || !['review', 'collect', 'refunds'].includes(str(step))) throw new ApiError(404, 'Payment not found for this order.');
+      } else if (action === 'payment-action' || action === 'refund-reconcile') {
+        if (context.paymentId !== id || action === 'payment-action' && !['review', 'collect', 'refunds'].includes(str(step))) {
+          throw new ApiError(404, 'Payment not found for this order.');
+        }
       } else throw new ApiError(404, 'Order action not found.');
     }
     if (typeof action !== 'string' || !managedAction(action)) throw new ApiError(400, 'Choose a valid operation.');
     const result = obj(await writeManaged(action, str(market), str(id), str(step), values, auth, str(key), scope));
+    const refundAction = action === 'refund-reconcile' || action === 'payment-action' && step === 'refunds';
     return Response.json(action === 'order-cancel-batch' ? { rows: result.rows }
-      : { id: result._id, ...(order !== null && { state: result.state }) }, { headers: { 'Cache-Control': 'private, no-store' } });
+      : { id: result._id ?? result.id, ...((order !== null || refundAction) && { state: result.state }) },
+    { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     if (error instanceof ApiError) return new Response(error.message, { status: error.status });
     if (error instanceof SyntaxError || error instanceof TypeError) return new Response('Invalid request', { status: 400 });

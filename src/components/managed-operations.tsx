@@ -52,7 +52,7 @@ export async function ManagedSourcing(context: Context) {
 
 const shipmentStates = [
   ['planned', 'Ready to pick'], ['picked', 'Ready to pack'], ['packed', 'Ready for handoff'], ['booking', 'Booking needs review'],
-  ['dispatched', 'Dispatched'], ['in-transit', 'In transit'], ['out-for-delivery', 'Out for delivery'],
+  ['processing', 'Processing'], ['dispatched', 'Dispatched'], ['in-transit', 'In transit'], ['customs', 'Customs'], ['out-for-delivery', 'Out for delivery'],
   ['exception', 'Delivery exception'], ['delivered', 'Delivered'], ['returned', 'Returned'], ['cancelled', 'Cancelled'],
 ] as const;
 
@@ -81,7 +81,7 @@ async function ShipmentQueue(context: Context) {
     </form>
     {payload ? <Grid title="Shipment queue" data={payload} columns={[col('Order','order'),col('Shipment','_id'),col('Service','service'),
       col('Direction','direction'),status,col('Tracking','tracking'),col('Updated','updatedAt','date')]}
-      select={row => url(path,{ region,market,order:str(row.order),record:str(row._id) })}
+      select={row => url(path,{ ...filters,before,order:str(row.order),record:str(row._id) })}
       next={payload.next ? url(path,{...filters,before:str(payload.next)}) : undefined}/>
       : <p className="notice">Choose a country code in this operating region to view its shipments.</p>}
   </>;
@@ -93,7 +93,8 @@ export async function ManagedFulfillment(context: Context) {
   const handoff = await orderDeskHandoff(context, order);
   if (handoff) return <><OrderSearch context={context} order={order}/>{handoff}</>;
   const shipmentId = afterId(q,'record');
-  const base = { region, order, market: param(q, 'market') };
+  const filters = { region, market: param(q, 'market'), state: param(q, 'state'), direction: param(q, 'direction'), before: afterId(q, 'before') };
+  const base = { ...filters, order };
   if (!order) return <><OrderSearch context={context}/>{await ShipmentQueue(context)}</>;
   const [data, rawOrder] = order ? await Promise.all([
     managedRead('/global/admin/orders/' + order, auth, param(q, 'market') ? await managedMarketScope(context.market, auth) : undefined),
@@ -104,27 +105,43 @@ export async function ManagedFulfillment(context: Context) {
   if ((editorContext.market === 'BD') !== (region === 'BD')) throw new ApiError(404);
   const parcelScope = await managedMarketScope(editorContext.market, auth);
   const selected = shipments.find(row => row._id === shipmentId);
+  if (shipmentId && !selected) throw new ApiError(404);
+  const ordered = arr(obj(rawOrder).products).map(obj);
+  const activeOutbound = shipments.filter(parcel => parcel.direction === 'outbound' && parcel.state !== 'cancelled');
+  const orderLines = ordered.map(line => {
+    const quantity = Number(line.total_quantity ?? line.quantity) || 0;
+    const allocated = activeOutbound.flatMap(parcel => arr(parcel.lines).map(obj))
+      .filter(allocated => str(allocated.id) === str(line._id))
+      .reduce((sum, allocation) => sum + (Number(allocation.quantity) || 0), 0);
+    return { ...line, ordered: quantity, allocated, remaining: Math.max(0, quantity - allocated) };
+  });
   const state = str(selected?.state);
-  const trackable = ['dispatched','in-transit','customs','out-for-delivery','exception'];
+  const trackable = ['processing','dispatched','in-transit','customs','out-for-delivery','exception'];
   const outbound = selected?.direction === 'outbound';
   const timeline = selected && shipmentId
     ? obj(await managedRead(url('/global/admin/shipments/' + shipmentId + '/tracking',{after:afterId(q,'after')}),auth,parcelScope)) : null;
   return <>
     <OrderSearch context={context} order={order}/>
+    <div className="page-actions"><Link className="button secondary" href={url(path, filters)}>Back to shipment queue</Link></div>
     {order && rawOrder && <>
       <div className="page-actions">{editor(editorContext,'shipment-new','Plan shipment',[
         text('order','Order ID',order),text('warehouse','Warehouse ID'),text('service','Configured shipping service'),
         json('parcels','Parcels',[{grams:500,length:15,width:10,height:5}],'Use grams and centimeters.'),
         json('lines','Order lines',[{id:'',quantity:1}],'Use order line IDs. China shipments require a source mapping and may use a matching purchase ID.'),
       ],{primary:true})}</div>
-      <Grid title="Order lines" data={{items:obj(rawOrder).products}} columns={[col('Line ID','_id'),col('Variant','selected_variant.sku|variant.sku'),
-        col('Quantity','total_quantity|quantity')]}/>
+      <Grid title="Order line allocation" data={{items:orderLines}} columns={[col('Line ID','_id'),col('Variant','selected_variant.sku|variant.sku'),
+        col('Ordered','ordered'),col('Allocated','allocated'),col('Remaining','remaining')]}/>
       <Grid title="Shipments" data={{items:shipments}} columns={[col('Shipment','_id'),col('Route','origin'),col('Service','service'),status,
         col('Tracking','tracking'),col('Direction','direction')]} select={row => url(path,{...base,record:str(row._id)})}/>
     </>}
     {selected && <section className="panel padded stack-form">
       <h2>Shipment {shipmentId}</h2>
-      <p>{str(selected.service)} · {state}</p>
+      <dl className="details-grid">
+        <div><dt>Shipment state</dt><dd>{state}</dd></div>
+        <div><dt>Fulfillment site</dt><dd>{[selected.warehouse, selected.origin].map(str).filter(Boolean).join(' · ')}</dd></div>
+        <div><dt>Service</dt><dd>{[selected.service, selected.provider].map(str).filter(Boolean).join(' · ')}</dd></div>
+        <div><dt>Tracking number</dt><dd>{str(selected.tracking) || 'Unrecorded'}</dd></div>
+      </dl>
       <div className="page-actions">
         {outbound && state === 'planned' && <>
           {editor(editorContext,'shipment-action','Pick shipment',[json('barcodes','Barcodes',[],'Enter an array of scanned barcode labels. Leave empty for eligible untracked FIFO stock.')],{id:shipmentId,step:'pick'})}
@@ -151,6 +168,11 @@ export async function ManagedFulfillment(context: Context) {
           href={url('/desk/payments/payment-desk',{region,market:editorContext.market,order})}>Review payment and refund</Link>}
       </div>
     </section>}
+    {selected && <Grid title="Allocated shipment lines" data={{items:selected.lines}} columns={[
+      col('Order line','id'),col('Variant','sku'),col('Units','quantity')]}/>}
+    {selected && arr(selected.parcels).length > 0 && <Grid title="Parcel dimensions"
+      data={{items:arr(selected.parcels).map((parcel, index) => ({ ...obj(parcel), package: index + 1 }))}}
+      columns={[col('Package','package'),col('Grams','grams'),col('Length (cm)','length'),col('Width (cm)','width'),col('Height (cm)','height')]}/>}
     {selected?.receivedAt != null && <Grid title="Inspection result" data={{items:selected.receiptLines}} columns={[
       col('Order line','id'),col('Sellable units','sellable'),col('Damaged units','damaged')]}/>}
     {timeline && <Grid title="Tracking history" data={{ ...timeline, items:arr(timeline.items).map(obj).map(row =>
@@ -176,6 +198,9 @@ export async function ManagedPayments(context: Context) {
   const offline = ['cod','manual'].includes(str(payment.provider));
   const inspectedReturns = arr(orderData?.shipments).map(obj).filter(row => row.direction === 'return' && row.receivedAt && arr(row.receiptLines).length);
   const refundable = Number(obj(details?.refund).amount) || 0;
+  const recordedRefunds = arr(details?.refunds).map(obj);
+  const activeRefunds = recordedRefunds.filter(row => row.state === 'pending' || row.state === 'refunded');
+  const refundBalance = obj(details?.refundBalance);
   return <>
     <OrderSearch context={context} order={order}/>
     {orderData && <Grid title="Payment attempts" data={{items:orderData.payments}} columns={[col('Payment','id'),col('Provider','provider'),
@@ -186,29 +211,32 @@ export async function ManagedPayments(context: Context) {
         description="Amounts are in the recorded currency’s minor units."
         labels={{provider:'Provider',status:'Status',currency:'Currency',amount:'Requested',captured:'Captured',
           refunded:'Refunded',reference:'Evidence reference',method:'Evidence method'}}/>
+      {Number(refundBalance.held) > 0 && <p className="notice" role="status">
+        {String(refundBalance.held)} {str(payment.currency)} minor units held for pending refunds.
+      </p>}
       <div className="page-actions">
-        {payment.evidenceSubmitted === true && <a className="button secondary" href={adminPath('/api/managed?receipt=' + requested)}>
+        {payment.evidenceSubmitted === true && <a className="button secondary" href={adminPath(url('/api/managed', { receipt: requested, market: editorContext.market }))}>
           <ArrowDownToLine size={15}/> Download private receipt</a>}
         {offline && payment.status === 'pending' && editor(editorContext,'payment-action','Review payment',[
           {name:'decision',label:'Decision',type:'select',choices:['approve','reject']},text('reason','Review reason'),
           ...(payment.provider === 'manual' ? [text('verifiedReference','Verified receipt reference',undefined,true),
             number('verifiedAmount','Verified receipt amount (minor units)',undefined,true)] : []),
         ],{id:requested,step:'review',description:'Manual approval requires the matching reference and amount from the private receipt.'})}
-        {offline && ['authorized','captured'].includes(str(payment.status)) && editor(editorContext,'payment-action','Record delivery collection',[
+        {offline && Boolean(details.collection) && editor(editorContext,'payment-action','Record delivery collection',[
           text('reference','Verified collection reference'),
         ],{id:requested,step:'collect'})}
         {!offline && editor(editorContext,'payment-action','Reconcile provider',[],{id:requested,step:'reconcile'})}
-        {refundable > 0 && !arr(details.refunds).map(obj).some(row => row.returnShipment) &&
+        {refundable > 0 && !activeRefunds.some(row => row.returnShipment) &&
           editor(editorContext,'payment-action','Record refund',[
             number('amount','Refund amount (minor units)'),text('reason','Refund reason'),text('reference','Verified offline refund reference',undefined,!offline),
-          ],{id:requested,step:'refunds',description:'Confirm the amount and reason. The API records provider confirmation or requires a verified offline reference.'})}
-        {refundable > 0 && inspectedReturns.map(receipt => <div key={str(receipt._id)}>
+          ],{id:requested,step:'refunds',retryOrder:order,description:'Confirm the amount and reason. The API records provider confirmation or requires a verified offline reference.'})}
+        {refundable > 0 && !activeRefunds.some(row => !row.returnShipment) && inspectedReturns.map(receipt => <div key={str(receipt._id)}>
           {editor(editorContext,'payment-action','Refund inspected return ' + str(receipt._id).slice(-8),[
             text('returnShipment','Inspected return reference',receipt._id),text('reason','Refund reason'),
-            json('lines','Selected returned lines',arr(receipt.receiptLines).map(obj).map(row => ({ id:row.id,quantity:row.sellable ?? 0 })),
+            json('lines','Selected returned lines',arr(receipt.receiptLines).map(obj).map(row => ({ id:row.id,quantity:(Number(row.sellable) || 0) + (Number(row.damaged) || 0) })),
               'Enter the exact order line IDs and eligible quantities. Remove any line that does not qualify.'),
             ...(offline ? [text('reference','Verified offline refund reference')] : []),
-          ],{id:requested,step:'refunds',description:'The API calculates the returned merchandise share from the original price and discount snapshot.'})}
+          ],{id:requested,step:'refunds',retryOrder:order,description:'The API calculates the returned merchandise share from the original price and discount snapshot.'})}
         </div>)}
         {!offline && editor(editorContext,'payment-action','Add dispute note',[
           text('reference','Provider reference'),{name:'disposition',label:'Disposition',type:'select',choices:['investigating','responded','resolved']},
@@ -218,13 +246,13 @@ export async function ManagedPayments(context: Context) {
       <Grid title="Payment activity" data={{items:details.events}} columns={[col('Event','kind'),col('Staff ID','actor'),
         col('Recorded','createdAt'),col('Decision','details.decision'),col('Reason','details.reason')]}
         next={details.next ? url(path,{...base,record:requested,after:str(details.next)}) : undefined}/>
-      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),col('Currency','currency'),col('State','state','badge'),col('Inspected return','returnShipment'),col('Provider reference','providerId'),col('Updated','updatedAt','date'),col('Reason','reason')]}/>
-      {!offline && <div className="page-actions">
-        {arr(details.refunds).map(obj).filter(row => row.state === 'pending' && str(row.id)).map(row =>
-          editor(editorContext, 'refund-reconcile', 'Reconcile refund ' + str(row.id).slice(-8), [
-            text('reference', 'Provider refund reference', row.providerId),
-          ], { id: requested, step: str(row.id), description: 'Look up this refund with the payment provider and apply its verified outcome.' }))}
-      </div>}
+      <Grid title="Refunds" data={{items:details.refunds}} columns={[col('Refund','id|_id'),col('Amount (minor)','amount'),col('Currency','currency'),col('State','state','badge'),col('Inspected return','returnShipment'),col('Refund reference','providerId|reference'),col('Reconciliation','reconciliation'),col('Updated','updatedAt','date'),col('Reason','reason')]}/>
+      <div className="page-actions">
+        {recordedRefunds.filter(row => row.state === 'pending' && str(row.id)).map(row =>
+          editor(editorContext, 'refund-reconcile', 'Resume refund ' + str(row.id).slice(-8), [
+            ...(!offline ? [text('reference', 'Provider refund reference', row.providerId, true)] : []),
+          ], { id: requested, step: str(row.id), description: 'Resume this saved refund. Its amount and original payment stay in place.' }))}
+      </div>
     </>}
   </>;
 }

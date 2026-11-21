@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import type { ManagedAction } from '@/lib/managed';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
+import { orderRetryKey } from '@/lib/order-managed';
 
 export type ManagedField = {
   name: string;
@@ -15,11 +17,12 @@ export type ManagedField = {
   hint?: string;
 };
 
-export function ManagedForm({ label, action, fields, market, id, step, revision, primary = false, description }: {
+export function ManagedForm({ label, action, fields, market, id, step, revision, primary = false, description, retryOrder }: {
   label: string; action: ManagedAction; fields: ManagedField[]; market: string; id?: string; step?: string;
-  revision?: number | null; primary?: boolean; description?: string;
+  revision?: number | null; primary?: boolean; description?: string; retryOrder?: string;
 }) {
   const router = useRouter();
+  const ready = useBrowserReady();
   const heading = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const key = useRef('');
@@ -56,19 +59,29 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
       }
       const record = action === 'collection' ? id ?? values.slug : id;
       if (action === 'collection') delete values.slug;
+      const isRefund = action === 'payment-action' && step === 'refunds';
+      const retry = isRefund && id ? await orderRetryKey(retryOrder ?? id, { action, id, step, values, keyed: true }) : undefined;
       key.current ||= crypto.randomUUID();
       const response = await fetch(adminPath('/api/managed'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, market, id: record, step, values, key: key.current }),
+        body: JSON.stringify({ action, market, id: record, step, values, key: retry?.key ?? key.current }),
       });
-      if (!response.ok) { setError(await response.text() || 'The operation could not be confirmed.'); return; }
-      await response.json();
+      if (!response.ok) {
+        setError(await response.text() || 'The operation could not be confirmed.');
+        if (isRefund) router.refresh();
+        return;
+      }
+      const result = await response.json();
       key.current = '';
+      if (result.state !== 'pending') retry?.clear();
       dialog.current?.close();
-      window.dispatchEvent(new CustomEvent('griip-admin-saved', { detail: 'Operation completed.' }));
+      const message = result.state === 'pending' ? 'Refund awaiting provider confirmation.'
+        : result.state === 'failed' ? 'Refund failed. Review its history.' : 'Operation completed.';
+      window.dispatchEvent(new CustomEvent('griip-admin-saved', { detail: message }));
       router.refresh();
     } catch {
       setError('The request could not be confirmed. Check the record before retrying.');
+      if (action === 'payment-action' && step === 'refunds') router.refresh();
     } finally {
       busy.current = false;
       setSaving(false);
@@ -76,7 +89,7 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
   }
 
   return <>
-    <button type="button" className={'button ' + (primary ? 'primary' : 'secondary')} onClick={() => {
+    <button type="button" className={'button ' + (primary ? 'primary' : 'secondary')} disabled={!ready} onClick={() => {
       setError('');
       dialog.current?.querySelector('form')?.reset();
       dialog.current?.showModal();
@@ -84,7 +97,7 @@ export function ManagedForm({ label, action, fields, market, id, step, revision,
     <dialog ref={dialog} className="form-dialog managed-dialog" aria-labelledby={heading} onCancel={event => {
       if (busy.current) event.preventDefault();
     }}>
-      <form className="stack-form" aria-busy={saving} onSubmit={submit} onChange={() => { key.current = ''; }}>
+      <form method="post" className="stack-form" aria-busy={saving} onSubmit={submit} onChange={() => { key.current = ''; }}>
         <div><h2 id={heading}>{label}</h2><p>{description || 'Confirm the change in the ' + market + ' workspace.'}</p></div>
         <fieldset className="managed-fields managed-inputs" disabled={saving}>{fields.map(field => {
           const value = String(field.value ?? '');

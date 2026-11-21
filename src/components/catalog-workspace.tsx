@@ -430,7 +430,7 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
           })}</ul>}
           {process.env.GRIIP_ADMIN_INTEGRATED === '1' && canWrite(auth.staff) && <div className="review-moderation-media">
             {arr(entry.storefrontMediaTypes).map((type, index) => {
-              const src = adminPath('/api/storefront?id=' + id + '&index=' + index);
+              const src = adminPath('/api/storefront?' + new URLSearchParams({ id, index: String(index), region }));
               // eslint-disable-next-line @next/next/no-img-element
               return type === 'video/mp4' ? <video key={src} src={src} controls preload="metadata"/> : <img key={src} src={src} alt={'Review attachment ' + (index + 1)}/>;
             })}
@@ -451,19 +451,20 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
   if (scoped && productId && !mongoId(productId)) throw new ApiError(404);
   const rowResource = scoped ? { ...resource, params: { ...(productId ? { product: productId } : {}), ...(kind === 'reviews' && rating && /^[1-5]$/.test(rating) ? { rating } : {}) } } : resource;
   const requestedLimit = param(q, 'limit') ?? '';
-  const limit = production && scoped && ['20','40','60','80','100','all'].includes(requestedLimit) ? requestedLimit : '20';
+  const allowedLimits = ['20','40','60','80','100', ...(kind === 'faqs' ? ['all'] : [])];
+  const limit = production && scoped && allowedLimits.includes(requestedLimit) ? requestedLimit : '20';
   const all = limit === 'all';
   const pageSize = all ? 10000 : Number(limit);
   const list = await loadResource(rowResource, auth, all ? { ...q, page: '1' } : q, region, pageSize);
   const search = param(q, 'q');
   const filter = param(q, 'filter');
   const page = (value: number) => url(base, { region, filter, q: search, product: productId, rating, page: String(value) });
-  const filtered = scoped ? list.rows.filter(row => sameRegion(row, region)) : list.rows;
+  const filtered = kind === 'faqs' ? list.rows.filter(row => sameRegion(row, region)) : list.rows;
   if (production && kind === 'policies') return <ProductionReturnPolicies policies={filtered.filter(row => mongoId(reference(row))).map(returnPolicy)}
     region={region} canCreate={create} canEdit={canEditRegistry('policies', 'edit', auth)} canDelete={canEditRegistry('policies', 'delete', auth)}/>;
   if (production && (kind === 'brands' || kind === 'faqs' || kind === 'reviews')) return <ProductionRegistryList
     rows={filtered.filter(row => mongoId(reference(row))).map(registryRow)} kind={kind} region={region}
-    page={list.page} limit={limit} pageSize={pageSize} hasNext={!all && list.hasNext} total={scoped && !productId ? undefined : list.total} search={search} filter={filter} product={productId}
+    page={list.page} limit={limit} pageSize={pageSize} hasNext={!all && list.hasNext} total={kind === 'faqs' && !productId ? undefined : list.total} search={search} filter={filter} product={productId}
     rating={rating} canCreate={create} canEdit={canEditRegistry(kind, 'edit', auth)} canDelete={canEditRegistry(kind, 'delete', auth)}/>;
   const rows = filtered.filter(row => mongoId(reference(row))).map(row => ({ id: reference(row), values: resource.columns.map(column => columnText(row, column)), href: url(base + '/' + reference(row), { region }) }));
   return <><PageHeading eyebrow={kind === 'countries' ? 'OPERATIONS / MARKETS' : 'COMMERCE / CATALOG'} title={resource.title} description=""/>
@@ -471,7 +472,7 @@ export async function CatalogRegistry({ auth, q, region, id, kind, production }:
       {kind === 'countries' && create && <CatalogConfirm kind={kind} region={region} action="seed" label="Seed starter countries"
         description="Add the starter country records missing from this workspace."/>}</div>
     <form className="panel filters" action={adminPath(base)}><input type="hidden" name="region" value={region}/>
-      {kind !== 'reviews' && <label className="search-input"><input name="q" defaultValue={search} aria-label={'Search ' + resource.title.toLowerCase()} placeholder="Search"/></label>}
+      <label className="search-input"><input name="q" defaultValue={search} aria-label={'Search ' + resource.title.toLowerCase()} placeholder="Search"/></label>
       {kind === 'reviews' && <label>Rating<select name="rating" defaultValue={rating ?? ''}><option value="">All ratings</option>
         {[1,2,3,4,5].map(value => <option key={value} value={value}>{value} stars</option>)}</select></label>}
       {productId && <input type="hidden" name="product" value={productId}/>}

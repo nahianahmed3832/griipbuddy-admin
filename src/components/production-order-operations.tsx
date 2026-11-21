@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
 import { money } from '@/lib/website-orders';
 import { managedOrderRequest, orderRetryKey, type ManagedMutation, type ManagedOrder, type ReviewLine, type Shipment } from '@/lib/order-managed';
 import styles from './production-website-order-detail.module.css';
@@ -28,14 +30,20 @@ export function useManagedOrder(order: string, enabled: boolean) {
     inFlight.current = true;
     setSaving(true);
     setNotice('');
+    const refundAction = input.action === 'refund-reconcile' || input.action === 'payment-action' && input.step === 'refunds';
     try {
       const retry = input.keyed ? await orderRetryKey(order, input) : undefined;
       const result = await managedOrderRequest<{ id?: string; state?: string }>(order, { ...input, market: data.market || 'BD', key: retry?.key });
       setData(await managedOrderRequest<ManagedOrder>(order));
       if (result.state !== 'pending') retry?.clear();
-      setNotice(result.state === 'pending' ? 'Refund pending.' : message);
+      setNotice(refundAction && result.state === 'pending' ? 'Refund awaiting provider confirmation.'
+        : refundAction && result.state === 'failed' ? 'Refund failed. Review its history.' : message);
       router.refresh();
     } catch (error) {
+      if (refundAction) {
+        const current = await managedOrderRequest<ManagedOrder>(order).catch(() => undefined);
+        if (current) setData(current);
+      }
       setNotice(error instanceof Error ? error.message : 'Could not complete the order action.');
     } finally {
       setSaving(false);
@@ -78,6 +86,7 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
   operations: Operations; editable: boolean; priorReference?: string; priorDate?: string;
 }) {
   const { data, saving, save, setNotice } = operations;
+  const ready = useBrowserReady();
   const detail = data?.payment;
   if (!detail) return null;
   const payment = detail.payment;
@@ -93,6 +102,12 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
   </label>;
   const paymentAction = (step: string, values: Record<string, unknown>, message: string) => void save({ action: 'payment-action', id: payment.id,
     step, values, keyed: step === 'refunds' }, message);
+  const refunds = detail.refunds ?? [];
+  const offline = ['cod', 'manual'].includes(payment.provider);
+  const activeRefunds = refunds.filter(row => row.state === 'pending' || row.state === 'refunded');
+  const inspected = data.shipments.filter(row => row.direction === 'return' && row.receivedAt && row.receiptLines?.length);
+  const skuByLine = new Map(data.lines.map(line => [line.id, line.sku]));
+  const labels = { pending: 'Awaiting confirmation', refunded: 'Confirmed', failed: 'Failed' } as Record<string, string>;
 
   return <section className={styles.payment} aria-label="Payment Info">
     <p className={styles.paymentHeading}>Payment Info:</p>
@@ -101,8 +116,9 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
     <p>Transaction Id: {transaction || 'N/A'}</p>
     <p>Transaction Status: {payment.status}</p>
     {detail.evidence?.reference && <p>Receipt Reference: {detail.evidence.reference}</p>}
-    {showEvidence && <a href={adminPath('/api/managed?receipt=' + encodeURIComponent(payment.id))} download>Download receipt</a>}
-    {editable && pending && <form className={styles.operationForm} onSubmit={submit((form, decision) => {
+    {showEvidence && <a href={adminPath('/api/managed?' + new URLSearchParams({ receipt: payment.id, market: data.market }))}
+      download>Download receipt</a>}
+    {editable && ready && pending && <form method="post" className={styles.operationForm} onSubmit={submit((form, decision) => {
       const reason = value(form, 'reason');
       if (!reason || !decision) return;
       const input: Record<string, unknown> = { reason, decision };
@@ -123,9 +139,9 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
         <button type="submit" className={styles.operationButton} value="reject" disabled={saving}>Reject payment</button>
       </div>
     </form>}
-    {editable && detail.collection && <details>
+    {editable && ready && detail.collection && <details>
       <summary>Record collection</summary>
-      <form className={styles.operationForm} onSubmit={submit(form => {
+      <form method="post" className={styles.operationForm} onSubmit={submit(form => {
         if (amount(form) !== detail.collection?.amount) return setNotice('Enter the exact balance due.');
         paymentAction('collect', { amount: amount(form), reference: value(form, 'reference') }, 'Collection recorded.');
       })}>
@@ -135,9 +151,13 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
         <Submit disabled={saving}>Record collection</Submit>
       </form>
     </details>}
-    {editable && detail.refund && <details>
+    {detail.refundBalance && <p>Refunded: {display(payment.refunded)} · On hold: {display(detail.refundBalance.held)} ·
+      Available: {display(detail.refundBalance.available)}</p>}
+    {detail.refundBalance?.awaitingProviderReference && <p role="status">Resume the saved refund before requesting another.</p>}
+    {payment.reconciliation && <p role="status">Payment requires reconciliation.</p>}
+    {editable && ready && detail.refund && !activeRefunds.some(row => row.returnShipment) && <details>
       <summary>{detail.refund.requiresReference ? 'Record refund' : 'Refund payment'}</summary>
-      <form className={styles.operationForm} onSubmit={submit(form => paymentAction('refunds', {
+      <form method="post" className={styles.operationForm} onSubmit={submit(form => paymentAction('refunds', {
         amount: amount(form), reason: value(form, 'reason'),
         ...(detail.refund?.requiresReference && { reference: value(form, 'reference') }),
       }, 'Refund recorded.'))}>
@@ -148,6 +168,45 @@ export function ProductionManagedPayment({ operations, editable, priorReference,
         <Submit disabled={saving}>{detail.refund.requiresReference ? 'Record refund' : 'Refund payment'}</Submit>
       </form>
     </details>}
+    {editable && ready && detail.refund && !activeRefunds.some(row => !row.returnShipment) && inspected.map(receipt => {
+      const remaining = (receipt.receiptLines ?? []).map(line => {
+        const refunded = activeRefunds.filter(row => row.returnShipment === receipt._id)
+          .flatMap(row => row.lines ?? []).filter(row => row.id === line.id).reduce((sum, row) => sum + row.quantity, 0);
+        return { ...line, available: Math.min(100, line.sellable + line.damaged - refunded) };
+      }).filter(line => line.available > 0);
+      if (!remaining.length) return null;
+      return <details key={receipt._id}>
+        <summary>Refund inspected return {receipt._id.slice(-8)}</summary>
+        <form method="post" className={styles.operationForm} onSubmit={submit(form => {
+          const lines = remaining.map(line => ({ id: line.id, quantity: numeric(form, line.id) })).filter(line => line.quantity > 0);
+          if (!lines.length) return setNotice('Select at least one inspected unit.');
+          paymentAction('refunds', { returnShipment: receipt._id, lines, reason: value(form, 'reason'),
+            ...(offline && { reference: value(form, 'reference') }) }, 'Refund recorded.');
+        })}>
+          <p>The original merchandise and discount determine the refund.</p>
+          {remaining.map(line => <Quantity key={line.id} name={line.id} label={'Refund quantity for ' + (skuByLine.get(line.id) || 'order item')}
+            max={line.available}/>)}
+          <Field name="reason" label="Refund reason" maxLength={500}/>
+          {offline && <Field name="reference" label="Verified refund reference" withReference/>}
+          <Submit disabled={saving}>Refund selected units</Submit>
+        </form>
+      </details>;
+    })}
+    {refunds.length > 0 && <section aria-label="Refund history">
+      <h3>Refund history</h3>
+      <ul>{refunds.map(row => <li key={row.id}>
+        <p>{display(row.amount)} · {labels[row.state] || row.state} · {row.providerId || row.reference || row.id}</p>
+        {row.reconciliation && <p>Provider outcome requires review.</p>}
+        {editable && ready && row.state === 'pending' && <form method="post" className={styles.operationForm} onSubmit={submit(form => {
+          const ref = value(form, 'reference');
+          void save({ action: 'refund-reconcile', id: payment.id, step: row.id,
+            values: ref ? { reference: ref } : {} }, 'Refund reconciled.');
+        })}>
+          {!offline && !row.providerId && <Field name="reference" label="Provider refund reference (optional)" withReference required={false}/>}
+          <Submit disabled={saving}>Resume saved refund</Submit>
+        </form>}
+      </li>)}</ul>
+    </section>}
   </section>;
 }
 
@@ -160,7 +219,8 @@ function ShipmentPlan({ data, operations }: { data: ManagedOrder; operations: Op
       for (const line of shipment.lines) allocated.set(line.id, (allocated.get(line.id) ?? 0) + line.quantity);
     }
   }
-  const lines = data.lines.map(line => ({ ...line, quantity: line.quantity - (allocated.get(line.id) ?? 0) })).filter(line => line.quantity > 0);
+  const lines = data.lines.map(line => ({ ...line, remaining: line.quantity - (allocated.get(line.id) ?? 0) }))
+    .filter(line => line.remaining > 0);
   if (!data.warehouses.length || !lines.length) return null;
   return <form className={styles.operationForm} aria-label="Plan shipment" onSubmit={submit(form => {
     const selected = lines.map(line => ({ id: line.id, quantity: numeric(form, line.id),
@@ -188,8 +248,9 @@ function ShipmentPlan({ data, operations }: { data: ManagedOrder; operations: Op
     </div>
     {lines.map(line => <fieldset key={line.id}>
       <legend>{line.sku}</legend>
-      <Quantity name={line.id} label={'Quantity to ship for ' + line.sku} max={Math.min(line.quantity, 100)}
-        initial={lines.length === 1 ? Math.min(line.quantity, 100) : 0}/>
+      <p>{line.quantity} ordered · {line.remaining} available to allocate</p>
+      <Quantity name={line.id} label={'Quantity to ship for ' + line.sku} max={Math.min(line.remaining, 100)}
+        initial={lines.length === 1 ? Math.min(line.remaining, 100) : 0}/>
       {origin === 'CN' && <>
         <Field name={'source-' + line.id} label={'Dispatch source ID for ' + line.sku} maxLength={24} required={false}/>
         <Field name={'purchase-' + line.id} label={'Purchase ID for ' + line.sku} maxLength={24} required={false}/>
@@ -324,7 +385,9 @@ function ShipmentActions({ shipment, operations, canReturn }: { shipment: Shipme
   </>;
 }
 
-export function ProductionManagedShipments({ operations, editable, canReturn }: { operations: Operations; editable: boolean; canReturn: boolean }) {
+export function ProductionManagedShipments({ orderId, operations, editable, canReturn }: {
+  orderId: string; operations: Operations; editable: boolean; canReturn: boolean;
+}) {
   const { data, saving, save, loadingError } = operations;
   const activeReturn = ['IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT', 'DELIVERED', 'RETURN_REQUESTED'].includes(data?.status ?? '');
   return <details className={styles.card}>
@@ -334,12 +397,36 @@ export function ProductionManagedShipments({ operations, editable, canReturn }: 
       {!data && !loadingError && <p role="status">Loading shipment…</p>}
       {editable && canReturn && activeReturn && !!data?.shipments.length && <button type="button" className={styles.operationButton} disabled={saving}
         onClick={() => void save({ action: 'shipment-return-request', values: {} }, 'Order marked as pending return.')}>Mark as Pending Return</button>}
-      {data?.shipments.map(shipment => <section className={styles.shipmentRecord} key={shipment._id}>
-        <p>{shipment.direction === 'return' ? 'Return' : 'Shipment'}: {shipment.state}</p>
-        {shipment.tracking && <p>Tracking number: {shipment.tracking}</p>}
-        {shipment.receiptLines?.map(line => <p key={line.id}>{shipment.lines.find(item => item.id === line.id)?.sku}: {line.sellable} sellable, {line.damaged} damaged</p>)}
-        {editable && <ShipmentActions shipment={shipment} operations={operations} canReturn={canReturn}/>}
-      </section>)}
+      {data?.shipments.map(shipment => {
+        const title = (shipment.direction === 'return' ? 'Return parcel ' : 'Shipment ') + shipment._id.slice(-8);
+        const warehouse = data.warehouses.find(location => location.id === shipment.warehouse)?.label || shipment.warehouse;
+        const history = '/desk/shipping/shipment-desk?' + new URLSearchParams({
+          region: data.market === 'BD' ? 'BD' : 'INTERNATIONAL', market: data.market, order: orderId, record: shipment._id,
+        });
+        return <section className={styles.shipmentRecord} key={shipment._id} aria-label={title}>
+          <h3>{title}</h3>
+          <dl className={styles.shipmentFacts}>
+            <div><dt>State</dt><dd>{shipment.state}</dd></div>
+            <div><dt>Fulfillment site</dt><dd>{warehouse || 'Unrecorded'}{shipment.origin ? ' · ' + shipment.origin : ''}</dd></div>
+            <div><dt>Service</dt><dd>{[shipment.service, shipment.provider].filter(Boolean).join(' · ') || 'Unrecorded'}</dd></div>
+            <div><dt>Tracking number</dt><dd>{shipment.tracking || 'Unrecorded'}</dd></div>
+          </dl>
+          {(shipment.parcels?.length ?? 0) > 0 && <ul className={styles.shipmentLines} aria-label="Parcel dimensions">
+            {shipment.parcels?.map((parcel, index) => <li key={index}>
+              Package {index + 1} · {parcel.grams} g · {parcel.length} × {parcel.width} × {parcel.height} cm
+            </li>)}
+          </ul>}
+          <ul className={styles.shipmentLines} aria-label="Allocated lines">
+            {shipment.lines.map(line => <li key={line.id}>
+              {line.sku || line.id} · {line.quantity} units
+              {!!line.barcodes?.length && ' · ' + line.barcodes.length + ' tracked'}
+            </li>)}
+          </ul>
+          {shipment.receiptLines?.map(line => <p key={line.id}>{shipment.lines.find(item => item.id === line.id)?.sku}: {line.sellable} sellable, {line.damaged} damaged</p>)}
+          <Link className={styles.operationButton} href={history}>View shipment history</Link>
+          {editable && <ShipmentActions shipment={shipment} operations={operations} canReturn={canReturn}/>}
+        </section>;
+      })}
       {data && editable && <ShipmentPlan key={data.status} data={data} operations={operations}/>}
       {data && !data.shipments.length && (!editable || !data.warehouses.length) && <p>No shipment has been recorded.</p>}
     </div>

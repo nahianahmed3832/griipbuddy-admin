@@ -162,7 +162,7 @@ export function ProductionWebsiteOrderDetail({ order, access, locations, region,
         payment={managed.data?.payment ? <ProductionManagedPayment operations={managed} editable={access.update}
           priorReference={order.payment?.reference} priorDate={transactionDate && orderDate(transactionDate, region)}/> : undefined}/>
       <aside className={styles.sidebar} aria-label="Order operations">
-        {managedOperations && <ProductionManagedShipments operations={managed} editable={access.update} canReturn={access.return}/>}
+        {managedOperations && <ProductionManagedShipments orderId={order._id} operations={managed} editable={access.update} canReturn={access.return}/>}
         {hybridFulfillment && <ProductionHybridFulfillment orderId={order._id} state={hybridFulfillment}/>}
         {hybridFulfillment && <ProductionHybridReturns orderId={order._id} state={hybridFulfillment}/>}
         <section className={styles.card}>

@@ -34,7 +34,8 @@ async function readManagedPayment(id: string, auth: Session, scope?: VerifiedMar
       (event.kind === 'webhook' || event.kind === 'provider_observed') && fact.state === 'captured';
   });
   return { payment: details.payment, providerId: details.providerId, captureId: details.captureId, evidence: details.evidence,
-    collection: details.collection, refund: details.refund, transactionAt: str(transaction?.createdAt),
+    collection: details.collection, refund: details.refund, refunds: details.refunds, refundBalance: details.refundBalance,
+    transactionAt: str(transaction?.createdAt),
     transactionReference: str(obj(transaction?.details).reference) };
 }
 
@@ -54,7 +55,7 @@ export async function readManagedOrder(id: string, auth: Session, requestedMarke
   const [details, settings, locations] = await Promise.all([
     mongoId(paymentId) ? readManagedPayment(paymentId, auth, scope) : undefined,
     mayPlan ? api('/global/admin/shipment-services/' + market, auth.token).catch(error => {
-      if (error instanceof ApiError && [404, 422].includes(error.status)) return undefined;
+      if (error instanceof ApiError && [404, 409, 422].includes(error.status)) return undefined;
       throw error;
     }) : undefined,
     mayPlan ? Promise.all((market === 'BD' ? ['BD'] : ['BD', 'INTERNATIONAL']).map(async region =>

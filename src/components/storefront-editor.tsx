@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
+import type { Region } from '@/lib/sections';
 
 type SizeGuide = {
   note: string;
@@ -18,9 +19,9 @@ function lines(value: string) {
   return value.split('\n').map(line => line.trim()).filter(Boolean);
 }
 
-async function save(kind: string, id: string, values: unknown) {
+async function save(kind: string, id: string, values: unknown, region?: Region) {
   const response = await fetch(adminPath('/api/storefront'), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id, values }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, id, values, region }),
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.error || 'Could not save changes.');
@@ -94,8 +95,8 @@ export function StorefrontEditor({ id, settings }: { id: string; settings: Store
   </section>;
 }
 
-export function ReviewModeration({ id, title, content, status, media }: {
-  id: string; title: string; content: string; status: string; media: string[];
+export function ReviewModeration({ id, region, title, content, status, media }: {
+  id: string; region: Region; title: string; content: string; status: string; media: string[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -109,7 +110,7 @@ export function ReviewModeration({ id, title, content, status, media }: {
       setError('');
       setSaved('');
       try {
-        await save('review', id, { status: choice });
+        await save('review', id, { status: choice }, region);
         setSaved('Review status saved.');
         router.refresh();
       } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not save review.'); }
@@ -119,7 +120,7 @@ export function ReviewModeration({ id, title, content, status, media }: {
       <p>{content}</p>
       {media.length > 0 && <div className="review-moderation-media">
         {media.map((type, index) => {
-          const src = adminPath('/api/storefront?id=' + id + '&index=' + index);
+          const src = adminPath('/api/storefront?' + new URLSearchParams({ id, index: String(index), region }));
           return type === 'video/mp4' ? <video key={src} src={src} controls preload="metadata" />
             // eslint-disable-next-line @next/next/no-img-element
             : <img key={src} src={src} alt={'Review photo ' + (index + 1)} />;

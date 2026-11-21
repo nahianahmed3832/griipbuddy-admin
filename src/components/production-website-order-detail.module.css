@@ -157,6 +157,13 @@
 .card > summary { font-size: 18px; font-weight: 500; }
 .shipmentOperations { display: grid; gap: 16px; padding: 16px; }
 .shipmentRecord { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--order-border); border-radius: 8px; }
+.shipmentRecord > h3 { margin: 0; font-size: 1rem; }
+.shipmentFacts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,10rem),1fr)); gap: 8px 16px; margin: 0; }
+.shipmentFacts div { min-width: 0; }
+.shipmentFacts dt { font-size: 0.875rem; font-weight: 600; }
+.shipmentFacts dd { margin: 0; overflow-wrap: anywhere; }
+.shipmentLines { margin: 0; padding-inline-start: 1.25rem; overflow-wrap: anywhere; }
+.shipmentRecord > a { justify-self: start; }
 .operationForm { display: grid; gap: 8px; padding-top: 8px; color: #09090b; }
 .operationForm label, .operationForm fieldset { display: grid; gap: 4px; }
 .operationForm fieldset { padding: 8px; border: 1px solid var(--order-border); border-radius: 6px; margin: 0; min-width: 0; }

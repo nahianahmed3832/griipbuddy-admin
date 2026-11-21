@@ -1,16 +1,25 @@
 import { adminPath } from './paths';
 
+export type ManagedRefund = {
+  id: string; amount: number; currency: string; state: string; providerId?: string; reference?: string;
+  returnShipment?: string; lines?: { id: string; quantity: number }[]; reconciliation?: string;
+};
 export type ManagedPayment = {
-  payment: { id: string; provider: string; currency: string; amount: number; captured: number; status: string; evidenceSubmitted: boolean };
+  payment: { id: string; provider: string; currency: string; amount: number; captured: number; refunded: number;
+    status: string; evidenceSubmitted: boolean; reconciliation?: string };
   providerId?: string; captureId?: string; evidence?: { reference?: string };
   transactionReference?: string; transactionAt?: string;
   collection?: { amount: number }; refund?: { amount: number; requiresReference: boolean };
+  refundBalance?: { held: number; available: number; awaitingProviderReference: boolean };
+  refunds?: ManagedRefund[];
 };
 export type ReviewLot = { id: string; lotNumber: string; available: number; sellableAvailable: number };
 export type ReviewLine = { id: string; quantity: number; lots: ReviewLot[] };
 export type ShipmentLine = { id: string; sku: string; quantity: number; tracked?: boolean; barcodes?: string[] };
+type ShipmentParcel = { grams: number; length: number; width: number; height: number };
 export type Shipment = {
   _id: string; warehouse: string; direction: 'return' | 'outbound'; state: string; provider: string;
+  service?: string; origin?: string; parcels?: ShipmentParcel[];
   tracking?: string; receivedAt?: string; returnableLines?: ShipmentLine[]; lotReview?: ReviewLine[];
   lines: ShipmentLine[]; receiptLines?: { id: string; sellable: number; damaged: number }[];
 };
@@ -20,7 +29,7 @@ export type ManagedOrder = {
   zones: { service: string; origin: string; provider: string; label?: string }[];
 };
 export type ManagedMutation = {
-  action: 'shipment-new' | 'shipment-action' | 'payment-action' | 'shipment-return-request';
+  action: 'shipment-new' | 'shipment-action' | 'payment-action' | 'shipment-return-request' | 'refund-reconcile';
   id?: string; step?: string; values: Record<string, unknown>; keyed?: boolean;
 };
 

@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import * as XLSX from 'xlsx';
-import { api, ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
+import { ApiError, arr, canWrite, getRegion, mongoId, obj, requestApi, sameOrigin, session, str, url } from '@/lib/api';
 import { canManage } from '@/lib/managed';
 import { canReadHybridReports, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { canEditManagedOrderContact, managedOrderContext } from '@/lib/order-managed-server';
-import { has } from '@/lib/sections';
-import { addressLabel, orderFilterKeys, type Listing, type Order } from '@/lib/website-orders';
+import { has, superAdmin } from '@/lib/sections';
+import { mayExportOrders, orderFilterKeys, type Listing } from '@/lib/website-orders';
 
 const root = '/order/workspace';
 const reads = ['history', 'status', 'tracking', 'payment', 'proof', 'notes', 'detail', 'calls', 'sms-history', 'return-items'];
@@ -25,25 +25,12 @@ const actions: Record<string, { path: string; method: string }> = {
   handover: { path: '/handover', method: 'POST' },
 };
 const reject = (message: string, status: number) => new Response(message, { status, headers: { 'Cache-Control': 'private, no-store' } });
-function selectedWorkbook(rows: Order[]) {
-  const sheet = XLSX.utils.aoa_to_sheet([
-    ['Order', 'Invoice', 'Date', 'Status', 'SKUs and quantities', 'Currency', 'Order total', 'Tracking code'],
-    ...rows.map(row => [row.order_serial_id || undefined, row.invoice_number, row.order_date || row.createdAt, row.status,
-      row.products.map(line => `${line.sku || line.name || 'Item'} × ${line.quantity || 0}`).join(', ').slice(0, 30000),
-      row.currency, row.total_amount, row.tracking_code]),
-  ]);
-  return downloadWorkbook(sheet);
-}
-
 function workbook({ rows }: Pick<Listing, 'rows'>) {
   const sheet = XLSX.utils.aoa_to_sheet([
-    ['Order', 'Invoice', 'Date', 'Status', 'SKUs and quantities', 'Customer', 'Phone', 'Address', 'Currency', 'COD',
-      'Paid by courier', 'Total paid', 'Order total', 'Called', 'Staff note', 'Parcel ID', 'Tracking code', 'Created by'],
-    ...rows.map(row => [row.order_serial_id || undefined, row.invoice_number, row.order_date || row.createdAt, row.status,
-      row.products.map(line => `${line.sku || line.name || 'Item'} × ${line.quantity || 0}`).join(', ').slice(0, 30000),
-      row.customer_name, row.customer_phone, addressLabel(row.delivery_address), row.currency,
-      row.COD, row.paid_by_courier, row.paid_amount, row.total_amount, row.checkoutProjection ? undefined : row.is_called ? 'Yes' : 'No',
-      row.latestNote, row.consignment_id || undefined, row.tracking_code, row.user?.full_name || row.order_by]),
+    ['Source', 'Order', 'Invoice', 'Date', 'Order status', 'SKUs and quantities', 'Currency', 'Order total'],
+    ...rows.map(row => [row.checkoutProjection ? 'Hybrid checkout' : 'Recovered',
+      row.order_serial_id || undefined, row.invoice_number, row.order_date || row.createdAt, row.status,
+      row.products.map(line => `${line.sku || 'Item'} × ${line.quantity || 0}`).join(', ').slice(0, 30000), row.currency, row.total_amount]),
   ]);
   return downloadWorkbook(sheet);
 }
@@ -93,16 +80,21 @@ export async function GET(request: NextRequest) {
     }
     if (!has(auth.staff, 'order.view')) return reject('Access denied.', 403);
     if (action === 'export') {
-      const selected = q.get('selected');
-      if (q.has('selected')) {
-        if (region !== 'BD') return reject('Selected export is available for Bangladesh orders.', 403);
-        if (!selected || q.getAll('selected').length !== 1) return reject('Use a single order selection.', 400);
-        const ids = selected.split(',');
-        if (ids.length > 25 || new Set(ids).size !== ids.length || !ids.every(mongoId)) return reject('Choose up to 25 valid orders.', 400);
-        const rows = await Promise.all(ids.map(order => api(url(root + '/orders/' + order, { region }), auth.token)));
-        return selectedWorkbook(rows as Order[]);
+      if (!mayExportOrders(auth.staff)) return reject('An assigned business location is required for exports.', 403);
+      if (q.getAll('region').length > 1 || q.getAll('selected').length > 1) return reject('Use one operating region and selection.', 400);
+      const filters = Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, key === 'filter' ? 350 : 100)]));
+      if (!superAdmin(auth.staff)) {
+        const assigned = auth.staff.assignedLocation!;
+        if (filters.location && filters.location !== assigned) return reject('Choose your assigned business location.', 403);
+        filters.location = assigned;
       }
-      const filters = Object.fromEntries(orderFilterKeys.map(key => [key, q.get(key)?.slice(0, 100)]));
+      if (q.has('selected')) {
+        const ids = q.get('selected')?.toLowerCase().split(',') ?? [];
+        if (!ids.length || ids.length > 25 || new Set(ids).size !== ids.length || !ids.every(mongoId)) {
+          return reject('Choose up to 25 distinct recovered orders.', 400);
+        }
+        return await forward(url('/export', { region, selected: ids.join(','), ...filters }), auth.token, undefined, 'xlsx');
+      }
       if (q.get('checkout') === '1' && canReadHybridReports(auth, region)) filters.location = hybridReportLocations(auth, filters.location);
       const listing = q.get('checkout') === '1' ? await loadWebsiteOrders(auth, region, filters, undefined, 'all', { exportOrders: true }) : null;
       return listing ? workbook(listing) : await forward(url('/export', { region, ...filters }), auth.token, undefined, 'xlsx');

@@ -14,7 +14,7 @@ const routes = {
   policies: { view: 'product.view', create: 'product.create', edit: 'product.update', delete: 'product.delete', base: '/return-policy' },
   countries: { view: 'product.view', create: 'manage-permissions', edit: 'manage-permissions', delete: 'manage-permissions', base: '/country' },
 } as const;
-const registryRead = { brands: '/brand', faqs: '/faq', reviews: '/review', policies: '/return-policy', countries: '/country' };
+const registryRead = { brands: '/brand', faqs: '/faq', reviews: '/review/admin', policies: '/return-policy', countries: '/country' };
 
 export function canEditRegistry(kind: Registry, action: 'create' | 'edit' | 'delete', auth: Session) {
   return canWrite(auth.staff) && has(auth.staff, routes[kind].view) && has(auth.staff, routes[kind][action]);
@@ -100,9 +100,9 @@ export async function readProduct(id: string, auth: Session, region: Region) {
 export async function readRegistry(kind: Registry, id: string, auth: Session, region: Region) {
   if (!has(auth.staff, routes[kind].view)) throw new ApiError(403);
   if (!mongoId(id)) throw new ApiError(404);
-  const entry = obj(await api(registryRead[kind] + '/' + id, auth.token));
+  const entry = obj(await api(url(registryRead[kind] + '/' + id, { region: kind === 'reviews' ? region : undefined }), auth.token));
   if (reference(entry) !== id) throw new ApiError(404);
-  if (kind === 'reviews' || kind === 'faqs') await scopedProduct(reference(entry.product), auth, region);
+  if (kind === 'faqs') await scopedProduct(reference(entry.product), auth, region);
   return entry;
 }
 
@@ -125,7 +125,8 @@ export async function writeRegistry(kind: Registry, action: string, id: string, 
   if (!canEditRegistry(kind, grant, auth) || (kind === 'reviews' || action !== 'save') && !id) throw new ApiError(403);
   if (id) await readRegistry(kind, id, auth, region);
   const path = routes[kind].base + (id ? '/' + id : '');
-  if (action === 'delete') return saved(path, auth, 'DELETE');
+  const reviewAction = (suffix = '') => url(path + suffix, { region });
+  if (action === 'delete') return saved(kind === 'reviews' ? reviewAction() : path, auth, 'DELETE');
   if (action === 'status') {
     if (kind === 'policies') {
       if (typeof values.is_active !== 'boolean') throw invalid('Choose a return policy status.');
@@ -136,13 +137,13 @@ export async function writeRegistry(kind: Registry, action: string, id: string, 
       return saved('/faq/admin/public-faq-action/' + id, auth, 'PATCH', { status: values.status });
     }
     if (!['pending', 'approved', 'rejected'].includes(str(values.status))) throw invalid('Choose a review status.');
-    return saved(path + '/status', auth, 'PATCH', { status: values.status });
+    return saved(reviewAction('/status'), auth, 'PATCH', { status: values.status });
   }
   if (action === 'reply') {
     const content = str(values.content).trim();
     if (!content || content.length > 2000) throw invalid('Enter a reply up to 2,000 characters.');
     if (kind === 'faqs') return saved('/faq/admin/public-faq-action/' + id, auth, 'PATCH', { status: 'active', answer: content });
-    return saved(path + '/reply', auth, 'PATCH', { content });
+    return saved(reviewAction('/reply'), auth, 'PATCH', { content });
   }
   const rules = registries[kind].fields.filter(field => kind !== 'faqs' || field.name !== 'product' || !id);
   const fields = validateFields(values, rules.map(field => kind === 'faqs' && id && field.name === 'answer' ? { ...field, required: false } : field));
@@ -154,7 +155,7 @@ export async function writeRegistry(kind: Registry, action: string, id: string, 
   if (kind === 'policies' && !Number.isInteger(fields.return_period_days)) throw invalid('Return period must be a whole number of days.');
   if (kind === 'reviews') fields.rating = Number(fields.rating);
   if (kind === 'faqs' && !id) await scopedProduct(str(fields.product), auth, region);
-  return saved(path, auth, id ? 'PATCH' : 'POST', fields);
+  return saved(kind === 'reviews' ? reviewAction() : path, auth, id ? 'PATCH' : 'POST', fields);
 }
 
 const numbers = ['regular_price', 'sale_price', 'buying_price'] as const;

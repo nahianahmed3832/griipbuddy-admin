@@ -1,5 +1,5 @@
 import { adminPath } from './paths';
-import type { Region } from './sections';
+import { has, superAdmin, type Region, type Staff } from './sections';
 
 export const ordersPath = '/desk/orders/orders';
 export const statuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT',
@@ -10,8 +10,12 @@ export const openStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'IN_REVIEW', 'N
 export const courierStatuses = ['IN_REVIEW', 'HANDED_OVER_TO_COURIER', 'IN_TRANSIT'];
 export const pendingStatuses = [...courierStatuses, 'DELIVERED', 'RETURN_REQUESTED', 'ACCEPTED', 'PROCESSING', 'AWAITING_STOCK', 'PARTIAL'];
 export const manualStatuses = ['PLACED', 'ACCEPTED', 'PROCESSING', 'INCOMPLETE', 'NO_RESPONSE', 'PRE_ORDER'];
-export const orderFilterKeys = ['q', 'sku', 'from', 'to', 'location', 'creator', 'called', 'filter'] as const;
+export const orderFilterKeys = ['q', 'sku', 'from', 'to', 'location', 'creator', 'called', 'filter', 'sort'] as const;
 export type OrderFilters = Partial<Record<typeof orderFilterKeys[number], string>>;
+
+export function mayExportOrders(staff: Staff) {
+  return has(staff, 'order.view') && (superAdmin(staff) || /^[a-f0-9]{24}$/i.test(staff.assignedLocation ?? ''));
+}
 export type Address = { address?: string; thana?: string; district?: string; division?: string; city?: string; state?: string; postal_code?: string; country?: string };
 export type OrderItem = {
   name?: string; sku?: string; quantity?: number; image?: string; unitPrice?: number; snapshotUnitPrice?: number;

@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server';
-import { ApiError, canWrite, connection, mongoId, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
+import { ApiError, canWrite, connection, getRegion, mongoId, obj, requestApi, sameOrigin, session, str } from '@/lib/api';
 import { has } from '@/lib/sections';
 import { verifyScopedLegacyCatalogWrite } from '@/lib/scoped-catalog-pilot';
 
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' };
 
-async function operator(kind: string) {
+async function operator(kind: string, updating = false) {
   const auth = await session();
   if (process.env.GRIIP_ADMIN_INTEGRATED !== '1') throw new ApiError(404);
-  if (!auth || !canWrite(auth.staff) || !has(auth.staff, kind === 'product' ? 'product.update' : 'review.view')) {
+  if (!auth || !canWrite(auth.staff) || !has(auth.staff, kind === 'product' ? 'product.update' : 'review.view') || (kind === 'review' && updating && !has(auth.staff, 'review.update'))) {
     throw new ApiError(auth ? 403 : 401);
   }
   return auth;
@@ -19,10 +19,11 @@ export async function GET(req: NextRequest) {
     const id = req.nextUrl.searchParams.get('id') ?? '';
     const index = req.nextUrl.searchParams.get('index') ?? '';
     if (!mongoId(id) || !/^[0-3]$/.test(index)) throw new ApiError(404);
-    const { token } = await operator('review');
+    const auth = await operator('review');
+    const region = getRegion(req.nextUrl.searchParams.get('region') ?? undefined, auth.staff);
     const range = req.headers.get('range');
-    const res = await fetch(connection().origin + '/api/v1/storefront-reviews/admin/media/' + id + '/' + index, {
-      headers: { Authorization: 'Bearer ' + token, ...(range ? { Range: range } : {}) },
+    const res = await fetch(connection().origin + '/api/v1/storefront-reviews/admin/media/' + id + '/' + index + '?region=' + region, {
+      headers: { Authorization: 'Bearer ' + auth.token, ...(range ? { Range: range } : {}) },
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000),
     });
     const result = new Headers(headers);
@@ -47,10 +48,11 @@ export async function POST(req: NextRequest) {
     const id = str(input.id);
     const kind = str(input.kind);
     if (!mongoId(id) || !['product', 'review'].includes(kind)) throw new ApiError(400);
-    const auth = await operator(kind);
+    const auth = await operator(kind, true);
     if (kind === 'product') await verifyScopedLegacyCatalogWrite(auth, { kind: 'product', id });
     const path = kind === 'product' ? '/storefront/admin/product/' : '/storefront-reviews/admin/';
-    const response = await requestApi(path + id, auth.token, { method: 'PATCH', body: JSON.stringify(input.values) });
+    const scope = kind === 'review' ? '?region=' + getRegion(input.region, auth.staff) : '';
+    const response = await requestApi(path + id + scope, auth.token, { method: 'PATCH', body: JSON.stringify(input.values) });
     const result = obj(await response.json());
     return Response.json(response.ok ? { ok: true } : { error: str(result.message) || 'Could not save changes.' },
       { status: response.status, headers });

@@ -75,7 +75,7 @@ export async function loadResource(resource: Resource, auth: Session, q: Query, 
   };
   if (resource.search && search) {
     const searchKey = resource.endpoint === '/product/admin/all' && param(q,'searchBy') === 'sku' ? 'sku' : resource.search;
-    params[searchKey] = search;
+    params[searchKey] = resource.endpoint === '/review/admin' ? rawSearch : search;
   }
   if (resource.filter && filter && resource.filter.options.includes(filter)) params[resource.filter.key] = filter;
   if (['/order','/pre-order'].includes(resource.endpoint)) {

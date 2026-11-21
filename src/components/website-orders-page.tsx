@@ -8,7 +8,7 @@ import { canOperate } from '@/lib/operations';
 import { canManage } from '@/lib/managed';
 import { canReadHybridReports, getHybridOrder, hybridOrderId, hybridReportLocations, loadWebsiteOrders } from '@/lib/hybrid-orders';
 import { has, superAdmin, type Region } from '@/lib/sections';
-import { orderActions, orderFilterKeys, orderListQuery, ordersApi, ordersPath, statuses, type Listing, type OrderAccess, type OrderDetail, type OrderFilters,
+import { mayExportOrders, orderActions, orderFilterKeys, orderListQuery, ordersApi, ordersPath, statuses, type Listing, type OrderAccess, type OrderDetail, type OrderFilters,
   type OrderLocation, type ProductListing, type WebsiteOrderDraft } from '@/lib/website-orders';
 import { PageHeading } from './dashboard';
 import { OrderFiltersForm, WebsiteOrdersTable } from './website-orders-table';
@@ -30,6 +30,7 @@ function selectedFilters(q: Query) {
   filters.filter ||= param(q, 'status')?.trim().slice(0, 100);
   if (filters.filter && !filters.filter.split(',').every(value => statuses.some(status => status === value))) delete filters.filter;
   if (filters.location && !mongoId(filters.location)) delete filters.location;
+  if (filters.sort && !['newest', 'oldest'].includes(filters.sort)) delete filters.sort;
   if (filters.creator && !mongoId(filters.creator) && !['USER', 'GUEST'].includes(filters.creator)) delete filters.creator;
   return filters;
 }
@@ -74,7 +75,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
         (results[0].reason.status !== 400 && !(productionLayout && limit === 'all' && results[0].reason.status === 422))) throw results[0].reason;
     if (productionLayout) return <ProductionWebsiteOrders key={region} filters={filters} region={region}
       creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes}
-      selectedSize={limit} executive={executive} issue={results[0].reason.status === 422 ? 'too-many' : 'dates'}/>;
+      selectedSize={limit} canExport={mayExportOrders(auth.staff)} executive={executive} issue={results[0].reason.status === 422 ? 'too-many' : 'dates'}/>;
     return <>
       <PageHeading eyebrow="COMMERCE / WEBSITE ORDERS" title={title} description="Review the date range and try again."/>
       <OrderFiltersForm key={JSON.stringify(filters)} filters={filters} region={region} listPath={listPath}
@@ -85,7 +86,8 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
   if (!listing) throw new ApiError(503);
   if (productionLayout) return <ProductionWebsiteOrders key={region} listing={listing} filters={filters} region={region}
     creators={creators} locations={locations} access={accessFor(auth, region)} pageSizes={productionPageSizes} selectedSize={limit} executive={executive}
-    bulkCancellation={region === 'BD' && canManage(auth.staff) && has(auth.staff, 'order.update')}/>;
+    canExport={mayExportOrders(auth.staff)}
+    batchActor={region === 'BD' && canManage(auth.staff) && has(auth.staff, 'order.update') ? auth.staff.id : undefined}/>;
   return <>
     <PageHeading eyebrow="COMMERCE / WEBSITE ORDERS" title={title + ' (' + listing.total.toLocaleString('en') + ')'}
       description="Review website orders, customer follow-ups and courier activity.">
@@ -93,7 +95,7 @@ export async function WebsiteOrdersPage({ auth, q, region, executive = false, pr
     </PageHeading>
     <section className="panel website-order-filters">
       <div className="panel-header"><h2><Filter size={17}/> Filter</h2>
-        <a className="button secondary" href={ordersApi('export', region, filters)} download><Download size={16}/> Download Excel</a>
+        {mayExportOrders(auth.staff) && <a className="button secondary" href={ordersApi('export', region, filters)} download><Download size={16}/> Download Excel</a>}
       </div>
       <OrderFiltersForm key={JSON.stringify(filters)} filters={filters} region={region} listPath={listPath}
         creators={creators}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CalendarDays, ChevronLeft, Eye, ImageIcon, Save, Star, ThumbsUp, UserRound, X } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { adminPath } from '@/lib/paths';
+import { useBrowserReady } from '@/lib/browser-ready';
 import { productionCmsPreview } from '@/lib/production-cms-media';
 import type { Region } from '@/lib/sections';
 import { saveCatalog } from './catalog-edit-form';
@@ -56,7 +57,7 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
   const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState('');
   const [target, setTarget] = useState<RegistryRow>();
-  const [reviewSearch, setReviewSearch] = useState(search ?? '');
+  const ready = useBrowserReady();
   const archiveBrand = kind === 'brands';
   const recordLabel = archiveBrand ? 'brand' : kind === 'faqs' ? 'Faq' : 'Review';
   async function change(row: RegistryRow, action: 'delete' | 'status', status?: string) {
@@ -85,8 +86,7 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       {canCreate && route.create && <Link className={styles.primary} href={scope(route.create, region)}>
         {kind === 'faqs' ? 'Add new Faq' : 'Add new Brand'}
       </Link>}
-      {kind === 'reviews' && <input className={design.reviewSearch} aria-label="Search Reviews" placeholder="Search Reviews..."
-        value={reviewSearch} onChange={event => setReviewSearch(event.currentTarget.value)}/>}
+
     </header>
     {archiveBrand && <form className="panel filters" action={adminPath(route.list)}>
       {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
@@ -97,8 +97,25 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       <button className={styles.primary} type="submit">Apply</button>
       <Link className={styles.outline} href={scope(route.list, region)}>Reset</Link>
     </form>}
+    {kind === 'reviews' && <form className="panel filters" action={adminPath(route.list)}>
+      <input type="hidden" name="region" value={region}/>
+      {product && <input type="hidden" name="product" value={product}/>}
+      {limit !== '20' && <input type="hidden" name="limit" value={limit}/>}
+      <label>Search reviews<input type="search" name="q" defaultValue={search} maxLength={80}/></label>
+      <label>Review status<select name="filter" defaultValue={filter ?? ''}>
+        <option value="">All statuses</option>
+        {statuses.reviews.map(status => <option key={status} value={status}>{labels[status]}</option>)}
+      </select></label>
+      <label>Rating<select name="rating" defaultValue={rating ?? ''}>
+        <option value="">All ratings</option>
+        {[5, 4, 3, 2, 1].map(value => <option key={value} value={value}>{value}</option>)}
+      </select></label>
+      <button className={styles.primary} type="submit">Apply review filters</button>
+      <Link className={styles.outline} href={scope(route.list, region)}>Reset</Link>
+    </form>}
     {issue && !target && <p className={styles.error} role="alert">{issue}</p>}
-    <div className={styles.tableBorder + ' ' + design.scroll}>
+    <div className={styles.tableBorder + ' ' + design.scroll}
+      style={kind === 'reviews' ? { minWidth: 0, maxWidth: '100%', overflowX: 'auto' } : undefined}>
       <table className={styles.table}>
         <thead><tr>{columns[kind].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{rows.map((row, index) => {
@@ -115,7 +132,7 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
               </>}
             <td>{kind !== 'brands' && canEdit
               ? <select className={design.registryStatus} aria-label={'Status for ' + (row.title || row.question || row.product.name)}
-                  value={statuses[kind].includes(row.status) ? row.status : ''} disabled={busy}
+                  value={statuses[kind].includes(row.status) ? row.status : ''} disabled={!ready || busy}
                   onChange={event => void change(row, 'status', event.currentTarget.value)}>
                   <option value="" disabled>Select status</option>
                   {statuses[kind].map(status => <option key={status} value={status}>{labels[status]}</option>)}
@@ -143,7 +160,7 @@ export function ProductionRegistryList({ rows, kind, region, page, limit, pageSi
       </table>
     </div>
     {(kind !== 'brands' || page > 1 || hasNext) && <nav className={design.pages} aria-label="Pages">
-      {kind !== 'brands' && <RegistryPageSize current={limit} choices={['20','40','60','80','100','all']} path={route.list} params={params}/>}
+      {kind !== 'brands' && <RegistryPageSize current={limit} choices={['20','40','60','80','100', ...(kind === 'faqs' ? ['all'] : [])]} path={route.list} params={params}/>}
       <span>{rows.length ? offset + 1 : 0} - {offset + rows.length} of {total ?? offset + rows.length}</span>
       {page > 1 ? <Link className={styles.outline} href={href(page - 1)}>Previous</Link> : <button className={styles.outline} disabled>Previous</button>}
       {hasNext ? <Link className={styles.outline} href={href(page + 1)}>Next</Link> : <button className={styles.outline} disabled>Next</button>}
@@ -375,7 +392,7 @@ export function ProductionRegistryDetail({ row, kind, region, canEdit, showAttac
           return <a key={src + index} href={src} target="_blank" rel="noreferrer"><img src={src} className={design.reviewAttachment} alt={'Review attachment ' + (index + 1)}/></a>;
         })}
         {showAttachments && row.attachments.map((type, index) => {
-          const src = adminPath('/api/storefront?' + new URLSearchParams({ id: row.id, index: String(index) }));
+          const src = adminPath('/api/storefront?' + new URLSearchParams({ id: row.id, index: String(index), region }));
           if (type === 'video/mp4') return <video className={design.reviewAttachment} key={src} src={src} controls preload="metadata"/>;
           // eslint-disable-next-line @next/next/no-img-element
           return <img className={design.reviewAttachment} key={src} src={src} alt={'Review attachment ' + (index + 1)}/>;

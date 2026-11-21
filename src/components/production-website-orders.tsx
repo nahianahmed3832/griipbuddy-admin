@@ -15,6 +15,7 @@ import { normalizeFraudPhone, useCourierFraud } from './production-fraud';
 import { OrderDialog, type DialogState, type OrderDialogKind } from './website-orders-dialog';
 import { ProductionOrderMenu, useManualOrderStatus } from './production-order-menu';
 import { OrderThumbnail } from './website-orders-table';
+import { OrderBatchCancellation } from './order-batch-cancellation';
 import { WorkspaceEmpty, WorkspaceHeading, WorkspaceStatus } from './workspace-screen';
 import styles from './production-website-orders.module.css';
 
@@ -107,7 +108,8 @@ type Props = {
   locations: OrderLocation[];
   creators: { _id: string; label: string }[];
   access: OrderAccess;
-  bulkCancellation?: boolean;
+  batchActor?: string;
+  canExport?: boolean;
   pageSizes: readonly string[];
   selectedSize?: string;
   issue?: 'dates' | 'too-many';
@@ -135,7 +137,7 @@ function FraudCell({ phone, open }: { phone: string; open: () => void }) {
   </button>;
 }
 
-export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false, executive = false, bulkCancellation = false }: Props) {
+export function ProductionWebsiteOrders({ listing, filters, region, locations, creators, access, pageSizes, selectedSize, issue, assigned = false, executive = false, batchActor, canExport = false }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const listPath = assigned ? '/dashboard/assigned-orders' : executive ? '/dashboard/sales-executive' : '/dashboard/orders';
@@ -150,9 +152,6 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
-  const [batchReason, setBatchReason] = useState('');
-  const [batchResult, setBatchResult] = useState<{ id: string; status: string; message?: string }[]>([]);
-  const cancellationRequest = useRef<{ body: string; key: string } | undefined>(undefined);
   const { updateStatus, updating } = useManualOrderStatus(region, setNotice);
   const [deferred, setDeferred] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -161,11 +160,11 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
   const toText = dateText(formFilters.to ?? '', dateText(today, today));
   const dateTextLabel = formFilters.from && (!formFilters.to || formFilters.from === formFilters.to) ? fromText : fromText + ' - ' + toText;
   const rows = listing?.rows ?? [];
-  const exportable = (order: Order) => region === 'BD' && !assigned && !order.checkoutProjection && /^[a-f0-9]{24}$/i.test(order._id);
-  const cancellable = (order: Order) => exportable(order) && bulkCancellation && order.managed && !order.paid_amount &&
+  const exportable = (order: Order) => canExport && !assigned && !order.checkoutProjection && /^[a-f0-9]{24}$/i.test(order._id);
+  const cancellable = (order: Order) => exportable(order) && batchActor && order.managed && !order.paid_amount &&
     ['PLACED','INCOMPLETE'].includes(order.status) && !order.tracking_code && !order.transfer_to_courier && !order.assigned_business_location;
   const selection = rows.filter(order => selected.includes(order._id));
-  const cancelIds = selection.filter(cancellable).map(order => order._id);
+  const cancelOrders = selection.filter(cancellable).map(order => ({ id: order._id, label: orderNumber(order) }));
   const exportIds = selection.filter(exportable).map(order => order._id);
   const total = listing?.total ?? 0;
   const page = listing?.page ?? 1;
@@ -214,26 +213,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
 
   const datePresets = presets(today);
   const activePreset = datePresets.find(([, , from, to]) => (formFilters.from ?? '') === from && (formFilters.to ?? '') === to)?.[0] ?? 'custom';
-  async function cancelSelected(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (batchBusy || !cancelIds.length || cancelIds.length !== exportIds.length || !batchReason.trim()) return;
-    const values = { orders: cancelIds, reason: batchReason.trim() };
-    const body = JSON.stringify(values);
-    if (cancellationRequest.current?.body !== body) cancellationRequest.current = { body, key: crypto.randomUUID() };
-    setBatchBusy(true);
-    setBatchResult([]);
-    try {
-      const response = await fetch(adminPath('/api/managed'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action:'order-cancel-batch', market:'BD', key:cancellationRequest.current.key, values }) });
-      if (!response.ok) throw new Error(await response.text());
-      const result = await response.json() as { rows: { id: string; status: string; message?: string }[] };
-      setBatchResult(result.rows);
-      setSelected(ids => ids.filter(id => !result.rows.some(row => row.id === id && ['cancelled','replayed'].includes(row.status))));
-      cancellationRequest.current = undefined;
-      router.refresh();
-    } catch (error) {
-      setNotice(error instanceof Error && error.message ? error.message : 'Could not confirm the selected cancellations.');
-    } finally { setBatchBusy(false); }
+  function cancellationConfirmed(completed: string[]) {
+    setSelected(ids => ids.filter(id => !completed.includes(id)));
+    router.refresh();
   }
 
   const visibleStatuses = status && !statusTabs.some(([key]) => key === status)
@@ -264,9 +246,9 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
             onClick={() => setDialog({ kind: 'sync' })}>
             <Truck size={16}/> Sync with Courier
           </button>}
-          <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: '1' })} download>
+          {canExport && <a className={styles.outlineAction} href={ordersApi('export', region, { ...exportFilters, checkout: '1' })} download>
             <FileSpreadsheet size={16}/> Download Excel
-          </a>
+          </a>}
         </div>}
       </div>
       {!!exportIds.length && <div className={`page-actions padded ${styles.selectedOrders}`} aria-label="Selected orders">
@@ -274,15 +256,10 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
           <FileSpreadsheet size={16}/> Export {exportIds.length} selected
         </a>
         <button className="button subtle" type="button" onClick={() => setSelected([])}>Clear selection</button>
-        {cancelIds.length > 0 && cancelIds.length === exportIds.length && <form className="page-actions" onSubmit={cancelSelected}>
-          <label>Cancellation reason<input required maxLength={500} value={batchReason} disabled={batchBusy} onChange={e => setBatchReason(e.target.value)}/></label>
-          <button className="button secondary" disabled={batchBusy}>{batchBusy ? 'Checking…' : 'Cancel selected orders'}</button>
-        </form>}
       </div>}
-      {batchResult.length > 0 && <ul className="notice" aria-label="Cancellation results">{batchResult.map(row => <li key={row.id}>
-        {rows.find(order => order._id === row.id) ? orderNumber(rows.find(order => order._id === row.id)!) : row.id}
-        {' · '}{row.status === 'replayed' ? 'Already cancelled by this operation' : row.message ?? statusLabel(row.status)}
-      </li>)}</ul>}
+      {batchActor && <OrderBatchCancellation key={batchActor} actor={batchActor}
+        selection={cancelOrders.length === exportIds.length ? cancelOrders : []}
+        onBusy={setBatchBusy} onConfirmed={cancellationConfirmed}/>}
       {expanded && <form id={filterId} className={styles.filters} action={adminPath(listPath)} onSubmit={onSearch}>
         {region === 'INTERNATIONAL' && <input type="hidden" name="region" value={region}/>}
         {status && <input type="hidden" name="filter" value={status}/>}
@@ -334,6 +311,11 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
               {creators.map(creator => <option key={creator._id} value={creator._id}>{creator.label || 'Staff member'}</option>)}
             </SelectField>
           </label>}
+          <label className={styles.narrowField}>Order date
+            <SelectField name="Order date" value={formFilters.sort || 'newest'} onChange={sort => submit({ ...formFilters, sort })}>
+              <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+            </SelectField>
+          </label>
           {!assigned && <label className={styles.narrowField}>Called?
             <SelectField name="Called?" value={formFilters.called ?? ''} onChange={called => submit({ ...formFilters, called })}>
               <option value="">All</option><option value="true">Called (Yes)</option><option value="false">Not Called (No)</option>
@@ -398,6 +380,7 @@ export function ProductionWebsiteOrders({ listing, filters, region, locations, c
                   } else open(kind, order);
                 }}/></div></td>
               <td role="cell" data-field="order"><Link className={styles.orderNumber} href={href}>{number}</Link>
+                <small className={styles.orderSource}>{order.checkoutProjection ? 'Hybrid checkout' : 'Recovered'}</small>
                 <small>{date.day}{date.time && ' · ' + date.time}</small>
                 {order.order_note && <small>Customer note: <span className={styles.customerNote}>{order.order_note}</span></small>}</td>
               <td role="cell" data-field="status" data-label="Order status"><WorkspaceStatus tone={orderStateTone(order.status)}>{statusLabel(order.status)}</WorkspaceStatus>

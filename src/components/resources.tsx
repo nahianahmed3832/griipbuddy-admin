@@ -26,7 +26,7 @@ const createPermissions: Record<string,string> = {
 const detailPath: Record<string,string> = {
   '/order': '/order/', '/product/admin/all': '/product/admin/products/',
   '/country/admin/all': '/country/', '/stocks': '/stocks/variant/', '/product/admin/variants': '/product/variant/single/',
-  '/review': '/review/', '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
+  '/review/admin': '/review/admin/', '/purchase': '/purchase/', '/coupon/admin/all': '/coupon/', '/pos/sale': '/pos/sale/',
 };
 const hasDetail = (endpoint: string) => Boolean(detailPath[endpoint]) || endpoint === '/cms/admin/top-bar-messages';
 
@@ -108,7 +108,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const prefix = detailPath[resource.endpoint];
   if (!permitted(resource,auth)) throw new ApiError(403);
   if (!hasDetail(resource.endpoint) || !mongoId(id)) throw new ApiError(404);
-  let raw = prefix ? obj(await api(prefix + id, auth.token)) : arr(await api(resource.endpoint, auth.token)).map(obj)
+  let raw = prefix ? obj(await api(url(prefix + id, { region: resource.endpoint === '/review/admin' ? region : undefined }), auth.token)) : arr(await api(resource.endpoint, auth.token)).map(obj)
     .find(record => record._id === id);
   if (!raw || !Object.keys(raw).length) throw new ApiError(404);
   if (resource.endpoint === '/product/admin/variants') {
@@ -120,7 +120,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
   const locationScoped = ['/purchase', '/pos/sale'].includes(resource.endpoint);
   const recordRegion = locationScoped ? str(obj(raw.business_location).region)
     : str(raw.region) || str(obj(raw.product).region) || str(obj(obj(raw.variant).product).region) || 'BD';
-  const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all', '/review'].includes(resource.endpoint);
+  const isShared = ['/cms/admin/top-bar-messages', '/coupon/admin/all'].includes(resource.endpoint);
   if (!isShared && resource.flags !== 'market' && recordRegion !== region) throw new ApiError(404);
   if (resource.endpoint === '/stocks') {
     raw = {...raw, stocks_by_location: arr(raw.stocks_by_location).map(obj).filter(row => (str(obj(row.location).region) || 'BD') === region)};
@@ -152,7 +152,7 @@ export async function ResourceDetail({ section, view, resource, id, auth, region
         return <div key={col.label}><dt>{col.label}</dt><dd>{value && col.kind === 'badge' ? <Badge value={value}/> : value || '—'}</dd></div>;
       })}</dl></section>}
     {storefrontSettings && <StorefrontEditor id={id} settings={storefrontSettings} />}
-    {storefrontWrites && resource.endpoint === '/review' && <ReviewModeration id={id} title={str(raw.title)}
+    {storefrontWrites && resource.endpoint === '/review/admin' && has(auth.staff, 'review.update') && <ReviewModeration id={id} region={region} title={str(raw.title)}
       content={str(raw.content)} status={str(raw.status)} media={arr(raw.storefrontMediaTypes).map(str)} />}
     {resource.endpoint === '/order' && <>
       <section className="panel"><div className="panel-header"><h2>Delivery and payment</h2></div>

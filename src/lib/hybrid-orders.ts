@@ -409,7 +409,9 @@ export async function loadWebsiteOrders(auth: Session, region: Region, filters: 
   // The API includes enough earlier native rows to account for every checkout insertion.
   const offset = limit === 'all' ? 0 : (listing.page - 1) * listing.size;
   const start = offset - (listing.start ?? offset);
-  const rows = [...listing.rows, ...hybridRows].sort((left, right) => sortDate(right) - sortDate(left) || right._id.localeCompare(left._id));
+  const direction = filters.sort === 'oldest' ? 1 : -1;
+  const rows = [...listing.rows, ...hybridRows].sort((left, right) =>
+    direction * (sortDate(left) - sortDate(right) || left._id.localeCompare(right._id)));
   return { ...listing, total, counts, rows: limit === 'all' ? rows : rows.slice(start, start + listing.size),
     size: limit === 'all' ? Math.max(1, rows.length) : listing.size };
 }

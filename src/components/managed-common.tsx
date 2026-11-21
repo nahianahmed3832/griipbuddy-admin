@@ -25,7 +25,7 @@ export const status = col('Status', 'enabled|status|state|catalog_state', 'badge
 export const revision = (record: RecordData) => typeof record.revision === 'number' ? record.revision : null;
 
 export function editor(context: Context, action: ManagedAction, label: string, fields: ManagedField[], options: {
-  id?: string; step?: string; revision?: number | null; primary?: boolean; description?: string;
+  id?: string; step?: string; revision?: number | null; primary?: boolean; description?: string; retryOrder?: string;
 } = {}) {
   if (!canWrite(context.auth.staff) || !canManageAction(context.auth, action, options.step)) return null;
   return <ManagedForm key={action + (options.step ?? '') + (options.revision ?? '')} action={action} label={label}
